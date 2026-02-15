@@ -361,6 +361,7 @@
     <None Include="Assets\Square192x192Logo.svg" />
     <None Include="Assets\PasskeyManager.svg" />
     <None Include="src\Config.h`" />
+    <None Include="happyfactory.pfx" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="PasskeyManager.rc" />

@@ -293,6 +293,7 @@
     <None Include="Assets\Square192x192Logo.svg">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
     </None>
+    <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
     <None Include="src\Config.h`" />
   </ItemGroup>

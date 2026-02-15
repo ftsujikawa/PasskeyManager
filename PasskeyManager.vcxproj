@@ -117,7 +117,7 @@
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
     <!-- writeable location -->
     <AppInstallerUri>$(LocalAppData)\tsupasswd\</AppInstallerUri>
-    <PackageCertificateThumbprint>D75B8E43BCF0E032A586E783E4A4775AD8B38584</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>B4F587D66231CC0BC3DCABBE7D7B57CEADF3B974</PackageCertificateThumbprint>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -293,6 +293,7 @@
     <None Include="Assets\Square192x192Logo.svg">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
     </None>
+    <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
     <None Include="src\Config.h`" />
   </ItemGroup>

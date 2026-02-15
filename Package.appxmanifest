@@ -10,8 +10,8 @@
 
   <Identity
     Name="Contoso.tsupasswdcore"
-    Publisher="CN=FT"
-    Version="1.0.22.0" />
+    Publisher="CN=Contoso Software, O=Contoso Corporation, C=US"
+    Version="1.0.26.0" />
 
   <Properties>
     <DisplayName>tsupasswd_core</DisplayName>

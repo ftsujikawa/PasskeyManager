@@ -116,8 +116,8 @@
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
     <!-- writeable location -->
-    <AppInstallerUri>$(LocalAppData)\tsupasswd\</AppInstallerUri>
-    <PackageCertificateThumbprint>B4F587D66231CC0BC3DCABBE7D7B57CEADF3B974</PackageCertificateThumbprint>
+    <AppInstallerUri>C:\AppPackages\</AppInstallerUri>
+    <PackageCertificateThumbprint>DC2D49A2998C3890220559B74412ABCE6DCCCCE6</PackageCertificateThumbprint>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -293,9 +293,9 @@
     <None Include="Assets\Square192x192Logo.svg">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
     </None>
-    <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
     <None Include="src\Config.h`" />
+    <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
     <SDKReference Include="WindowsDesktop, Version=10.0.22621.0" />

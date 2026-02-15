@@ -10,8 +10,8 @@
 
   <Identity
     Name="Contoso.tsupasswdcore"
-    Publisher="CN=Happy Factory, O=Happy Factory, C=JA"
-    Version="1.0.15.0" />
+    Publisher="CN=FT"
+    Version="1.0.22.0" />
 
   <Properties>
     <DisplayName>tsupasswd_core</DisplayName>

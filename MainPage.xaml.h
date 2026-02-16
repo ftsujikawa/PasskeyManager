@@ -44,6 +44,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction activatePluginButton_Click(IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::IAsyncAction VaultUnlockControl_IsCheckedChanged(winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButton const& sender, winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButtonIsCheckedChangedEventArgs const& args);
         winrt::IAsyncAction TestPasskeyVaultUnlock_Click(IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+        winrt::IAsyncAction googleSignInButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 

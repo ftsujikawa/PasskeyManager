@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "google": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "client_secret": "YOUR_GOOGLE_CLIENT_SECRET",
+    "scopes": ["https://www.googleapis.com/auth/drive.appdata"],
+    "loopback_redirect_port": 53682
+  }
+}

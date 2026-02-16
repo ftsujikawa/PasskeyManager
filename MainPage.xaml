@@ -181,6 +181,12 @@
                             </DataTemplate>
                         </ToggleSwitch.HeaderTemplate>
                     </ToggleSwitch>
+
+                    <Button
+                        x:Name="googleSignInButton"
+                        Click="googleSignInButton_Click"
+                        Content="Google Sign-in"
+                        Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
             </Grid>
 

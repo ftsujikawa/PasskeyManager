@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace tsupasswd
 {
@@ -50,6 +51,14 @@ namespace tsupasswd
         bool ShowDevCommands{ false };
     };
 
+    struct ConfigGoogle
+    {
+        std::wstring ClientId{};
+        std::wstring ClientSecret{};
+        std::vector<std::wstring> Scopes{};
+        int32_t LoopbackRedirectPort{ 0 };
+    };
+
     struct AppConfig
     {
         int32_t SchemaVersion{ 1 };
@@ -58,12 +67,17 @@ namespace tsupasswd
         ConfigWebAuthnBehavior WebAuthnBehavior{};
         ConfigStorage Storage{};
         ConfigUi Ui{};
+        ConfigGoogle Google{};
     };
 
-    // “Ç‚İ‚İ: ¸”s‚µ‚Ä‚àŠù’è’l‚ğ•Ô‚·i—áŠO‚Í“Š‚°‚È‚¢•ûjj
+    // èª­ã¿è¾¼ã¿: å¤±æ•—ã—ã¦ã‚‚æ—¢å®šå€¤ã‚’è¿”ã™ï¼ˆä¾‹å¤–ã¯æŠ•ã’ãªã„æ–¹é‡ï¼‰
     AppConfig LoadConfigFromLocalAppData();
 
-    // •Û‘¶æiƒfƒBƒŒƒNƒgƒŠ/ƒtƒ@ƒCƒ‹j¶¬
+    AppConfig LoadConfigFromAppSettingsJson(std::wstring const& filePath);
+
+    AppConfig LoadConfig();
+
+    // ä¿å­˜å…ˆï¼ˆãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒª/ãƒ•ã‚¡ã‚¤ãƒ«ï¼‰ç”Ÿæˆ
     std::wstring GetConfigDirectoryPath();
     std::wstring GetConfigFilePath();
 }

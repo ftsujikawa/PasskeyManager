@@ -2,7 +2,15 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <winsock2.h>
 #include <windows.h>
+#include <bcrypt.h>
+#include <ncrypt.h>
+#include <wincrypt.h>
 #include <unknwn.h>
 #include <restrictederrorinfo.h>
 #include <hstring.h>

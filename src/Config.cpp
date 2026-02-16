@@ -14,6 +14,9 @@
 
 namespace tsupasswd
 {
+    static std::wstring GetModuleDirectoryPath();
+    static std::wstring GetAppSettingsJsonPath();
+
     static std::wstring GetKnownFolderPath(REFKNOWNFOLDERID folderId)
     {
         PWSTR path = nullptr;
@@ -64,7 +67,7 @@ namespace tsupasswd
             return;
         }
 
-        // Šù‚É‚ ‚éê‡‚à¬Œ÷ˆµ‚¢
+        // æ—¢ã«ã‚ã‚‹å ´åˆã‚‚æˆåŠŸæ‰±ã„
         (void)SHCreateDirectoryExW(nullptr, path.c_str(), nullptr);
     }
 
@@ -78,7 +81,15 @@ namespace tsupasswd
 
         std::ostringstream oss;
         oss << ifs.rdbuf();
-        return oss.str();
+        std::string text = oss.str();
+        if (text.size() >= 3 &&
+            static_cast<unsigned char>(text[0]) == 0xEF &&
+            static_cast<unsigned char>(text[1]) == 0xBB &&
+            static_cast<unsigned char>(text[2]) == 0xBF)
+        {
+            text.erase(0, 3);
+        }
+        return text;
     }
 
     static LogLevel ParseLogLevel(std::wstring const& level)
@@ -123,7 +134,7 @@ namespace tsupasswd
             return false;
         }
 
-        out = value.GetString(); // C³: std::wstringŒ^‚É’¼Ú‘ã“ü
+        out = value.GetString(); // ä¿®æ­£: std::wstringå‹ã«ç›´æ¥ä»£å…¥
         return true;
     }
 
@@ -157,7 +168,7 @@ namespace tsupasswd
             return false;
         }
 
-        // JSON number ‚Í doubleB”ÍˆÍ/ŠÛ‚ß‚ÍÅ¬ŒÀ‚Ì–hŒä‚¾‚¯B
+        // JSON number ã¯ doubleã€‚ç¯„å›²/ä¸¸ã‚ã¯æœ€å°é™ã®é˜²å¾¡ã ã‘ã€‚
         double d = value.GetNumber();
         if (d < static_cast<double>(INT32_MIN) || d > static_cast<double>(INT32_MAX))
         {
@@ -168,9 +179,131 @@ namespace tsupasswd
         return true;
     }
 
+    static bool TryGetStringArray(winrt::Windows::Data::Json::JsonObject const& obj, wchar_t const* key, std::vector<std::wstring>& out)
+    {
+        if (!obj.HasKey(key))
+        {
+            return false;
+        }
+
+        auto value = obj.GetNamedValue(key, nullptr);
+        if (!value || value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Array)
+        {
+            return false;
+        }
+
+        auto arr = value.GetArray();
+        std::vector<std::wstring> tmp;
+        tmp.reserve(arr.Size());
+        for (uint32_t i = 0; i < arr.Size(); ++i)
+        {
+            auto item = arr.GetAt(i);
+            if (!item || item.ValueType() != winrt::Windows::Data::Json::JsonValueType::String)
+            {
+                continue;
+            }
+            tmp.emplace_back(item.GetString());
+        }
+
+        out = std::move(tmp);
+        return true;
+    }
+
+    static void ParseConfigJsonObject(winrt::Windows::Data::Json::JsonObject const& root, AppConfig& cfg)
+    {
+        (void)TryGetInt32(root, L"schemaVersion", cfg.SchemaVersion);
+
+        winrt::Windows::Data::Json::JsonObject diagnostics;
+        if (TryGetObject(root, L"diagnostics", diagnostics))
+        {
+            std::wstring level;
+            if (TryGetString(diagnostics, L"logLevel", level))
+            {
+                cfg.Diagnostics.LogLevelValue = ParseLogLevel(level);
+            }
+
+            (void)TryGetBool(diagnostics, L"logToFile", cfg.Diagnostics.LogToFile);
+            (void)TryGetInt32(diagnostics, L"logRetentionDays", cfg.Diagnostics.LogRetentionDays);
+            (void)TryGetInt32(diagnostics, L"maxLogFileSizeKB", cfg.Diagnostics.MaxLogFileSizeKB);
+            (void)TryGetBool(diagnostics, L"enableVerboseWinRTLogging", cfg.Diagnostics.EnableVerboseWinRTLogging);
+        }
+
+        winrt::Windows::Data::Json::JsonObject webauthn;
+        if (TryGetObject(root, L"webauthn", webauthn))
+        {
+            winrt::Windows::Data::Json::JsonObject plugin;
+            if (TryGetObject(webauthn, L"plugin", plugin))
+            {
+                (void)TryGetBool(plugin, L"enabled", cfg.WebAuthnPlugin.Enabled);
+
+                std::wstring args;
+                if (TryGetString(plugin, L"exeArguments", args))
+                {
+                    cfg.WebAuthnPlugin.ExeArguments = args;
+                }
+
+                (void)TryGetInt32(plugin, L"operationTimeoutMs", cfg.WebAuthnPlugin.OperationTimeoutMs);
+            }
+
+            winrt::Windows::Data::Json::JsonObject behavior;
+            if (TryGetObject(webauthn, L"behavior", behavior))
+            {
+                (void)TryGetBool(behavior, L"preferPlatformAuthenticator", cfg.WebAuthnBehavior.PreferPlatformAuthenticator);
+                (void)TryGetBool(behavior, L"allowAutofillCapable", cfg.WebAuthnBehavior.AllowAutofillCapable);
+            }
+        }
+
+        winrt::Windows::Data::Json::JsonObject storage;
+        if (TryGetObject(root, L"storage", storage))
+        {
+            std::wstring subDir;
+            if (TryGetString(storage, L"subDir", subDir))
+            {
+                cfg.Storage.SubDir = subDir;
+            }
+
+            std::wstring cacheDir;
+            if (TryGetString(storage, L"cacheDir", cacheDir))
+            {
+                cfg.Storage.CacheDir = cacheDir;
+            }
+        }
+
+        winrt::Windows::Data::Json::JsonObject ui;
+        if (TryGetObject(root, L"ui", ui))
+        {
+            std::wstring theme;
+            if (TryGetString(ui, L"theme", theme))
+            {
+                cfg.Ui.Theme = theme;
+            }
+
+            (void)TryGetBool(ui, L"showDevCommands", cfg.Ui.ShowDevCommands);
+        }
+
+        winrt::Windows::Data::Json::JsonObject google;
+        if (TryGetObject(root, L"google", google))
+        {
+            std::wstring clientId;
+            if (TryGetString(google, L"client_id", clientId))
+            {
+                cfg.Google.ClientId = clientId;
+            }
+
+            std::wstring clientSecret;
+            if (TryGetString(google, L"client_secret", clientSecret))
+            {
+                cfg.Google.ClientSecret = clientSecret;
+            }
+
+            (void)TryGetStringArray(google, L"scopes", cfg.Google.Scopes);
+            (void)TryGetInt32(google, L"loopback_redirect_port", cfg.Google.LoopbackRedirectPort);
+        }
+    }
+
     AppConfig LoadConfigFromLocalAppData()
     {
-        // WinRT JSON ‚ğg‚¤‚Ì‚Å WinRT ‰Šú‰»iWinUI3 ‚È‚çŠù‚É‰Šú‰»Ï‚İ‚Ì‚±‚Æ‚ª‘½‚¢‚ªAˆÀ‘S‘¤j
+        // WinRT JSON ã‚’ä½¿ã†ã®ã§ WinRT åˆæœŸåŒ–ï¼ˆWinUI3 ãªã‚‰æ—¢ã«åˆæœŸåŒ–æ¸ˆã¿ã®ã“ã¨ãŒå¤šã„ãŒã€å®‰å…¨å´ï¼‰
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
         AppConfig cfg{};
@@ -187,96 +320,153 @@ namespace tsupasswd
         std::string jsonUtf8 = ReadAllTextUtf8(filePath);
         if (jsonUtf8.empty())
         {
-            return cfg; // ‚È‚¢/“Ç‚ß‚È‚¢ ¨ Šù’è
+            return cfg; // ãªã„/èª­ã‚ãªã„ â†’ æ—¢å®š
         }
 
         try
         {
-            // WinRT ‚Ì Parse ‚Í UTF-16 •¶š—ñ“ü—Í
+            // WinRT ã® Parse ã¯ UTF-16 æ–‡å­—åˆ—å…¥åŠ›
             std::wstring jsonW = winrt::to_hstring(jsonUtf8).c_str();
             auto root = winrt::Windows::Data::Json::JsonObject::Parse(jsonW);
-
-            // schemaVersion
-            (void)TryGetInt32(root, L"schemaVersion", cfg.SchemaVersion);
-
-            // diagnostics
-            winrt::Windows::Data::Json::JsonObject diagnostics;
-            if (TryGetObject(root, L"diagnostics", diagnostics))
-            {
-                std::wstring level;
-                if (TryGetString(diagnostics, L"logLevel", level))
-                {
-                    cfg.Diagnostics.LogLevelValue = ParseLogLevel(level);
-                }
-
-                (void)TryGetBool(diagnostics, L"logToFile", cfg.Diagnostics.LogToFile);
-                (void)TryGetInt32(diagnostics, L"logRetentionDays", cfg.Diagnostics.LogRetentionDays);
-                (void)TryGetInt32(diagnostics, L"maxLogFileSizeKB", cfg.Diagnostics.MaxLogFileSizeKB);
-                (void)TryGetBool(diagnostics, L"enableVerboseWinRTLogging", cfg.Diagnostics.EnableVerboseWinRTLogging);
-            }
-
-            // webauthn
-            winrt::Windows::Data::Json::JsonObject webauthn;
-            if (TryGetObject(root, L"webauthn", webauthn))
-            {
-                winrt::Windows::Data::Json::JsonObject plugin;
-                if (TryGetObject(webauthn, L"plugin", plugin))
-                {
-                    (void)TryGetBool(plugin, L"enabled", cfg.WebAuthnPlugin.Enabled);
-
-                    std::wstring args;
-                    if (TryGetString(plugin, L"exeArguments", args))
-                    {
-                        cfg.WebAuthnPlugin.ExeArguments = args;
-                    }
-
-                    (void)TryGetInt32(plugin, L"operationTimeoutMs", cfg.WebAuthnPlugin.OperationTimeoutMs);
-                }
-
-                winrt::Windows::Data::Json::JsonObject behavior;
-                if (TryGetObject(webauthn, L"behavior", behavior))
-                {
-                    (void)TryGetBool(behavior, L"preferPlatformAuthenticator", cfg.WebAuthnBehavior.PreferPlatformAuthenticator);
-                    (void)TryGetBool(behavior, L"allowAutofillCapable", cfg.WebAuthnBehavior.AllowAutofillCapable);
-                }
-            }
-
-            // storage
-            winrt::Windows::Data::Json::JsonObject storage;
-            if (TryGetObject(root, L"storage", storage))
-            {
-                std::wstring subDir;
-                if (TryGetString(storage, L"subDir", subDir))
-                {
-                    cfg.Storage.SubDir = subDir;
-                }
-
-                std::wstring cacheDir;
-                if (TryGetString(storage, L"cacheDir", cacheDir))
-                {
-                    cfg.Storage.CacheDir = cacheDir;
-                }
-            }
-
-            // ui
-            winrt::Windows::Data::Json::JsonObject ui;
-            if (TryGetObject(root, L"ui", ui))
-            {
-                std::wstring theme;
-                if (TryGetString(ui, L"theme", theme))
-                {
-                    cfg.Ui.Theme = theme;
-                }
-
-                (void)TryGetBool(ui, L"showDevCommands", cfg.Ui.ShowDevCommands);
-            }
+            ParseConfigJsonObject(root, cfg);
         }
         catch (...)
         {
-            // ƒp[ƒX¸”s‚È‚Ç ¨ Šù’è’l‚Å‹N“®
+            // ãƒ‘ãƒ¼ã‚¹å¤±æ•—ãªã© â†’ æ—¢å®šå€¤ã§èµ·å‹•
             return AppConfig{};
         }
 
         return cfg;
+    }
+
+    AppConfig LoadConfigFromAppSettingsJson(std::wstring const& filePath)
+    {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+
+        AppConfig cfg{};
+        if (filePath.empty())
+        {
+            return cfg;
+        }
+
+        std::string jsonUtf8 = ReadAllTextUtf8(filePath);
+        if (jsonUtf8.empty())
+        {
+            return cfg;
+        }
+
+        try
+        {
+            std::wstring jsonW = winrt::to_hstring(jsonUtf8).c_str();
+            auto root = winrt::Windows::Data::Json::JsonObject::Parse(jsonW);
+            ParseConfigJsonObject(root, cfg);
+        }
+        catch (...)
+        {
+            return AppConfig{};
+        }
+
+        return cfg;
+    }
+
+    AppConfig LoadConfig()
+    {
+        std::wstring appSettings = GetAppSettingsJsonPath();
+        if (!appSettings.empty())
+        {
+            AppConfig cfg = LoadConfigFromAppSettingsJson(appSettings);
+            if (!cfg.Google.ClientId.empty() || cfg.SchemaVersion != AppConfig{}.SchemaVersion)
+            {
+                return cfg;
+            }
+        }
+
+        return LoadConfigFromLocalAppData();
+    }
+
+    static std::wstring GetModuleDirectoryPath()
+    {
+        wchar_t buf[MAX_PATH]{};
+        DWORD len = GetModuleFileNameW(nullptr, buf, ARRAYSIZE(buf));
+        if (len == 0 || len >= ARRAYSIZE(buf))
+        {
+            return L"";
+        }
+
+        std::wstring path(buf, len);
+        auto pos = path.find_last_of(L"\\/");
+        if (pos == std::wstring::npos)
+        {
+            return L"";
+        }
+        path.resize(pos);
+        return path;
+    }
+
+    static std::wstring GetAppSettingsJsonPath()
+    {
+        auto findInDir = [](std::wstring const& dirIn) -> std::wstring {
+            if (dirIn.empty())
+            {
+                return L"";
+            }
+
+            std::wstring dir = dirIn;
+            if (dir.back() != L'\\')
+            {
+                dir.push_back(L'\\');
+            }
+
+            {
+                std::wstring p = dir + L"appsettings.local.json";
+                if (PathFileExistsW(p.c_str()))
+                {
+                    return p;
+                }
+            }
+
+            {
+                std::wstring p = dir + L"appsetting.local.json";
+                if (PathFileExistsW(p.c_str()))
+                {
+                    return p;
+                }
+            }
+
+            {
+                std::wstring p = dir + L"appsettings.json";
+                if (PathFileExistsW(p.c_str()))
+                {
+                    return p;
+                }
+            }
+
+            {
+                std::wstring p = dir + L"appsetting.json";
+                if (PathFileExistsW(p.c_str()))
+                {
+                    return p;
+                }
+            }
+
+            return L"";
+        };
+
+        // Prefer current working directory (useful in dev when running from the repo root).
+        {
+            wchar_t buf[MAX_PATH]{};
+            DWORD len = GetCurrentDirectoryW(ARRAYSIZE(buf), buf);
+            if (len != 0 && len < ARRAYSIZE(buf))
+            {
+                std::wstring p = findInDir(std::wstring(buf, len));
+                if (!p.empty())
+                {
+                    return p;
+                }
+            }
+        }
+
+        // Fallback to the module directory.
+        return findInDir(GetModuleDirectoryPath());
     }
 }

@@ -47,3 +47,7 @@ Release/
 *.msixbundle
 *.appinstaller
 tsupasswd_core_*_Test/
+
+# Local OAuth settings (secrets)
+appsetting.local.json
+appsettings.local.json

@@ -9,6 +9,7 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
+#include "src/GoogleOAuth.h"
 #include <future>
 #include <coroutine>
 #include <DispatcherQueue.h>
@@ -23,6 +24,27 @@ namespace winrt {
 // and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace {
+
+    std::wstring DescribeGoogleOAuthFailure(HRESULT hr)
+    {
+        if (hr == HRESULT_FROM_WIN32(ERROR_NO_TOKEN))
+        {
+            return L"No refresh_token was returned. Remove app access in Google Account permissions, then sign in again. Also verify OAuth test user settings.";
+        }
+        if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+        {
+            return L"Google consent/sign-in was cancelled or blocked.";
+        }
+        if (hr == HRESULT_FROM_WIN32(ERROR_INVALID_DATA))
+        {
+            return L"OAuth state mismatch detected. Retry the flow from scratch.";
+        }
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            return L"OAuth callback did not contain authorization code.";
+        }
+        return L"";
+    }
 
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
     {
@@ -258,6 +280,70 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::googleSignInButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        if (m_googleOAuthInProgress.exchange(true))
+        {
+            LogWarning(L"Google OAuth is already in progress. Wait for the current browser flow to finish.");
+            co_return;
+        }
+
+        std::wstring existingRefreshToken;
+        if (tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken))
+        {
+            m_googleOAuthInProgress = false;
+            googleSignInButton().Content(winrt::box_value(L"Google Connected"));
+            LogSuccess(L"Google refresh_token is already saved. Browser sign-in skipped.");
+            co_return;
+        }
+
+        googleSignInButton().IsEnabled(false);
+        LogInProgress(L"Google OAuth: opening browser...");
+        auto weakThis = get_weak();
+
+        co_await winrt::resume_background();
+        HRESULT hr = S_OK;
+        try
+        {
+            (void)tsupasswd::PerformGoogleOAuthLoopback();
+        }
+        catch (...)
+        {
+            hr = wil::ResultFromCaughtException();
+        }
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->m_googleOAuthInProgress = false;
+            self->googleSignInButton().IsEnabled(true);
+            if (FAILED(hr))
+            {
+                self->LogFailure(L"Google OAuth failed", hr);
+                std::wstring hint = DescribeGoogleOAuthFailure(hr);
+                if (!hint.empty())
+                {
+                    self->LogWarning(winrt::hstring{ hint });
+                }
+                std::wstring oauthDebug = tsupasswd::GetLastGoogleOAuthDebugInfo();
+                if (!oauthDebug.empty())
+                {
+                    self->LogWarning(winrt::hstring{ oauthDebug });
+                }
+            }
+            else
+            {
+                self->googleSignInButton().Content(winrt::box_value(L"Google Connected"));
+                self->LogSuccess(L"Google OAuth complete (refresh_token saved)");
+            }
+        }
+        else
+        {
+            m_googleOAuthInProgress = false;
+        }
+        co_return;
+    }
+
     winrt::fire_and_forget MainPage::UpdateCredentialList()
     {
         m_credentialListViewModel.credentials().Clear();
@@ -306,6 +392,16 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::OnNavigatedTo(Navigation::NavigationEventArgs e)
     {
+        std::wstring existingRefreshToken;
+        if (tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken))
+        {
+            googleSignInButton().Content(winrt::box_value(L"Google Connected"));
+        }
+        else
+        {
+            googleSignInButton().Content(winrt::box_value(L"Google Sign-in"));
+        }
+
         UpdatePluginEnableState();
         UpdateCredentialList();
         co_return;

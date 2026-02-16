@@ -144,6 +144,8 @@ inline HRESULT WINAPI WebAuthNPluginGetUserVerificationCount(
 
 // This Windows Hello User Verification API retrieves the public key used for user verification signatures.
 // Enables plugins to validate that user verification responses came from the trusted Windows Hello subsystem.
+#pragma warning(push)
+#pragma warning(disable:28252 28253)
 inline HRESULT WINAPI WebAuthNPluginGetUserVerificationPublicKey(
     _In_ REFCLSID rclsid,
     _Out_ DWORD* pcbPublicKey,
@@ -165,6 +167,7 @@ inline HRESULT WINAPI WebAuthNPluginPerformUserVerification(
     RETURN_HR_IF_NULL(E_NOTIMPL, s_fn);
     return s_fn(pPluginUserVerification, pcbResponse, ppbResponse);
 }
+#pragma warning(pop)
 
 inline void WINAPI WebAuthNPluginFreeUserVerificationResponse(
     _In_opt_ PBYTE ppbResponse)

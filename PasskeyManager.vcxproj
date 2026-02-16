@@ -109,14 +109,14 @@
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
-    <AppxPackageDir>C:\AppPackages\PasskeyManager\</AppxPackageDir>
-    <AppxSymbolPackageEnabled>True</AppxSymbolPackageEnabled>
+    <AppxPackageDir>C:\AppPackages\PasskeyManager\AppPackages\</AppxPackageDir>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundle>Auto</AppxBundle>
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
     <!-- writeable location -->
-    <AppInstallerUri>C:\AppPackages\</AppInstallerUri>
+    <AppInstallerUri>C:\AppPackages\PasskeyManager\AppPackages</AppInstallerUri>
     <PackageCertificateThumbprint>0D32447717ADDC216667C9821BD9D64958B489AD</PackageCertificateThumbprint>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -125,7 +125,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
       <WarningLevel>Level4</WarningLevel>
-      <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8 /wd26819 /wd28182 /wd28252 /wd28253</AdditionalOptions>
       <PreprocessorDefinitions>DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -136,7 +136,7 @@
     <Link>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shell32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup Condition="'$(WindowsPackageType)'!='None' and Exists('Package.appxmanifest')">
@@ -179,6 +179,7 @@
     <ClInclude Include="PluginManagement\PluginRegistrationManager.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="src\Config.h" />
+    <ClInclude Include="src\GoogleOAuth.h" />
     <ClInclude Include="src\DiagnosticsConfig.h" />
   </ItemGroup>
   <ItemGroup>
@@ -227,6 +228,7 @@
     <ClCompile Include="PluginManagement\PluginCredentialManager.cpp" />
     <ClCompile Include="PluginManagement\PluginRegistrationManager.cpp" />
     <ClCompile Include="src\Config.cpp" />
+    <ClCompile Include="src\GoogleOAuth.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="App.idl">
@@ -279,6 +281,16 @@
     <Content Include="Assets\StoreLogo.scale-400.png" />
     <Content Include="Assets\Wide310x150Logo.scale-100.png" />
     <Content Include="Assets\Wide310x150Logo.scale-400.png" />
+    <Content Include="appsetting.local.json" Condition="Exists('appsetting.local.json')" />
+    <Content Include="appsetting.local.example.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="appsetting.local.json" Condition="Exists('appsetting.local.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="appsetting.local.example.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
@@ -295,7 +307,6 @@
     </None>
     <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
-    <None Include="src\Config.h`" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>

@@ -5,13 +5,11 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <vector>
 
-// 新しいGUIDを生成し、下記の値に置き換えてください。
-// 例: guidgen.exe で生成した値を使用
 static constexpr GUID contosoplugin_guid
 {
-    0x12345678, 0x9abc, 0x4def, { 0x80, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde }
+    0x7fa07696, 0xe94e, 0x4a72, { 0xb8, 0xfd, 0x68, 0x90, 0xc5, 0x89, 0x7a, 0x35 }
 };
-static_assert(contosoplugin_guid.Data1 != 0x7fa07696, "{5DE9572F-EA2C-4178-9CA5-8C957B874E98}");
+static_assert(contosoplugin_guid.Data1 != 0x12345678, "{5DE9572F-EA2C-4178-9CA5-8C957B874E98}");
 
 static constexpr wchar_t contosoplugin_key_domain[] = L"contoso/";
 

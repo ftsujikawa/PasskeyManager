@@ -29,6 +29,20 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::RegisterPlugin()
     {
+        // If the plugin is already registered, avoid calling Add again.
+        // In that case, perform an update instead.
+        {
+            HRESULT hrState = RefreshPluginState();
+            if (SUCCEEDED(hrState))
+            {
+                RETURN_HR(UpdatePlugin());
+            }
+            if (hrState != NTE_NOT_FOUND)
+            {
+                RETURN_HR(hrState);
+            }
+        }
+
         /*
         * This section creates a sample authenticatorInfo blob to include in the registration
         * request. This blob must CBOR encoded using the format defined
@@ -71,7 +85,13 @@ namespace winrt::PasskeyManager::implementation {
         PWEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_RESPONSE addResponse;
 
         // Call the plugin registration API
-        RETURN_IF_FAILED(WebAuthNPluginAddAuthenticator(&addOptions, &addResponse));
+        HRESULT hrAdd = WebAuthNPluginAddAuthenticator(&addOptions, &addResponse);
+        if (hrAdd == NTE_EXISTS)
+        {
+            // Already registered; update details instead.
+            RETURN_HR(UpdatePlugin());
+        }
+        RETURN_IF_FAILED(hrAdd);
 
         // Ensure the response is freed when it goes out of scope
         auto cleanup = wil::scope_exit([&] {

@@ -1190,14 +1190,23 @@ namespace winrt::PasskeyManager::implementation
         case AuthenticatorState_Enabled:
             pluginStateRun().Text(L"Enabled");
             pluginStateRun().Foreground(successBrush);
+            pluginActivationHintText().Text(L"");
+            pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+            activatePluginButton().Content(box_value(L"Enabled"));
             break;
         case AuthenticatorState_Disabled:
             pluginStateRun().Text(L"Disabled");
             pluginStateRun().Foreground(criticalBrush);
+            pluginActivationHintText().Text(L"Plugin is registered but disabled. Click Enable to open Windows Settings and turn the plugin on.");
+            pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+            activatePluginButton().Content(box_value(L"Enable in Settings"));
             break;
         default:
             pluginStateRun().Text(L"Unknown");
             pluginStateRun().Foreground(cautionBrush);
+            pluginActivationHintText().Text(L"Plugin state is unknown. Open Windows Settings from Enable and verify plugin activation.");
+            pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+            activatePluginButton().Content(box_value(L"Enable"));
             break;
         }
     }
@@ -1215,8 +1224,15 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::activatePluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& e)
     {
         // URI ms-settings:passkeys-advancedoptions to navigate to the page on Settings app where the users can enable the plugin
+        LogInProgress(L"Opening Windows Settings for plugin activation...");
         auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
-        co_await Windows::System::Launcher::LaunchUriAsync(uri);
+        bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
+        if (!launched)
+        {
+            LogWarning(L"Failed to open Windows Settings. Open Settings > Accounts > Passkeys > Advanced options manually.");
+            co_return;
+        }
+        LogSuccess(L"Windows Settings opened. Enable the plugin, then return and click Refresh.");
         co_return;
     }
 

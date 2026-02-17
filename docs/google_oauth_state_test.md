@@ -60,12 +60,32 @@
    - フロー実行中は追加起動がブロックされる。
    - 警告ログ `Google OAuth is already in progress...` が表示される。
 
+### 6) OAuth Smoke Test 実行
+1. `Run OAuth Smoke Test` をクリックする。
+2. 期待結果:
+   - ログに `Running OAuth smoke test: state check + debug snapshot` が出る。
+   - 続けて `Google state check:` を含む状態ログが出る。
+   - `OAuth smoke test debug snapshot:` または `debug snapshot is empty` が出る。
+
+### 7) Vault Recovery 実行導線
+1. Vault の暗号データ欠損/破損状態を作る（または同等の警告を再現する）。
+2. 期待結果:
+   - `Vault recovery:` ヒントが表示される。
+   - `Run Vault Recovery` ボタンが表示される。
+3. `Run Vault Recovery` をクリックする。
+4. 期待結果:
+   - 成功時は `Vault recovery completed...` ログが表示される。
+   - `vaultLockSwitch` が Passkey 側になる。
+   - ヒント表示と `Run Vault Recovery` ボタンが非表示になる。
+
 ## 実行結果記録（実行後に記入）
 - [ ] ケース1 pass / fail
 - [ ] ケース2 pass / fail
 - [ ] ケース3 pass / fail
 - [ ] ケース4 pass / fail
 - [ ] ケース5 pass / fail
+- [ ] ケース6 pass / fail
+- [ ] ケース7 pass / fail
 - 検出した問題:
   -
 - 関連アプリログ:
@@ -75,3 +95,5 @@
 - 接続済み状態で想定外のブラウザー再起動が発生しない。
 - サインイン / 切断 / 再起動の各操作で UI 状態とトークンファイル状態が一貫している。
 - UI 多重起動による `state mismatch` が発生しない。
+- OAuth Smoke Test 実行で状態ログとデバッグスナップショット結果が必ず残る。
+- Vault 警告時の復旧導線表示と復旧後の非表示遷移が一貫している。

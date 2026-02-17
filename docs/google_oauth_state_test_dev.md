@@ -59,6 +59,24 @@ Google OAuth の状態遷移と実装整合（UI表示・トークン保存・�
   - ログ: `Google OAuth is already in progress...`
   - `state mismatch` が発生しない
 
+### 6. OAuth Smoke Test
+- 操作: `Run OAuth Smoke Test` 実行
+- 期待:
+  - ログ: `Running OAuth smoke test: state check + debug snapshot`
+  - ログ: `Google state check:`（診断付き）
+  - ログ: `OAuth smoke test debug snapshot:` または `debug snapshot is empty`
+
+### 7. Vault Recovery 導線
+- 前提: `ReadEncryptedVaultData` が missing / empty warning を出す状態
+- 期待:
+  - `vaultRecoveryHintText` が表示される
+  - `Run Vault Recovery` ボタンが表示される
+- 操作: `Run Vault Recovery` 実行
+- 期待:
+  - 成功時ログ: `Vault recovery completed...`
+  - `vaultLockSwitch().IsOn(true)`
+  - 復旧ヒントと復旧ボタンが非表示化される
+
 ## 障害切り分けメモ
 - トークン未保存:
   - 保存先パス表示を確認
@@ -79,4 +97,6 @@ Google OAuth の状態遷移と実装整合（UI表示・トークン保存・�
   - [ ] 3 Disconnect
   - [ ] 4 再サインイン
   - [ ] 5 多重起動ガード
+  - [ ] 6 OAuth Smoke Test
+  - [ ] 7 Vault Recovery 導線
 - 備考:

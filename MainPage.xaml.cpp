@@ -196,6 +196,42 @@ namespace {
         return L"Google is not connected yet. Action: run Google Sign-in.";
     }
 
+    std::wstring ExpandOAuthDebugInfo(std::wstring const& raw)
+    {
+        if (raw.empty())
+        {
+            return L"(empty)";
+        }
+
+        std::wstring expanded = raw;
+        std::wstring const delimiter = L" | ";
+        size_t pos = 0;
+        while ((pos = expanded.find(delimiter, pos)) != std::wstring::npos)
+        {
+            expanded.replace(pos, delimiter.size(), L"\r\n");
+            pos += 2;
+        }
+        return expanded;
+    }
+
+    std::wstring BuildGoogleOAuthDebugSnapshotText(
+        bool connected,
+        std::wstring const& connectedAt,
+        std::wstring const& tokenPath,
+        std::wstring const& diagnosis,
+        std::wstring const& oauthDebug)
+    {
+        std::wstring text = L"[Google OAuth Debug Snapshot]\r\n";
+        text += L"captured_at: " + GetNowLocalTimestamp() + L"\r\n";
+        text += L"status: " + std::wstring(connected ? L"connected" : L"disconnected") + L"\r\n";
+        text += L"last_connected: " + (connectedAt.empty() ? L"unknown" : connectedAt) + L"\r\n";
+        text += L"token_path: " + tokenPath + L"\r\n";
+        text += L"diagnosis: " + diagnosis + L"\r\n\r\n";
+        text += L"[OAuth Raw Debug Info]\r\n";
+        text += ExpandOAuthDebugInfo(oauthDebug);
+        return text;
+    }
+
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
     {
         auto mainPage = static_cast<winrt::PasskeyManager::implementation::MainPage*>(context);
@@ -344,17 +380,34 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::copyGoogleDebugInfoButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         std::wstring oauthDebug = tsupasswd::GetLastGoogleOAuthDebugInfo();
-        if (oauthDebug.empty())
+        std::wstring refreshToken;
+        bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
+        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
+        std::wstring tokenFileTimestamp = TryGetFileLastWriteTimestamp(tokenPath);
+
+        std::wstring lastConnected = m_lastGoogleConnectedAt;
+        if (lastConnected.empty())
         {
-            LogWarning(L"OAuth debug info is empty.");
-            co_return;
+            lastConnected = tokenFileTimestamp;
+        }
+        if (lastConnected.empty())
+        {
+            lastConnected = TryLoadGoogleLastConnectedAt();
         }
 
+        std::wstring diagnosis = DescribeGoogleConnectionDiagnosis(connected, !tokenFileTimestamp.empty(), !lastConnected.empty());
+        std::wstring snapshot = BuildGoogleOAuthDebugSnapshotText(connected, lastConnected, tokenPath, diagnosis, oauthDebug);
+
         Windows::ApplicationModel::DataTransfer::DataPackage package;
-        package.SetText(winrt::hstring{ oauthDebug });
+        package.SetText(winrt::hstring{ snapshot });
         Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
         Windows::ApplicationModel::DataTransfer::Clipboard::Flush();
-        LogSuccess(L"OAuth debug info copied to clipboard.");
+        if (oauthDebug.empty())
+        {
+            LogWarning(L"OAuth raw debug info is empty. Copied state snapshot only.");
+            co_return;
+        }
+        LogSuccess(L"OAuth debug snapshot copied to clipboard.");
         co_return;
     }
 
@@ -415,12 +468,18 @@ namespace winrt::PasskeyManager::implementation
 
             if (SUCCEEDED(hrCreatePasskey))
             {
+                self->vaultRecoveryHintText().Text(L"");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->LogSuccess(L"Vault recovery completed. Passkey was created.");
                 co_return;
             }
 
             if (hrCreatePasskey == NTE_EXISTS)
             {
+                self->vaultRecoveryHintText().Text(L"");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->LogSuccess(L"Vault recovery completed. Vault Unlock passkey already exists.");
                 co_return;
             }

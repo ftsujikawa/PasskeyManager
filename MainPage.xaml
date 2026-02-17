@@ -187,6 +187,11 @@
                         Click="googleSignInButton_Click"
                         Content="Google Sign-in"
                         Style="{StaticResource AccentButtonStyle}" />
+                    <Button
+                        x:Name="disconnectGoogleButton"
+                        Click="disconnectGoogleButton_Click"
+                        Content="Disconnect"
+                        IsEnabled="False" />
                 </StackPanel>
             </Grid>
 

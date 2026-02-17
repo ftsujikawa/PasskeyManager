@@ -669,6 +669,27 @@ namespace tsupasswd
         return !refreshToken.empty();
     }
 
+    bool TryDeleteGoogleRefreshToken()
+    {
+        std::wstring path = GetTokensFilePath();
+        if (path.empty())
+        {
+            return false;
+        }
+
+        if (!PathFileExistsW(path.c_str()))
+        {
+            return true;
+        }
+
+        if (DeleteFileW(path.c_str()))
+        {
+            return true;
+        }
+
+        return GetLastError() == ERROR_FILE_NOT_FOUND;
+    }
+
     std::wstring GetLastGoogleOAuthDebugInfo()
     {
         return g_lastGoogleOAuthDebugInfo;

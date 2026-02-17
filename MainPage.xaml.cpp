@@ -15,6 +15,7 @@
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 namespace winrt {
     using namespace winrt::Microsoft::UI::Xaml;
@@ -44,6 +45,16 @@ namespace {
         SYSTEMTIME st{};
         GetLocalTime(&st);
         return FormatLocalTimestamp(st);
+    }
+
+    std::wstring GetParentDirectory(std::wstring const& filePath)
+    {
+        size_t pos = filePath.find_last_of(L"\\/");
+        if (pos == std::wstring::npos)
+        {
+            return L"";
+        }
+        return filePath.substr(0, pos);
     }
 
     bool TrySaveGoogleLastConnectedAt(std::wstring const& timestamp)
@@ -299,6 +310,23 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::copyGoogleDebugInfoButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        std::wstring oauthDebug = tsupasswd::GetLastGoogleOAuthDebugInfo();
+        if (oauthDebug.empty())
+        {
+            LogWarning(L"OAuth debug info is empty.");
+            co_return;
+        }
+
+        Windows::ApplicationModel::DataTransfer::DataPackage package;
+        package.SetText(winrt::hstring{ oauthDebug });
+        Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
+        Windows::ApplicationModel::DataTransfer::Clipboard::Flush();
+        LogSuccess(L"OAuth debug info copied to clipboard.");
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::disconnectGoogleButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         if (m_googleOAuthInProgress.load())
@@ -461,6 +489,28 @@ namespace winrt::PasskeyManager::implementation
                     self->UpdateCredentialList();
                 }
             }));
+
+        std::wstring googleTokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
+        std::wstring googleTokenFolder = GetParentDirectory(googleTokenPath);
+        if (!googleTokenFolder.empty())
+        {
+            (void)m_googleTokenWatcher.create(googleTokenFolder.c_str(),
+                true,
+                wil::FolderChangeEvents::All,
+                [weakThis](wil::FolderChangeEvent, PCWSTR) -> winrt::fire_and_forget {
+                    std::wstring refreshToken;
+                    bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
+                    if (auto self{ weakThis.get() })
+                    {
+                        co_await wil::resume_foreground(self->DispatcherQueue());
+                        if (!connected)
+                        {
+                            self->m_lastGoogleConnectedAt.clear();
+                        }
+                        self->UpdateGoogleConnectionUiState(connected);
+                    }
+                });
+        }
 
         m_cookie = RegisterWebAuthNStatusChangeCallback(static_cast<void*>(this));
     }

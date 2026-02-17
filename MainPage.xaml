@@ -196,6 +196,10 @@
                         x:Name="checkGoogleStateButton"
                         Click="checkGoogleStateButton_Click"
                         Content="Check Google State" />
+                    <Button
+                        x:Name="copyGoogleDebugInfoButton"
+                        Click="copyGoogleDebugInfoButton_Click"
+                        Content="Copy OAuth Debug Info" />
                     <TextBlock
                         x:Name="googleConnectedAtText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -205,6 +209,12 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Token path: -"
                         TextWrapping="WrapWholeWords" />
+                    <TextBlock
+                        x:Name="vaultRecoveryHintText"
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Text=""
+                        TextWrapping="WrapWholeWords"
+                        Visibility="Collapsed" />
                 </StackPanel>
             </Grid>
 

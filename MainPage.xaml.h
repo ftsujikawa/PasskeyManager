@@ -48,6 +48,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction googleSignInButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction disconnectGoogleButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction checkGoogleStateButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction copyGoogleDebugInfoButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -59,6 +60,18 @@ namespace winrt::PasskeyManager::implementation
             Microsoft::UI::Xaml::Documents::Run statusTextBlock;
             statusTextBlock.Text(statusText);
             textContent().Inlines().InsertAt(0, statusTextBlock);
+
+            std::wstring status = statusText.c_str();
+            if (status.find(L"Vault data is") != std::wstring::npos)
+            {
+                vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
+                vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+            }
+            else if (status.find(L"Created passkey for Vault Unlock") != std::wstring::npos || status.find(L"Vault Unlock passkey already exists") != std::wstring::npos)
+            {
+                vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                vaultRecoveryHintText().Text(L"");
+            }
         }
         void LogSuccess(const winrt::hstring& input) {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: " + input + L"\U00002705"});
@@ -90,6 +103,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IMap<winrt::IBuffer, IInspectable> m_selectedCredentialsSet = winrt::single_threaded_map<winrt::IBuffer, IInspectable>();
         wil::unique_registry_watcher m_registryWatcher;
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
+        wil::unique_folder_change_reader_nothrow m_googleTokenWatcher;
         std::atomic_bool m_googleOAuthInProgress{ false };
         std::wstring m_lastGoogleConnectedAt{};
 

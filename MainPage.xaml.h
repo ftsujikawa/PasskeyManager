@@ -46,6 +46,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction VaultUnlockControl_IsCheckedChanged(winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButton const& sender, winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButtonIsCheckedChangedEventArgs const& args);
         winrt::IAsyncAction TestPasskeyVaultUnlock_Click(IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::IAsyncAction googleSignInButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction disconnectGoogleButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -90,6 +91,7 @@ namespace winrt::PasskeyManager::implementation
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         std::atomic_bool m_googleOAuthInProgress{ false };
 
+        void UpdateGoogleConnectionUiState(bool connected);
         void UpdateVaultUnlockControlText(bool isLocked);
     };
 }

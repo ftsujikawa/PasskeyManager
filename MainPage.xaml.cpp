@@ -83,6 +83,13 @@ namespace {
 
 namespace winrt::PasskeyManager::implementation
 {
+    void MainPage::UpdateGoogleConnectionUiState(bool connected)
+    {
+        googleSignInButton().Content(winrt::box_value(connected ? L"Google Connected" : L"Google Sign-in"));
+        googleSignInButton().IsEnabled(!connected && !m_googleOAuthInProgress.load());
+        disconnectGoogleButton().IsEnabled(connected && !m_googleOAuthInProgress.load());
+    }
+
     winrt::fire_and_forget MainPage::UpdatePluginEnableState()
     {
         winrt::apartment_context ui_thread;
@@ -118,6 +125,27 @@ namespace winrt::PasskeyManager::implementation
             activatePluginButton().IsEnabled(pluginState != AuthenticatorState_Enabled);
             UpdatePluginStateTextBlock(pluginState);
         }
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::disconnectGoogleButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        if (m_googleOAuthInProgress.load())
+        {
+            LogWarning(L"Google OAuth is in progress. Wait before disconnecting.");
+            co_return;
+        }
+
+        if (tsupasswd::TryDeleteGoogleRefreshToken())
+        {
+            UpdateGoogleConnectionUiState(false);
+            LogSuccess(L"Google refresh_token removed. Sign-in required next time.");
+        }
+        else
+        {
+            LogWarning(L"Failed to remove Google refresh_token file.");
+        }
+
         co_return;
     }
 
@@ -292,12 +320,13 @@ namespace winrt::PasskeyManager::implementation
         if (tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken))
         {
             m_googleOAuthInProgress = false;
-            googleSignInButton().Content(winrt::box_value(L"Google Connected"));
+            UpdateGoogleConnectionUiState(true);
             LogSuccess(L"Google refresh_token is already saved. Browser sign-in skipped.");
             co_return;
         }
 
         googleSignInButton().IsEnabled(false);
+        disconnectGoogleButton().IsEnabled(false);
         LogInProgress(L"Google OAuth: opening browser...");
         auto weakThis = get_weak();
 
@@ -316,9 +345,9 @@ namespace winrt::PasskeyManager::implementation
         if (auto self = weakThis.get())
         {
             self->m_googleOAuthInProgress = false;
-            self->googleSignInButton().IsEnabled(true);
             if (FAILED(hr))
             {
+                self->UpdateGoogleConnectionUiState(false);
                 self->LogFailure(L"Google OAuth failed", hr);
                 std::wstring hint = DescribeGoogleOAuthFailure(hr);
                 if (!hint.empty())
@@ -333,7 +362,7 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                self->googleSignInButton().Content(winrt::box_value(L"Google Connected"));
+                self->UpdateGoogleConnectionUiState(true);
                 self->LogSuccess(L"Google OAuth complete (refresh_token saved)");
             }
         }
@@ -393,14 +422,7 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::OnNavigatedTo(Navigation::NavigationEventArgs e)
     {
         std::wstring existingRefreshToken;
-        if (tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken))
-        {
-            googleSignInButton().Content(winrt::box_value(L"Google Connected"));
-        }
-        else
-        {
-            googleSignInButton().Content(winrt::box_value(L"Google Sign-in"));
-        }
+        UpdateGoogleConnectionUiState(tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken));
 
         UpdatePluginEnableState();
         UpdateCredentialList();

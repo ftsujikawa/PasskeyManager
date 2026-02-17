@@ -24,6 +24,7 @@ namespace tsupasswd
     // DPAPI persist/restore refresh token.
     bool TrySaveGoogleRefreshToken(std::wstring const& refreshToken);
     bool TryLoadGoogleRefreshToken(std::wstring& refreshToken);
+    bool TryDeleteGoogleRefreshToken();
 
     // Last diagnostics for OAuth flow (token endpoint error/response summary).
     std::wstring GetLastGoogleOAuthDebugInfo();

@@ -871,7 +871,37 @@ namespace winrt::PasskeyManager::implementation
             self->LogFailure(L"Failed to Unregister plugin: ", hr);
             co_return;
         }
-        self->LogSuccess(L"Plugin unregistered");
+
+        bool removed = false;
+        for (int attempt = 0; attempt < 5; ++attempt)
+        {
+            co_await winrt::resume_background();
+            HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+            removed = (hrState == NTE_NOT_FOUND);
+
+            co_await wil::resume_foreground(DispatcherQueue());
+            if (auto latest = weakThis.get())
+            {
+                latest->UpdatePluginEnableState();
+            }
+
+            if (removed)
+            {
+                break;
+            }
+
+            co_await winrt::resume_background();
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+
+        if (removed)
+        {
+            self->LogSuccess(L"Plugin unregistered");
+        }
+        else
+        {
+            self->LogWarning(L"Plugin may still be visible in Windows Settings. Close/reopen Settings and click Refresh. If still listed, disable it in Settings and click Remove again.");
+        }
     }
 
     winrt::IAsyncAction MainPage::registerPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
@@ -954,6 +984,17 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         credentialManager.ReloadCredentialManager();
+        DWORD localCredentialCount = credentialManager.GetLocalCredentialCount();
+        if (localCredentialCount == 0)
+        {
+            co_await wil::resume_foreground(DispatcherQueue());
+            if (auto self = weakThis.get())
+            {
+                self->UpdateCredentialList();
+                self->LogWarning(L"No local credentials to sync yet. Create or import a passkey first, then retry Add All.");
+            }
+            co_return;
+        }
         HRESULT hr = credentialManager.AddAllPluginCredentials();
 
         co_await wil::resume_foreground(DispatcherQueue());

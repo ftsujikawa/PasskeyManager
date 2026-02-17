@@ -25,6 +25,7 @@ namespace tsupasswd
     bool TrySaveGoogleRefreshToken(std::wstring const& refreshToken);
     bool TryLoadGoogleRefreshToken(std::wstring& refreshToken);
     bool TryDeleteGoogleRefreshToken();
+    std::wstring GetGoogleRefreshTokenStoragePath();
 
     // Last diagnostics for OAuth flow (token endpoint error/response summary).
     std::wstring GetLastGoogleOAuthDebugInfo();

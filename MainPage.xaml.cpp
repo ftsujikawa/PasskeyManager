@@ -25,6 +25,70 @@ namespace winrt {
 
 namespace {
 
+    std::wstring FormatLocalTimestamp(SYSTEMTIME const& st)
+    {
+        wchar_t buffer[32]{};
+        swprintf_s(buffer, L"%04u-%02u-%02u %02u:%02u:%02u",
+            st.wYear,
+            st.wMonth,
+            st.wDay,
+            st.wHour,
+            st.wMinute,
+            st.wSecond);
+        return buffer;
+    }
+
+    std::wstring GetNowLocalTimestamp()
+    {
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        return FormatLocalTimestamp(st);
+    }
+
+    std::wstring MaskPathForDisplay(std::wstring const& path)
+    {
+        if (path.empty())
+        {
+            return L"-";
+        }
+
+        size_t pos = path.find_last_of(L"\\/");
+        if (pos == std::wstring::npos)
+        {
+            return path;
+        }
+
+        return std::wstring(L"...\\") + path.substr(pos + 1);
+    }
+
+    std::wstring TryGetFileLastWriteTimestamp(std::wstring const& path)
+    {
+        if (path.empty())
+        {
+            return L"";
+        }
+
+        WIN32_FILE_ATTRIBUTE_DATA fileAttr{};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fileAttr))
+        {
+            return L"";
+        }
+
+        FILETIME localWriteTime{};
+        if (!FileTimeToLocalFileTime(&fileAttr.ftLastWriteTime, &localWriteTime))
+        {
+            return L"";
+        }
+
+        SYSTEMTIME st{};
+        if (!FileTimeToSystemTime(&localWriteTime, &st))
+        {
+            return L"";
+        }
+
+        return FormatLocalTimestamp(st);
+    }
+
     std::wstring DescribeGoogleOAuthFailure(HRESULT hr)
     {
         if (hr == HRESULT_FROM_WIN32(ERROR_NO_TOKEN))
@@ -85,6 +149,24 @@ namespace winrt::PasskeyManager::implementation
 {
     void MainPage::UpdateGoogleConnectionUiState(bool connected)
     {
+        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
+        googleTokenPathText().Text(winrt::hstring{ L"Token path: " + MaskPathForDisplay(tokenPath) });
+
+        if (connected && m_lastGoogleConnectedAt.empty())
+        {
+            m_lastGoogleConnectedAt = TryGetFileLastWriteTimestamp(tokenPath);
+        }
+
+        std::wstring connectedAt = connected
+            ? (m_lastGoogleConnectedAt.empty() ? L"unknown" : m_lastGoogleConnectedAt)
+            : L"-";
+        googleConnectedAtText().Text(winrt::hstring{ L"Google last connected: " + connectedAt });
+
+        if (!connected)
+        {
+            m_lastGoogleConnectedAt.clear();
+        }
+
         googleSignInButton().Content(winrt::box_value(connected ? L"Google Connected" : L"Google Sign-in"));
         googleSignInButton().IsEnabled(!connected && !m_googleOAuthInProgress.load());
         disconnectGoogleButton().IsEnabled(connected && !m_googleOAuthInProgress.load());
@@ -362,6 +444,7 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
+                self->m_lastGoogleConnectedAt = GetNowLocalTimestamp();
                 self->UpdateGoogleConnectionUiState(true);
                 self->LogSuccess(L"Google OAuth complete (refresh_token saved)");
             }

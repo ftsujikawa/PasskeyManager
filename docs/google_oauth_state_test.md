@@ -1,54 +1,77 @@
-# Google OAuth State Test Checklist
+# Google OAuth 状態回帰テストチェックリスト
 
-## Preconditions
-- Build target: packaged app (MSIX)
-- `appsetting.local.json` has valid Google OAuth credentials
-- Network access is available
+## 実行ログテンプレート
+- 担当者:
+- 実施日時:
+- ビルド/コミット:
+- 環境（MSIX パッケージファミリー / OS）:
 
-## Test Cases
+## 事前条件
+- ビルド対象: パッケージ版アプリ（MSIX）
+- `appsetting.local.json` に有効な Google OAuth 認証情報が設定されている
+- ネットワーク接続が利用可能
 
-### 1) First sign-in (no saved token)
-1. Ensure token file does not exist:
+## テストケース
+
+### 1) 初回サインイン（保存済みトークンなし）
+1. トークンファイルが存在しないことを確認する:
    - `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\tsupasswd\google_refresh_token.bin`
-2. Launch app and open MainPage.
-3. Confirm button text is `Google Sign-in` and Disconnect is disabled.
-4. Click `Google Sign-in`.
-5. Expected:
-   - Browser opens once.
-   - Log contains `Google OAuth complete (refresh_token saved)`.
-   - Button text changes to `Google Connected`.
-   - `Google Sign-in` is disabled and Disconnect is enabled.
+2. アプリを起動し、MainPage を開く。
+3. ボタン表示が `Google Sign-in` で、Disconnect が無効になっていることを確認する。
+4. ステータス表示が以下であることを確認する:
+   - `Google last connected: -`
+   - `Token path: ...\google_refresh_token.bin`
+5. `Google Sign-in` をクリックする。
+6. 期待結果:
+   - ブラウザーが 1 回だけ起動する。
+   - ログに `Google OAuth complete (refresh_token saved)` が出力される。
+   - ボタン表示が `Google Connected` に変わる。
+   - `Google Sign-in` が無効、Disconnect が有効になる。
+   - `Google last connected:` がローカル時刻に更新される。
 
-### 2) Reuse saved token (skip browser)
-1. Relaunch app.
-2. Confirm button text is `Google Connected`.
-3. Click `Google Connected` button (disabled, cannot be clicked).
-4. Expected:
-   - Browser does not open.
-   - No new OAuth flow starts.
+### 2) 保存済みトークン再利用（ブラウザー起動なし）
+1. アプリを再起動する。
+2. ボタン表示が `Google Connected` であることを確認する。
+3. `Token path` がマスク表示（`...\google_refresh_token.bin`）のままであることを確認する。
+4. `Google Connected` ボタン（無効状態でクリック不可）を確認する。
+5. 期待結果:
+   - ブラウザーが起動しない。
+   - 新規 OAuth フローが開始されない。
 
-### 3) Disconnect flow
-1. Click `Disconnect`.
-2. Expected:
-   - Log contains `Google refresh_token removed. Sign-in required next time.`
-   - Button text returns to `Google Sign-in`.
-   - Disconnect becomes disabled.
-   - Token file is removed.
+### 3) Disconnect フロー
+1. `Disconnect` をクリックする。
+2. 期待結果:
+   - ログに `Google refresh_token removed. Sign-in required next time.` が出力される。
+   - ボタン表示が `Google Sign-in` に戻る。
+   - Disconnect が無効になる。
+   - トークンファイルが削除される。
+   - `Google last connected: -` 表示に戻る。
 
-### 4) Sign-in after disconnect
-1. Click `Google Sign-in`.
-2. Expected:
-   - Browser opens once.
-   - OAuth completes and token file is created again.
-   - UI returns to connected state.
+### 4) Disconnect 後の再サインイン
+1. `Google Sign-in` をクリックする。
+2. 期待結果:
+   - ブラウザーが 1 回だけ起動する。
+   - OAuth が完了し、トークンファイルが再作成される。
+   - UI が接続済み状態に戻る。
 
-### 5) Multi-click guard
-1. With no saved token, click `Google Sign-in` repeatedly.
-2. Expected:
-   - While flow is in progress, additional starts are blocked.
-   - Warning log appears: `Google OAuth is already in progress...`.
+### 5) 多重クリック防止ガード
+1. 保存済みトークンがない状態で、`Google Sign-in` を連打する。
+2. 期待結果:
+   - フロー実行中は追加起動がブロックされる。
+   - 警告ログ `Google OAuth is already in progress...` が表示される。
 
-## Pass Criteria
-- No unexpected browser relaunch while connected.
-- UI state and token file state stay consistent after sign-in/disconnect/restart.
-- No `state mismatch` caused by double-start from UI.
+## 実行結果記録（実行後に記入）
+- [ ] ケース1 pass / fail
+- [ ] ケース2 pass / fail
+- [ ] ケース3 pass / fail
+- [ ] ケース4 pass / fail
+- [ ] ケース5 pass / fail
+- 検出した問題:
+  -
+- 関連アプリログ:
+  -
+
+## 合格基準
+- 接続済み状態で想定外のブラウザー再起動が発生しない。
+- サインイン / 切断 / 再起動の各操作で UI 状態とトークンファイル状態が一貫している。
+- UI 多重起動による `state mismatch` が発生しない。

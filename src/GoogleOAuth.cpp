@@ -690,6 +690,11 @@ namespace tsupasswd
         return GetLastError() == ERROR_FILE_NOT_FOUND;
     }
 
+    std::wstring GetGoogleRefreshTokenStoragePath()
+    {
+        return GetTokensFilePath();
+    }
+
     std::wstring GetLastGoogleOAuthDebugInfo()
     {
         return g_lastGoogleOAuthDebugInfo;

@@ -192,6 +192,15 @@
                         Click="disconnectGoogleButton_Click"
                         Content="Disconnect"
                         IsEnabled="False" />
+                    <TextBlock
+                        x:Name="googleConnectedAtText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Google last connected: -" />
+                    <TextBlock
+                        x:Name="googleTokenPathText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Token path: -"
+                        TextWrapping="WrapWholeWords" />
                 </StackPanel>
             </Grid>
 

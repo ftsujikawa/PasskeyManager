@@ -90,6 +90,7 @@ namespace winrt::PasskeyManager::implementation
         wil::unique_registry_watcher m_registryWatcher;
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         std::atomic_bool m_googleOAuthInProgress{ false };
+        std::wstring m_lastGoogleConnectedAt{};
 
         void UpdateGoogleConnectionUiState(bool connected);
         void UpdateVaultUnlockControlText(bool isLocked);

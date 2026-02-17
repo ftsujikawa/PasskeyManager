@@ -237,7 +237,11 @@ namespace {
     {
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            return L"No matching credentials found. Try Refresh and select available items again.";
+            return L"No credentials are available to sync. Click Refresh, then retry after credentials appear.";
+        }
+        if (hr == E_NOT_VALID_STATE)
+        {
+            return L"Vault is locked or requires interactive unlock. Complete the unlock UI flow, then retry.";
         }
         if (hr == HRESULT_FROM_WIN32(ERROR_WRITE_FAULT))
         {
@@ -925,9 +929,32 @@ namespace winrt::PasskeyManager::implementation
     {
         LogInProgress(L"Adding All credentials to windows...");
 
+        auto& credentialManager = PluginCredentialManager::getInstance();
+        com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+        HWND hwnd = curApp->GetNativeWindowHandle();
+        if (credentialManager.GetVaultLock())
+        {
+            LogInProgress(L"Vault is locked. Opening unlock UI before credential sync...");
+            HRESULT hrUnlock = credentialManager.UnlockCredentialVaultWithPasskey(hwnd);
+            if (FAILED(hrUnlock))
+            {
+                if (hrUnlock == E_NOT_VALID_STATE)
+                {
+                    LogWarning(L"Vault unlock requires UI. Complete passkey prompt, then retry Add All.", hrUnlock);
+                }
+                else
+                {
+                    LogFailure(L"Vault unlock failed before Add All", hrUnlock);
+                }
+                co_return;
+            }
+            LogSuccess(L"Vault unlocked. Continuing Add All credential sync.");
+        }
+
         auto weakThis = get_weak();
         co_await winrt::resume_background();
-        HRESULT hr = PluginCredentialManager::getInstance().AddAllPluginCredentials();
+        credentialManager.ReloadCredentialManager();
+        HRESULT hr = credentialManager.AddAllPluginCredentials();
 
         co_await wil::resume_foreground(DispatcherQueue());
 

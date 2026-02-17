@@ -12,6 +12,7 @@
 #include "src/GoogleOAuth.h"
 #include <future>
 #include <coroutine>
+#include <thread>
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
@@ -438,7 +439,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring debugInfo = tsupasswd::GetLastGoogleOAuthDebugInfo();
         if (debugInfo.empty())
         {
-            LogWarning(L"OAuth smoke test: debug snapshot is empty.");
+            LogSuccess(L"OAuth smoke test: no recent OAuth debug snapshot (expected when no OAuth error occurred).");
         }
         else
         {
@@ -1224,6 +1225,7 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::activatePluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& e)
     {
         // URI ms-settings:passkeys-advancedoptions to navigate to the page on Settings app where the users can enable the plugin
+        auto weakThis = get_weak();
         LogInProgress(L"Opening Windows Settings for plugin activation...");
         auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
         bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
@@ -1232,7 +1234,33 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(L"Failed to open Windows Settings. Open Settings > Accounts > Passkeys > Advanced options manually.");
             co_return;
         }
-        LogSuccess(L"Windows Settings opened. Enable the plugin, then return and click Refresh.");
+
+        LogSuccess(L"Windows Settings opened. Waiting for plugin state update...");
+
+        for (int attempt = 0; attempt < 5; ++attempt)
+        {
+            co_await winrt::resume_background();
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+            AUTHENTICATOR_STATE state = PluginRegistrationManager::getInstance().GetPluginState();
+
+            co_await wil::resume_foreground(DispatcherQueue());
+            if (auto self = weakThis.get())
+            {
+                self->UpdatePluginEnableState();
+                if (SUCCEEDED(hrState) && state == AuthenticatorState_Enabled)
+                {
+                    self->LogSuccess(L"Plugin state changed to Enabled.");
+                    co_return;
+                }
+            }
+            else
+            {
+                co_return;
+            }
+        }
+
+        LogWarning(L"Plugin is still not Enabled. After enabling in Settings, click Refresh.");
         co_return;
     }
 

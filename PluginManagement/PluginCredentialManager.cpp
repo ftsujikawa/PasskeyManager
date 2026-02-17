@@ -13,6 +13,25 @@
 
 namespace winrt::PasskeyManager::implementation
 {
+    namespace
+    {
+        void UpdateVaultStatusText(hstring const& statusText)
+        {
+            com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+            curApp->GetDispatcherQueue().TryEnqueue([curApp, statusText]()
+            {
+                curApp->m_window.Content().try_as<Microsoft::UI::Xaml::Controls::Frame>().Content().try_as<MainPage>()->UpdatePasskeyOperationStatusText(statusText);
+            });
+        }
+
+        void LogVaultUnlockWarning(std::wstring const& message)
+        {
+            UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + message });
+            std::wstring debug = L"PluginCredentialManager::UnlockCredentialVaultWithPasskey - " + message + L"\n";
+            OutputDebugStringW(debug.c_str());
+        }
+    }
+
     PluginCredentialManager::PluginCredentialManager()
     {
         Initialize();
@@ -55,7 +74,7 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        RETURN_HR_IF(E_FAIL, credentialDetailList.empty());
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), credentialDetailList.empty());
 
         // Call the API to add credentials to the platform database
         RETURN_IF_FAILED(WebAuthNPluginAuthenticatorAddCredentials(
@@ -104,14 +123,13 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        if (!credentialDetailList.empty())
-        {
-            // Use API to add selected credentials to platform database
-            RETURN_IF_FAILED(WebAuthNPluginAuthenticatorAddCredentials(
-                contosoplugin_guid,
-                static_cast<DWORD>(credentialDetailList.size()),
-                credentialDetailList.data()));
-        }
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), credentialDetailList.empty());
+
+        // Use API to add selected credentials to platform database
+        RETURN_IF_FAILED(WebAuthNPluginAuthenticatorAddCredentials(
+            contosoplugin_guid,
+            static_cast<DWORD>(credentialDetailList.size()),
+            credentialDetailList.data()));
 
         return S_OK;
     }
@@ -165,14 +183,13 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        if (!credentialDetailList.empty())
-        {
-            // Use API to remove specified credentials from platform database
-            RETURN_IF_FAILED(WebAuthNPluginAuthenticatorRemoveCredentials(
-                contosoplugin_guid,
-                static_cast<DWORD>(credentialDetailList.size()),
-                credentialDetailList.data()));
-        }
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), credentialDetailList.empty());
+
+        // Use API to remove specified credentials from platform database
+        RETURN_IF_FAILED(WebAuthNPluginAuthenticatorRemoveCredentials(
+            contosoplugin_guid,
+            static_cast<DWORD>(credentialDetailList.size()),
+            credentialDetailList.data()));
 
         // Remove from caches
         {
@@ -194,7 +211,7 @@ namespace winrt::PasskeyManager::implementation
             }
             if (!RecreateCredentialMetadataFile())
             {
-                return E_FAIL;
+                return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
             }
         }
 
@@ -766,6 +783,11 @@ namespace winrt::PasskeyManager::implementation
 
         PluginRegistrationManager::getInstance().ReloadRegistryValues();
         std::vector<BYTE> hmacSecretValue = PluginRegistrationManager::getInstance().GetHMACSecret();
+        if (hmacSecretValue.empty())
+        {
+            LogVaultUnlockWarning(L"Vault unlock secret is missing. Recovery: run Vault recovery to re-create Vault Unlock passkey.");
+            return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        }
 
         WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
         hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(hmacSecretValue.size());
@@ -791,6 +813,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (pAssertion.get()->pHmacSecret == nullptr)
         {
+            LogVaultUnlockWarning(L"Selected authenticator does not provide PRF/HMAC secret. Recovery: use a PRF-capable passkey authenticator.");
             return NTE_NOT_SUPPORTED; // The chosen authenticator does not support PRF.
         }
 
@@ -800,7 +823,12 @@ namespace winrt::PasskeyManager::implementation
         };
 
         std::vector<uint8_t> cipherText;
-        RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText));
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText);
+        if (FAILED(hrReadVaultData))
+        {
+            LogVaultUnlockWarning(L"Vault unlock aborted due to invalid/missing encrypted vault data.");
+            return hrReadVaultData;
+        }
         DATA_BLOB cipherTextBlob = {
             .cbData = static_cast<DWORD>(cipherText.size()),
             .pbData = cipherText.data()
@@ -808,14 +836,19 @@ namespace winrt::PasskeyManager::implementation
 
         DATA_BLOB decryptedData = {};
 
-        RETURN_IF_WIN32_BOOL_FALSE(CryptUnprotectData(
+        if (!CryptUnprotectData(
             &cipherTextBlob,
             nullptr,
             &entropy,
             nullptr,
             nullptr,
             CRYPTPROTECT_UI_FORBIDDEN,
-            &decryptedData));
+            &decryptedData))
+        {
+            HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
+            LogVaultUnlockWarning(L"Failed to decrypt vault data. Recovery: run Vault recovery to re-create Vault Unlock passkey.");
+            return hr;
+        }
 
         // scope exit for freeing the decrypted data
         auto decryptedDataCleanup = wil::scope_exit([&] {
@@ -827,7 +860,8 @@ namespace winrt::PasskeyManager::implementation
 
         if (decryptedData.cbData != wcslen(c_dummySecretVault) * sizeof(wchar_t) || memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) != 0)
         {
-            return E_FAIL;
+            LogVaultUnlockWarning(L"Vault data integrity check failed after decrypt. Recovery: re-create Vault Unlock passkey and retry.");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
         return S_OK;

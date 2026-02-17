@@ -232,6 +232,23 @@ namespace {
         return text;
     }
 
+    std::wstring DescribeCredentialOperationFailure(HRESULT hr)
+    {
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            return L"No matching credentials found. Try Refresh and select available items again.";
+        }
+        if (hr == HRESULT_FROM_WIN32(ERROR_WRITE_FAULT))
+        {
+            return L"Credential store update failed. Verify local storage access and retry.";
+        }
+        if (hr == E_INVALIDARG)
+        {
+            return L"Invalid credential selection was supplied.";
+        }
+        return L"Unexpected credential operation failure.";
+    }
+
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
     {
         auto mainPage = static_cast<winrt::PasskeyManager::implementation::MainPage*>(context);
@@ -922,7 +939,8 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to add credential to system cache: ", hr);
+            std::wstring detail = DescribeCredentialOperationFailure(hr);
+            self->LogFailure(winrt::hstring{ L"Failed to add credential to system cache. " + detail }, hr);
             co_return;
         }
         self->LogSuccess(L"Credentials synced");
@@ -968,7 +986,8 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to add credentials to system cache", hr);
+            std::wstring detail = DescribeCredentialOperationFailure(hr);
+            self->LogFailure(winrt::hstring{ L"Failed to add credentials to system cache. " + detail }, hr);
             co_return;
         }
         self->LogSuccess(L"Selected credentials are added to system cache");
@@ -1042,7 +1061,8 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to delete credentials from system cache", hr);
+            std::wstring detail = DescribeCredentialOperationFailure(hr);
+            self->LogFailure(winrt::hstring{ L"Failed to delete credentials from system cache. " + detail }, hr);
             co_return;
         }
         self->LogSuccess(L"Selected credentials deleted from system cache");
@@ -1090,7 +1110,8 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to delete credentials", hr);
+            std::wstring detail = DescribeCredentialOperationFailure(hr);
+            self->LogFailure(winrt::hstring{ L"Failed to delete credentials everywhere. " + detail }, hr);
             co_return;
         }
         self->LogSuccess(L"Selected credentials deleted everywhere");
@@ -1121,9 +1142,9 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
-        if (resetResult)
+        if (!resetResult)
         {
-            self->LogFailure(L"Failed to delete all local credentials", E_FAIL);
+            self->LogFailure(L"Failed to delete all local credentials. Credential store update failed. Verify local storage access and retry.", HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
             co_return;
         }
         self->LogSuccess(L"All local credentials deleted");
@@ -1149,7 +1170,9 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (FAILED(hr) || !resetResult)
         {
-            self->LogFailure(L"Failed to delete all credentials", hr);
+            HRESULT effectiveHr = FAILED(hr) ? hr : HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+            std::wstring detail = DescribeCredentialOperationFailure(effectiveHr);
+            self->LogFailure(winrt::hstring{ L"Failed to delete all credentials. " + detail }, effectiveHr);
             co_return;
         }
         self->LogSuccess(L"All credentials deleted");

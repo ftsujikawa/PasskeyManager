@@ -4,6 +4,12 @@
 #include <CorError.h>
 #include <wil/safecast.h>
 
+namespace
+{
+    constexpr size_t kMinVaultCipherBlobBytes = 16;
+    constexpr size_t kMaxVaultCipherBlobBytes = 64 * 1024;
+}
+
 namespace winrt::PasskeyManager::implementation {
     PluginRegistrationManager::PluginRegistrationManager() :
         m_pluginRegistered(false),
@@ -362,6 +368,22 @@ namespace winrt::PasskeyManager::implementation {
             UpdatePasskeyOperationStatusText(L"WARNING: Vault data is empty/corrupted. Recovery: re-create Vault Unlock passkey then retry.");
             OutputDebugStringW(L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is empty.\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        if (opt->size() < kMinVaultCipherBlobBytes)
+        {
+            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is too small/corrupted. Recovery: re-create Vault Unlock passkey then retry.");
+            std::wstring msg = L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is too small. size=" + std::to_wstring(opt->size()) + L"\n";
+            OutputDebugStringW(msg.c_str());
+            return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+        }
+
+        if (opt->size() > kMaxVaultCipherBlobBytes)
+        {
+            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is too large/unexpected. Recovery: re-create Vault Unlock passkey then retry.");
+            std::wstring msg = L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is too large. size=" + std::to_wstring(opt->size()) + L"\n";
+            OutputDebugStringW(msg.c_str());
+            return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
         }
 
         cipherText = opt.value();

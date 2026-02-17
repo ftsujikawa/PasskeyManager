@@ -77,6 +77,17 @@ Google OAuth の状態遷移と実装整合（UI表示・トークン保存・�
   - `vaultLockSwitch().IsOn(true)`
   - 復旧ヒントと復旧ボタンが非表示化される
 
+### 8. Credential操作の失敗系ハンドリング
+- 操作: 一覧未選択で `Selected Passkeys to Cache` / `Selected Passkeys from Cache` を実行
+- 期待:
+  - `No credentials selected` warning が出る
+- 操作: 表示更新後に古い選択状態を使って add/delete を再実行（対象不一致を再現）
+- 期待:
+  - `No matching credentials found...` を含む失敗ログが出る
+- 操作: `All Passkeys everywhere` 実行時にローカルDB書き込みエラーを再現
+- 期待:
+  - `Credential store update failed...` を含む失敗ログが出る
+
 ## 障害切り分けメモ
 - トークン未保存:
   - 保存先パス表示を確認
@@ -99,4 +110,5 @@ Google OAuth の状態遷移と実装整合（UI表示・トークン保存・�
   - [ ] 5 多重起動ガード
   - [ ] 6 OAuth Smoke Test
   - [ ] 7 Vault Recovery 導線
+  - [ ] 8 Credential操作の失敗系ハンドリング
 - 備考:

@@ -24,6 +24,7 @@ namespace winrt {
 // and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace {
+    constexpr wchar_t kGoogleLastConnectedAtRegValueName[] = L"GoogleLastConnectedAt";
 
     std::wstring FormatLocalTimestamp(SYSTEMTIME const& st)
     {
@@ -43,6 +44,60 @@ namespace {
         SYSTEMTIME st{};
         GetLocalTime(&st);
         return FormatLocalTimestamp(st);
+    }
+
+    bool TrySaveGoogleLastConnectedAt(std::wstring const& timestamp)
+    {
+        if (timestamp.empty())
+        {
+            return false;
+        }
+
+        wil::unique_hkey hKey;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        {
+            return false;
+        }
+
+        DWORD bytes = static_cast<DWORD>((timestamp.size() + 1) * sizeof(wchar_t));
+        return RegSetValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, 0, REG_SZ, reinterpret_cast<BYTE const*>(timestamp.c_str()), bytes) == ERROR_SUCCESS;
+    }
+
+    std::wstring TryLoadGoogleLastConnectedAt()
+    {
+        wil::unique_hkey hKey;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        DWORD type = 0;
+        DWORD bytes = 0;
+        if (RegQueryValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, nullptr, &type, nullptr, &bytes) != ERROR_SUCCESS || type != REG_SZ || bytes < sizeof(wchar_t))
+        {
+            return L"";
+        }
+
+        std::wstring value(bytes / sizeof(wchar_t), L'\0');
+        if (RegQueryValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, nullptr, nullptr, reinterpret_cast<BYTE*>(value.data()), &bytes) != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        if (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    void ClearGoogleLastConnectedAt()
+    {
+        wil::unique_hkey hKey;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+        {
+            RegDeleteValueW(hKey.get(), kGoogleLastConnectedAtRegValueName);
+        }
     }
 
     std::wstring MaskPathForDisplay(std::wstring const& path)
@@ -155,6 +210,14 @@ namespace winrt::PasskeyManager::implementation
         if (connected && m_lastGoogleConnectedAt.empty())
         {
             m_lastGoogleConnectedAt = TryGetFileLastWriteTimestamp(tokenPath);
+            if (m_lastGoogleConnectedAt.empty())
+            {
+                m_lastGoogleConnectedAt = TryLoadGoogleLastConnectedAt();
+            }
+        }
+        if (connected && !m_lastGoogleConnectedAt.empty())
+        {
+            TrySaveGoogleLastConnectedAt(m_lastGoogleConnectedAt);
         }
 
         std::wstring connectedAt = connected
@@ -210,6 +273,32 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::checkGoogleStateButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        std::wstring refreshToken;
+        bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
+        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
+
+        std::wstring lastConnected = m_lastGoogleConnectedAt;
+        if (lastConnected.empty())
+        {
+            lastConnected = TryGetFileLastWriteTimestamp(tokenPath);
+        }
+        if (lastConnected.empty())
+        {
+            lastConnected = TryLoadGoogleLastConnectedAt();
+        }
+
+        std::wstring state = connected ? L"connected" : L"disconnected";
+        std::wstring connectedAt = lastConnected.empty() ? L"unknown" : lastConnected;
+        std::wstring summary = L"Google state check: status=" + state + L", last_connected=" + connectedAt + L", token_path=" + MaskPathForDisplay(tokenPath);
+        LogSuccess(winrt::hstring{ summary });
+
+        m_lastGoogleConnectedAt = connected ? lastConnected : L"";
+        UpdateGoogleConnectionUiState(connected);
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::disconnectGoogleButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         if (m_googleOAuthInProgress.load())
@@ -220,6 +309,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (tsupasswd::TryDeleteGoogleRefreshToken())
         {
+            ClearGoogleLastConnectedAt();
             UpdateGoogleConnectionUiState(false);
             LogSuccess(L"Google refresh_token removed. Sign-in required next time.");
         }

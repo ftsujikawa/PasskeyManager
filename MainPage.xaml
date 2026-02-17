@@ -192,6 +192,10 @@
                         Click="disconnectGoogleButton_Click"
                         Content="Disconnect"
                         IsEnabled="False" />
+                    <Button
+                        x:Name="checkGoogleStateButton"
+                        Click="checkGoogleStateButton_Click"
+                        Content="Check Google State" />
                     <TextBlock
                         x:Name="googleConnectedAtText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"

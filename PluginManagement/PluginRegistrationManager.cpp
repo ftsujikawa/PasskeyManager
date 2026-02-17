@@ -352,14 +352,14 @@ namespace winrt::PasskeyManager::implementation {
         auto opt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginEncryptedVaultData, REG_BINARY);
         if (!opt)
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is missing. Register/unlock flow may be required.");
+            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is missing. Recovery: set Vault Unlock to Passkey and register again.");
             OutputDebugStringW(L"PluginRegistrationManager::ReadEncryptedVaultData - no EncryptedVaultData in registry.\n");
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
 
         if (opt->empty())
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is present but empty/corrupted.");
+            UpdatePasskeyOperationStatusText(L"WARNING: Vault data is empty/corrupted. Recovery: re-create Vault Unlock passkey then retry.");
             OutputDebugStringW(L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is empty.\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }

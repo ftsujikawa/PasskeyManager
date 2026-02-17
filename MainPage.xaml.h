@@ -49,6 +49,8 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction disconnectGoogleButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction checkGoogleStateButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction copyGoogleDebugInfoButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction runGoogleOAuthSmokeTestButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction runVaultRecoveryButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -66,11 +68,13 @@ namespace winrt::PasskeyManager::implementation
             {
                 vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
             }
             else if (status.find(L"Created passkey for Vault Unlock") != std::wstring::npos || status.find(L"Vault Unlock passkey already exists") != std::wstring::npos)
             {
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 vaultRecoveryHintText().Text(L"");
+                runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
             }
         }
         void LogSuccess(const winrt::hstring& input) {

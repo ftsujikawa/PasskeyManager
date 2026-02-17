@@ -200,6 +200,10 @@
                         x:Name="copyGoogleDebugInfoButton"
                         Click="copyGoogleDebugInfoButton_Click"
                         Content="Copy OAuth Debug Info" />
+                    <Button
+                        x:Name="runGoogleOAuthSmokeTestButton"
+                        Click="runGoogleOAuthSmokeTestButton_Click"
+                        Content="Run OAuth Smoke Test" />
                     <TextBlock
                         x:Name="googleConnectedAtText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -214,6 +218,11 @@
                         Foreground="{ThemeResource SystemFillColorCautionBrush}"
                         Text=""
                         TextWrapping="WrapWholeWords"
+                        Visibility="Collapsed" />
+                    <Button
+                        x:Name="runVaultRecoveryButton"
+                        Click="runVaultRecoveryButton_Click"
+                        Content="Run Vault Recovery"
                         Visibility="Collapsed" />
                 </StackPanel>
             </Grid>

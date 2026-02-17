@@ -176,6 +176,26 @@ namespace {
         return L"";
     }
 
+    std::wstring DescribeGoogleConnectionDiagnosis(bool connected, bool tokenFileExists, bool hasLastConnectedRecord)
+    {
+        if (connected)
+        {
+            return L"refresh_token loaded successfully.";
+        }
+
+        if (tokenFileExists)
+        {
+            return L"token file exists but could not be loaded. Possible corruption or DPAPI scope mismatch. Action: click Disconnect, then Google Sign-in.";
+        }
+
+        if (hasLastConnectedRecord)
+        {
+            return L"token file is missing but previous connection metadata exists. Action: run Google Sign-in to reconnect.";
+        }
+
+        return L"Google is not connected yet. Action: run Google Sign-in.";
+    }
+
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
     {
         auto mainPage = static_cast<winrt::PasskeyManager::implementation::MainPage*>(context);
@@ -289,21 +309,32 @@ namespace winrt::PasskeyManager::implementation
         std::wstring refreshToken;
         bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
         std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
+        std::wstring tokenFileTimestamp = TryGetFileLastWriteTimestamp(tokenPath);
+        bool tokenFileExists = !tokenFileTimestamp.empty();
 
         std::wstring lastConnected = m_lastGoogleConnectedAt;
         if (lastConnected.empty())
         {
-            lastConnected = TryGetFileLastWriteTimestamp(tokenPath);
+            lastConnected = tokenFileTimestamp;
         }
         if (lastConnected.empty())
         {
             lastConnected = TryLoadGoogleLastConnectedAt();
         }
 
+        std::wstring diagnosis = DescribeGoogleConnectionDiagnosis(connected, tokenFileExists, !lastConnected.empty());
+
         std::wstring state = connected ? L"connected" : L"disconnected";
         std::wstring connectedAt = lastConnected.empty() ? L"unknown" : lastConnected;
-        std::wstring summary = L"Google state check: status=" + state + L", last_connected=" + connectedAt + L", token_path=" + MaskPathForDisplay(tokenPath);
-        LogSuccess(winrt::hstring{ summary });
+        std::wstring summary = L"Google state check: status=" + state + L", last_connected=" + connectedAt + L", token_path=" + MaskPathForDisplay(tokenPath) + L", diagnosis=" + diagnosis;
+        if (connected)
+        {
+            LogSuccess(winrt::hstring{ summary });
+        }
+        else
+        {
+            LogWarning(winrt::hstring{ summary });
+        }
 
         m_lastGoogleConnectedAt = connected ? lastConnected : L"";
         UpdateGoogleConnectionUiState(connected);
@@ -324,6 +355,86 @@ namespace winrt::PasskeyManager::implementation
         Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
         Windows::ApplicationModel::DataTransfer::Clipboard::Flush();
         LogSuccess(L"OAuth debug info copied to clipboard.");
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::runGoogleOAuthSmokeTestButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        runGoogleOAuthSmokeTestButton().IsEnabled(false);
+        LogInProgress(L"Running OAuth smoke test: state check + debug snapshot");
+
+        co_await checkGoogleStateButton_Click(nullptr, RoutedEventArgs{});
+
+        std::wstring debugInfo = tsupasswd::GetLastGoogleOAuthDebugInfo();
+        if (debugInfo.empty())
+        {
+            LogWarning(L"OAuth smoke test: debug snapshot is empty.");
+        }
+        else
+        {
+            std::wstring compact = debugInfo;
+            if (compact.size() > 600)
+            {
+                compact.resize(600);
+                compact += L"...";
+            }
+            LogSuccess(winrt::hstring{ L"OAuth smoke test debug snapshot: " + compact });
+        }
+
+        runGoogleOAuthSmokeTestButton().IsEnabled(true);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::runVaultRecoveryButton_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        auto weakThis = get_weak();
+        runVaultRecoveryButton().IsEnabled(false);
+        LogInProgress(L"Running Vault recovery flow");
+
+        com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+        HWND hwnd = curApp->GetNativeWindowHandle();
+
+        co_await winrt::resume_background();
+        HRESULT hrSetMethod = PluginCredentialManager::getInstance().SetVaultUnlockMethod(VaultUnlockMethod::Passkey);
+        HRESULT hrCreatePasskey = SUCCEEDED(hrSetMethod)
+            ? PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd)
+            : hrSetMethod;
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self{ weakThis.get() })
+        {
+            self->vaultLockSwitch().IsOn(true);
+            self->runVaultRecoveryButton().IsEnabled(true);
+
+            if (FAILED(hrSetMethod))
+            {
+                self->vaultLockSwitch().IsOn(false);
+                self->LogFailure(L"Failed to set Vault Unlock Method to Passkey", hrSetMethod);
+                co_return;
+            }
+
+            if (SUCCEEDED(hrCreatePasskey))
+            {
+                self->LogSuccess(L"Vault recovery completed. Passkey was created.");
+                co_return;
+            }
+
+            if (hrCreatePasskey == NTE_EXISTS)
+            {
+                self->LogSuccess(L"Vault recovery completed. Vault Unlock passkey already exists.");
+                co_return;
+            }
+
+            self->vaultLockSwitch().IsOn(false);
+            if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+            {
+                self->LogWarning(L"Vault recovery was cancelled", hrCreatePasskey);
+            }
+            else
+            {
+                self->LogFailure(L"Vault recovery failed during passkey registration", hrCreatePasskey);
+            }
+        }
         co_return;
     }
 

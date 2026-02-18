@@ -179,7 +179,7 @@
     <ClInclude Include="PluginManagement\PluginRegistrationManager.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="src\Config.h" />
-    <ClInclude Include="src\GoogleOAuth.h" />
+    <ClInclude Include="src\SyncClient.h" />
     <ClInclude Include="src\DiagnosticsConfig.h" />
   </ItemGroup>
   <ItemGroup>
@@ -228,7 +228,7 @@
     <ClCompile Include="PluginManagement\PluginCredentialManager.cpp" />
     <ClCompile Include="PluginManagement\PluginRegistrationManager.cpp" />
     <ClCompile Include="src\Config.cpp" />
-    <ClCompile Include="src\GoogleOAuth.cpp" />
+    <ClCompile Include="src\SyncClient.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="App.idl">

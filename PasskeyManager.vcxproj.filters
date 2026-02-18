@@ -26,7 +26,7 @@
     <ClCompile Include="PluginManagement\PluginCredentialManager.cpp" />
     <ClCompile Include="Converter\BitwiseFlagToVisibilityConverter.cpp" />
     <ClCompile Include="src\Config.cpp" />
-    <ClCompile Include="src\GoogleOAuth.cpp" />
+    <ClCompile Include="src\SyncClient.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -39,7 +39,7 @@
     <ClInclude Include="helpers\buffer_read_write.h" />
     <ClInclude Include="src\Config.h" />
     <ClInclude Include="src\DiagnosticsConfig.h" />
-    <ClInclude Include="src\GoogleOAuth.h" />
+    <ClInclude Include="src\SyncClient.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\SplashScreen.scale-100.png" />

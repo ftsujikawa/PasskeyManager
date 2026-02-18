@@ -1,0 +1,50 @@
+{
+  "Vaults": {
+    "ContosoUserId": {
+      "VaultVersion": 4,
+      "DeviceClock": "2026-02-18T13:59:09.001724+00:00",
+      "VaultBlob": {
+        "ciphertext_b64": "AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAALODnBUUpC0GQB6bTWu7-dAAAAAACAAAAAAAQZgAAAAEAACAAAADCn9xJP2H0EkebIV5YZnGg7UCmEZQ6xWW5gp06fnA23QAAAAAOgAAAAAIAACAAAAAsw3x581Khu7Dv-jqYbcmG-AOxdhErg78jTdYRxPP44DAAAACq2Yl3v3gdmJDjY0z0U-Ou3aYPzE2xIh9e7wkUeX-l3KLVGmshLW-hCEc2a8GfO1BAAAAAVBfN-PqfouULKsEDT10l6oknlpo6QEMzsqKWW3iXCpBFJWW2KG82IIyvHnnsAL5JjYT8Ih3Y2gmyHZko-CFkbg",
+        "nonce_b64": "",
+        "aad_b64": "",
+        "alg": "AES-256-GCM"
+      },
+      "KeyEnvelope": {
+        "kek_scheme": "passkey\u002Brecovery_code_v1",
+        "wrapped_dek_b64": "",
+        "wrap_nonce_b64": "",
+        "kdf_salt_b64": "",
+        "kdf_info": "vault-dek-wrap"
+      },
+      "Meta": {
+        "CreatedAt": "2026-02-18T12:36:23.372272+00:00",
+        "UpdatedAt": "2026-02-18T13:59:09.001724+00:00",
+        "LastWriterDeviceId": "tsupasswd_core_windows",
+        "BlobSha256Base64": ""
+      }
+    },
+    "alice-01": {
+      "VaultVersion": 3,
+      "DeviceClock": "2026-02-18T14:13:08.4765815+00:00",
+      "VaultBlob": {
+        "ciphertext_b64": "AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAALODnBUUpC0GQB6bTWu7-dAAAAAACAAAAAAAQZgAAAAEAACAAAAC2WoPvOF6VBM7kv7hp2oC67d5Zr3WEiX1EemJVVI_mLgAAAAAOgAAAAAIAACAAAAA8F3W1GRVNbpxdVDjfHDLixn5HLehzLUix--zJYc2ORTAAAABtPAzVw94I3SWFeTY6LZ2d8RSdwEVQQzmd7nMyuAeyE-AGGPJV7wIRxO8qnOd1fthAAAAALyqeRfi0O3bej5vlTfe0yxRhYGeHUz1-lkm4GzewqdmPfX77ywgivLss9_IN8GoEms7TdasQNMyPhqzJzIdx4g",
+        "nonce_b64": "",
+        "aad_b64": "",
+        "alg": "AES-256-GCM"
+      },
+      "KeyEnvelope": {
+        "kek_scheme": "passkey\u002Brecovery_code_v1",
+        "wrapped_dek_b64": "",
+        "wrap_nonce_b64": "",
+        "kdf_salt_b64": "",
+        "kdf_info": "vault-dek-wrap"
+      },
+      "Meta": {
+        "CreatedAt": "2026-02-18T13:05:16.8008185+00:00",
+        "UpdatedAt": "2026-02-18T14:13:08.4765815+00:00",
+        "LastWriterDeviceId": "tsupasswd_core_windows",
+        "BlobSha256Base64": ""
+      }
+    }
+  }
+}

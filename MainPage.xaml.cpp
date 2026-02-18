@@ -9,14 +9,12 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
-#include "src/GoogleOAuth.h"
 #include <future>
 #include <coroutine>
 #include <thread>
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
-#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
 
 namespace winrt {
@@ -27,213 +25,6 @@ namespace winrt {
 // and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace {
-    constexpr wchar_t kGoogleLastConnectedAtRegValueName[] = L"GoogleLastConnectedAt";
-
-    std::wstring FormatLocalTimestamp(SYSTEMTIME const& st)
-    {
-        wchar_t buffer[32]{};
-        swprintf_s(buffer, L"%04u-%02u-%02u %02u:%02u:%02u",
-            st.wYear,
-            st.wMonth,
-            st.wDay,
-            st.wHour,
-            st.wMinute,
-            st.wSecond);
-        return buffer;
-    }
-
-    std::wstring GetNowLocalTimestamp()
-    {
-        SYSTEMTIME st{};
-        GetLocalTime(&st);
-        return FormatLocalTimestamp(st);
-    }
-
-    std::wstring GetParentDirectory(std::wstring const& filePath)
-    {
-        size_t pos = filePath.find_last_of(L"\\/");
-        if (pos == std::wstring::npos)
-        {
-            return L"";
-        }
-        return filePath.substr(0, pos);
-    }
-
-    bool TrySaveGoogleLastConnectedAt(std::wstring const& timestamp)
-    {
-        if (timestamp.empty())
-        {
-            return false;
-        }
-
-        wil::unique_hkey hKey;
-        if (RegCreateKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
-        {
-            return false;
-        }
-
-        DWORD bytes = static_cast<DWORD>((timestamp.size() + 1) * sizeof(wchar_t));
-        return RegSetValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, 0, REG_SZ, reinterpret_cast<BYTE const*>(timestamp.c_str()), bytes) == ERROR_SUCCESS;
-    }
-
-    std::wstring TryLoadGoogleLastConnectedAt()
-    {
-        wil::unique_hkey hKey;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS)
-        {
-            return L"";
-        }
-
-        DWORD type = 0;
-        DWORD bytes = 0;
-        if (RegQueryValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, nullptr, &type, nullptr, &bytes) != ERROR_SUCCESS || type != REG_SZ || bytes < sizeof(wchar_t))
-        {
-            return L"";
-        }
-
-        std::wstring value(bytes / sizeof(wchar_t), L'\0');
-        if (RegQueryValueExW(hKey.get(), kGoogleLastConnectedAtRegValueName, nullptr, nullptr, reinterpret_cast<BYTE*>(value.data()), &bytes) != ERROR_SUCCESS)
-        {
-            return L"";
-        }
-
-        if (!value.empty() && value.back() == L'\0')
-        {
-            value.pop_back();
-        }
-        return value;
-    }
-
-    void ClearGoogleLastConnectedAt()
-    {
-        wil::unique_hkey hKey;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
-        {
-            RegDeleteValueW(hKey.get(), kGoogleLastConnectedAtRegValueName);
-        }
-    }
-
-    std::wstring MaskPathForDisplay(std::wstring const& path)
-    {
-        if (path.empty())
-        {
-            return L"-";
-        }
-
-        size_t pos = path.find_last_of(L"\\/");
-        if (pos == std::wstring::npos)
-        {
-            return path;
-        }
-
-        return std::wstring(L"...\\") + path.substr(pos + 1);
-    }
-
-    std::wstring TryGetFileLastWriteTimestamp(std::wstring const& path)
-    {
-        if (path.empty())
-        {
-            return L"";
-        }
-
-        WIN32_FILE_ATTRIBUTE_DATA fileAttr{};
-        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fileAttr))
-        {
-            return L"";
-        }
-
-        FILETIME localWriteTime{};
-        if (!FileTimeToLocalFileTime(&fileAttr.ftLastWriteTime, &localWriteTime))
-        {
-            return L"";
-        }
-
-        SYSTEMTIME st{};
-        if (!FileTimeToSystemTime(&localWriteTime, &st))
-        {
-            return L"";
-        }
-
-        return FormatLocalTimestamp(st);
-    }
-
-    std::wstring DescribeGoogleOAuthFailure(HRESULT hr)
-    {
-        if (hr == HRESULT_FROM_WIN32(ERROR_NO_TOKEN))
-        {
-            return L"No refresh_token was returned. Remove app access in Google Account permissions, then sign in again. Also verify OAuth test user settings.";
-        }
-        if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
-        {
-            return L"Google consent/sign-in was cancelled or blocked.";
-        }
-        if (hr == HRESULT_FROM_WIN32(ERROR_INVALID_DATA))
-        {
-            return L"OAuth state mismatch detected. Retry the flow from scratch.";
-        }
-        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
-        {
-            return L"OAuth callback did not contain authorization code.";
-        }
-        return L"";
-    }
-
-    std::wstring DescribeGoogleConnectionDiagnosis(bool connected, bool tokenFileExists, bool hasLastConnectedRecord)
-    {
-        if (connected)
-        {
-            return L"refresh_token loaded successfully.";
-        }
-
-        if (tokenFileExists)
-        {
-            return L"token file exists but could not be loaded. Possible corruption or DPAPI scope mismatch. Action: click Disconnect, then Google Sign-in.";
-        }
-
-        if (hasLastConnectedRecord)
-        {
-            return L"token file is missing but previous connection metadata exists. Action: run Google Sign-in to reconnect.";
-        }
-
-        return L"Google is not connected yet. Action: run Google Sign-in.";
-    }
-
-    std::wstring ExpandOAuthDebugInfo(std::wstring const& raw)
-    {
-        if (raw.empty())
-        {
-            return L"(empty)";
-        }
-
-        std::wstring expanded = raw;
-        std::wstring const delimiter = L" | ";
-        size_t pos = 0;
-        while ((pos = expanded.find(delimiter, pos)) != std::wstring::npos)
-        {
-            expanded.replace(pos, delimiter.size(), L"\r\n");
-            pos += 2;
-        }
-        return expanded;
-    }
-
-    std::wstring BuildGoogleOAuthDebugSnapshotText(
-        bool connected,
-        std::wstring const& connectedAt,
-        std::wstring const& tokenPath,
-        std::wstring const& diagnosis,
-        std::wstring const& oauthDebug)
-    {
-        std::wstring text = L"[Google OAuth Debug Snapshot]\r\n";
-        text += L"captured_at: " + GetNowLocalTimestamp() + L"\r\n";
-        text += L"status: " + std::wstring(connected ? L"connected" : L"disconnected") + L"\r\n";
-        text += L"last_connected: " + (connectedAt.empty() ? L"unknown" : connectedAt) + L"\r\n";
-        text += L"token_path: " + tokenPath + L"\r\n";
-        text += L"diagnosis: " + diagnosis + L"\r\n\r\n";
-        text += L"[OAuth Raw Debug Info]\r\n";
-        text += ExpandOAuthDebugInfo(oauthDebug);
-        return text;
-    }
-
     std::wstring DescribeCredentialOperationFailure(HRESULT hr)
     {
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
@@ -292,39 +83,6 @@ namespace {
 
 namespace winrt::PasskeyManager::implementation
 {
-    void MainPage::UpdateGoogleConnectionUiState(bool connected)
-    {
-        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
-        googleTokenPathText().Text(winrt::hstring{ L"Token path: " + MaskPathForDisplay(tokenPath) });
-
-        if (connected && m_lastGoogleConnectedAt.empty())
-        {
-            m_lastGoogleConnectedAt = TryGetFileLastWriteTimestamp(tokenPath);
-            if (m_lastGoogleConnectedAt.empty())
-            {
-                m_lastGoogleConnectedAt = TryLoadGoogleLastConnectedAt();
-            }
-        }
-        if (connected && !m_lastGoogleConnectedAt.empty())
-        {
-            TrySaveGoogleLastConnectedAt(m_lastGoogleConnectedAt);
-        }
-
-        std::wstring connectedAt = connected
-            ? (m_lastGoogleConnectedAt.empty() ? L"unknown" : m_lastGoogleConnectedAt)
-            : L"-";
-        googleConnectedAtText().Text(winrt::hstring{ L"Google last connected: " + connectedAt });
-
-        if (!connected)
-        {
-            m_lastGoogleConnectedAt.clear();
-        }
-
-        googleSignInButton().Content(winrt::box_value(connected ? L"Google Connected" : L"Google Sign-in"));
-        googleSignInButton().IsEnabled(!connected && !m_googleOAuthInProgress.load());
-        disconnectGoogleButton().IsEnabled(connected && !m_googleOAuthInProgress.load());
-    }
-
     winrt::fire_and_forget MainPage::UpdatePluginEnableState()
     {
         winrt::apartment_context ui_thread;
@@ -363,104 +121,6 @@ namespace winrt::PasskeyManager::implementation
             activatePluginButton().IsEnabled(pluginState != AuthenticatorState_Enabled);
             UpdatePluginStateTextBlock(pluginState);
         }
-        co_return;
-    }
-
-    winrt::IAsyncAction MainPage::checkGoogleStateButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        std::wstring refreshToken;
-        bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
-        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
-        std::wstring tokenFileTimestamp = TryGetFileLastWriteTimestamp(tokenPath);
-        bool tokenFileExists = !tokenFileTimestamp.empty();
-
-        std::wstring lastConnected = m_lastGoogleConnectedAt;
-        if (lastConnected.empty())
-        {
-            lastConnected = tokenFileTimestamp;
-        }
-        if (lastConnected.empty())
-        {
-            lastConnected = TryLoadGoogleLastConnectedAt();
-        }
-
-        std::wstring diagnosis = DescribeGoogleConnectionDiagnosis(connected, tokenFileExists, !lastConnected.empty());
-
-        std::wstring state = connected ? L"connected" : L"disconnected";
-        std::wstring connectedAt = lastConnected.empty() ? L"unknown" : lastConnected;
-        std::wstring summary = L"Google state check: status=" + state + L", last_connected=" + connectedAt + L", token_path=" + MaskPathForDisplay(tokenPath) + L", diagnosis=" + diagnosis;
-        if (connected)
-        {
-            LogSuccess(winrt::hstring{ summary });
-        }
-        else
-        {
-            LogWarning(winrt::hstring{ summary });
-        }
-
-        m_lastGoogleConnectedAt = connected ? lastConnected : L"";
-        UpdateGoogleConnectionUiState(connected);
-        co_return;
-    }
-
-    winrt::IAsyncAction MainPage::copyGoogleDebugInfoButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        std::wstring oauthDebug = tsupasswd::GetLastGoogleOAuthDebugInfo();
-        std::wstring refreshToken;
-        bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
-        std::wstring tokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
-        std::wstring tokenFileTimestamp = TryGetFileLastWriteTimestamp(tokenPath);
-
-        std::wstring lastConnected = m_lastGoogleConnectedAt;
-        if (lastConnected.empty())
-        {
-            lastConnected = tokenFileTimestamp;
-        }
-        if (lastConnected.empty())
-        {
-            lastConnected = TryLoadGoogleLastConnectedAt();
-        }
-
-        std::wstring diagnosis = DescribeGoogleConnectionDiagnosis(connected, !tokenFileTimestamp.empty(), !lastConnected.empty());
-        std::wstring snapshot = BuildGoogleOAuthDebugSnapshotText(connected, lastConnected, tokenPath, diagnosis, oauthDebug);
-
-        Windows::ApplicationModel::DataTransfer::DataPackage package;
-        package.SetText(winrt::hstring{ snapshot });
-        Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
-        Windows::ApplicationModel::DataTransfer::Clipboard::Flush();
-        if (oauthDebug.empty())
-        {
-            LogInfo(L"OAuth raw debug info is empty. Copied state snapshot only.");
-            co_return;
-        }
-        LogSuccess(L"OAuth debug snapshot copied to clipboard.");
-        co_return;
-    }
-
-    winrt::IAsyncAction MainPage::runGoogleOAuthSmokeTestButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        runGoogleOAuthSmokeTestButton().IsEnabled(false);
-        LogInProgress(L"Running OAuth smoke test: state check + debug snapshot");
-
-        co_await checkGoogleStateButton_Click(nullptr, RoutedEventArgs{});
-
-        std::wstring debugInfo = tsupasswd::GetLastGoogleOAuthDebugInfo();
-        if (debugInfo.empty())
-        {
-            LogSuccess(L"OAuth smoke test: no recent OAuth debug snapshot (expected when no OAuth error occurred).");
-        }
-        else
-        {
-            std::wstring compact = debugInfo;
-            if (compact.size() > 600)
-            {
-                compact.resize(600);
-                compact += L"...";
-            }
-            LogSuccess(winrt::hstring{ L"OAuth smoke test debug snapshot: " + compact });
-        }
-
-        runGoogleOAuthSmokeTestButton().IsEnabled(true);
         co_return;
     }
 
@@ -645,28 +305,6 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
-    winrt::IAsyncAction MainPage::disconnectGoogleButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        if (m_googleOAuthInProgress.load())
-        {
-            LogWarning(L"Google OAuth is in progress. Wait before disconnecting.");
-            co_return;
-        }
-
-        if (tsupasswd::TryDeleteGoogleRefreshToken())
-        {
-            ClearGoogleLastConnectedAt();
-            UpdateGoogleConnectionUiState(false);
-            LogSuccess(L"Google refresh_token removed. Sign-in required next time.");
-        }
-        else
-        {
-            LogWarning(L"Failed to remove Google refresh_token file.");
-        }
-
-        co_return;
-    }
-
     winrt::IAsyncAction MainPage::vaultLockSwitch_Toggled(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         if (m_suppressVaultLockSwitchToggled)
@@ -841,28 +479,6 @@ namespace winrt::PasskeyManager::implementation
                 }
             }));
 
-        std::wstring googleTokenPath = tsupasswd::GetGoogleRefreshTokenStoragePath();
-        std::wstring googleTokenFolder = GetParentDirectory(googleTokenPath);
-        if (!googleTokenFolder.empty())
-        {
-            (void)m_googleTokenWatcher.create(googleTokenFolder.c_str(),
-                true,
-                wil::FolderChangeEvents::All,
-                [weakThis](wil::FolderChangeEvent, PCWSTR) -> winrt::fire_and_forget {
-                    std::wstring refreshToken;
-                    bool connected = tsupasswd::TryLoadGoogleRefreshToken(refreshToken);
-                    if (auto self{ weakThis.get() })
-                    {
-                        co_await wil::resume_foreground(self->DispatcherQueue());
-                        if (!connected)
-                        {
-                            self->m_lastGoogleConnectedAt.clear();
-                        }
-                        self->UpdateGoogleConnectionUiState(connected);
-                    }
-                });
-        }
-
         m_cookie = RegisterWebAuthNStatusChangeCallback(static_cast<void*>(this));
     }
 
@@ -878,72 +494,6 @@ namespace winrt::PasskeyManager::implementation
     {
         UpdatePluginEnableState();
         UpdateCredentialList();
-        co_return;
-    }
-
-    winrt::IAsyncAction MainPage::googleSignInButton_Click(IInspectable const&, RoutedEventArgs const&)
-    {
-        if (m_googleOAuthInProgress.exchange(true))
-        {
-            LogWarning(L"Google OAuth is already in progress. Wait for the current browser flow to finish.");
-            co_return;
-        }
-
-        std::wstring existingRefreshToken;
-        if (tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken))
-        {
-            m_googleOAuthInProgress = false;
-            UpdateGoogleConnectionUiState(true);
-            LogSuccess(L"Google refresh_token is already saved. Browser sign-in skipped.");
-            co_return;
-        }
-
-        googleSignInButton().IsEnabled(false);
-        disconnectGoogleButton().IsEnabled(false);
-        LogInProgress(L"Google OAuth: opening browser...");
-        auto weakThis = get_weak();
-
-        co_await winrt::resume_background();
-        HRESULT hr = S_OK;
-        try
-        {
-            (void)tsupasswd::PerformGoogleOAuthLoopback();
-        }
-        catch (...)
-        {
-            hr = wil::ResultFromCaughtException();
-        }
-
-        co_await wil::resume_foreground(DispatcherQueue());
-        if (auto self = weakThis.get())
-        {
-            self->m_googleOAuthInProgress = false;
-            if (FAILED(hr))
-            {
-                self->UpdateGoogleConnectionUiState(false);
-                self->LogFailure(L"Google OAuth failed", hr);
-                std::wstring hint = DescribeGoogleOAuthFailure(hr);
-                if (!hint.empty())
-                {
-                    self->LogWarning(winrt::hstring{ hint });
-                }
-                std::wstring oauthDebug = tsupasswd::GetLastGoogleOAuthDebugInfo();
-                if (!oauthDebug.empty())
-                {
-                    self->LogWarning(winrt::hstring{ oauthDebug });
-                }
-            }
-            else
-            {
-                self->m_lastGoogleConnectedAt = GetNowLocalTimestamp();
-                self->UpdateGoogleConnectionUiState(true);
-                self->LogSuccess(L"Google OAuth complete (refresh_token saved)");
-            }
-        }
-        else
-        {
-            m_googleOAuthInProgress = false;
-        }
         co_return;
     }
 
@@ -995,9 +545,6 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::OnNavigatedTo(Navigation::NavigationEventArgs e)
     {
-        std::wstring existingRefreshToken;
-        UpdateGoogleConnectionUiState(tsupasswd::TryLoadGoogleRefreshToken(existingRefreshToken));
-
         UpdatePluginEnableState();
         UpdateCredentialList();
         co_return;

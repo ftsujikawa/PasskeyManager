@@ -1,13 +1,109 @@
 #include "pch.h"
 #include "MainPage.xaml.h"
 #include "PluginRegistrationManager.h"
+#include "src/SyncClient.h"
 #include <CorError.h>
 #include <wil/safecast.h>
+
+#pragma comment(lib, "Crypt32.lib")
 
 namespace
 {
     constexpr size_t kMinVaultCipherBlobBytes = 16;
     constexpr size_t kMaxVaultCipherBlobBytes = 64 * 1024;
+    constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
+    constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
+    constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
+    constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
+
+    std::wstring GetProcessEnvironmentVariableValue(wchar_t const* name)
+    {
+        DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
+        if (needed != 0)
+        {
+            std::wstring value;
+            value.resize(needed);
+            DWORD written = GetEnvironmentVariableW(name, value.data(), needed);
+            if (written != 0)
+            {
+                value.resize(written);
+                return value;
+            }
+        }
+
+        return L"";
+    }
+
+    std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
+    {
+        // Fallback for GUI/app-model launch paths where process env does not inherit
+        // latest shell variables. setx writes to HKCU\Environment.
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        auto keyCleanup = wil::scope_exit([&]() {
+            RegCloseKey(hKey);
+        });
+
+        DWORD type = 0;
+        DWORD sizeBytes = 0;
+        LONG queryResult = RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &sizeBytes);
+        if (queryResult != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) || sizeBytes < sizeof(wchar_t))
+        {
+            return L"";
+        }
+
+        std::wstring value;
+        value.resize(sizeBytes / sizeof(wchar_t));
+        queryResult = RegQueryValueExW(
+            hKey,
+            name,
+            nullptr,
+            &type,
+            reinterpret_cast<LPBYTE>(value.data()),
+            &sizeBytes);
+        if (queryResult != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        while (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    std::wstring GetEnvironmentVariableValue(wchar_t const* name)
+    {
+        std::wstring value = GetProcessEnvironmentVariableValue(name);
+        if (!value.empty())
+        {
+            return value;
+        }
+
+        // Fallback for GUI/app-model launch paths where process env does not inherit
+        // latest shell variables. setx writes to HKCU\Environment.
+        return GetUserEnvironmentRegistryValue(name);
+    }
+
+    std::wstring GetNowIsoLikeTimestamp()
+    {
+        SYSTEMTIME st{};
+        GetSystemTime(&st);
+        wchar_t buffer[32]{};
+        swprintf_s(buffer, L"%04u-%02u-%02uT%02u:%02u:%02uZ",
+            st.wYear,
+            st.wMonth,
+            st.wDay,
+            st.wHour,
+            st.wMinute,
+            st.wSecond);
+        return buffer;
+    }
 
     std::string Base64UrlEncode(const uint8_t* data, DWORD dataSize)
     {
@@ -253,7 +349,16 @@ namespace winrt::PasskeyManager::implementation {
         userEntity.dwVersion = WEBAUTHN_USER_ENTITY_INFORMATION_CURRENT_VERSION;
         userEntity.pwszName = c_userName;
         userEntity.pwszDisplayName = c_userDisplayName;
-        std::string userId = "ContosoUserId";
+        std::wstring syncUserId = GetUserEnvironmentRegistryValue(kSyncUserIdEnv);
+        if (syncUserId.empty())
+        {
+            syncUserId = GetProcessEnvironmentVariableValue(kSyncUserIdEnv);
+        }
+        if (syncUserId.empty())
+        {
+            syncUserId = kDefaultSyncUserId;
+        }
+        std::string userId = winrt::to_string(syncUserId);
         userEntity.pbId = reinterpret_cast<BYTE*>(userId.data());
         userEntity.cbId = static_cast<DWORD>(userId.size());
 
@@ -379,7 +484,68 @@ namespace winrt::PasskeyManager::implementation {
                 }
             });
 
-            RETURN_IF_FAILED(WriteEncryptedVaultData(std::vector<BYTE>(cipherText.pbData, cipherText.pbData + cipherText.cbData)));
+            std::vector<BYTE> encryptedVaultData(cipherText.pbData, cipherText.pbData + cipherText.cbData);
+            RETURN_IF_FAILED(WriteEncryptedVaultData(encryptedVaultData));
+
+            // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.
+            std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
+            if (syncBaseUrl.empty())
+            {
+                UpdatePasskeyOperationStatusText(L"INFO: Self-hosted sync skipped (TSUPASSWD_SYNC_BASE_URL is not set).ℹ");
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{ L"INFO: Self-hosted sync user_id: " + syncUserId + L"ℹ" });
+
+                tsupasswd::SyncClient syncClient(syncBaseUrl);
+                std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
+                if (!bearerToken.empty())
+                {
+                    syncClient.SetBearerToken(bearerToken);
+                }
+
+                tsupasswd::PutVaultRequest putRequest{};
+                putRequest.ExpectedVersion = 0;
+                putRequest.NewVersion = 1;
+                putRequest.DeviceId = L"tsupasswd_core_windows";
+                putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64UrlEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
+                putRequest.Blob.NonceBase64 = L"";
+                putRequest.Blob.AadBase64 = L"";
+                putRequest.Meta.CreatedAt = GetNowIsoLikeTimestamp();
+                putRequest.Meta.UpdatedAt = putRequest.Meta.CreatedAt;
+                putRequest.Meta.LastWriterDeviceId = putRequest.DeviceId;
+
+                tsupasswd::PutVaultResponse putResponse{};
+                tsupasswd::SyncHttpStatus syncStatus{};
+                HRESULT hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &syncStatus);
+                if (hrSync == HRESULT_FROM_WIN32(ERROR_REVISION_MISMATCH) && syncStatus.ServerVersion >= 0)
+                {
+                    putRequest.ExpectedVersion = syncStatus.ServerVersion;
+                    putRequest.NewVersion = syncStatus.ServerVersion + 1;
+                    UpdatePasskeyOperationStatusText(
+                        winrt::hstring{
+                            L"INFO: Self-hosted sync version conflict detected. Retrying once with server_version=" +
+                            std::to_wstring(syncStatus.ServerVersion) + L"...ℹ" });
+
+                    tsupasswd::SyncHttpStatus retryStatus{};
+                    hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &retryStatus);
+                    syncStatus = retryStatus;
+                }
+
+                if (SUCCEEDED(hrSync))
+                {
+                    UpdatePasskeyOperationStatusText(L"SUCCESS: Self-hosted vault sync completed.✅");
+                }
+                else
+                {
+                    std::wstring syncWarning =
+                        L"WARNING: Self-hosted vault sync failed (local save is kept). hr=" +
+                        std::to_wstring(static_cast<int>(hrSync)) +
+                        L", status=" + std::to_wstring(syncStatus.StatusCode);
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ syncWarning });
+                }
+            }
         }
 
         std::wstring finalResult = L"INFO: CreateVaultPasskey final HRESULT: " + std::to_wstring(static_cast<int>(hr)) + L"ℹ";

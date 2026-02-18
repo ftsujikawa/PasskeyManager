@@ -194,38 +194,6 @@
                             </DataTemplate>
                         </ToggleSwitch.HeaderTemplate>
                     </ToggleSwitch>
-
-                    <Button
-                        x:Name="googleSignInButton"
-                        Click="googleSignInButton_Click"
-                        Content="Google Sign-in"
-                        Style="{StaticResource AccentButtonStyle}" />
-                    <Button
-                        x:Name="disconnectGoogleButton"
-                        Click="disconnectGoogleButton_Click"
-                        Content="Disconnect"
-                        IsEnabled="False" />
-                    <Button
-                        x:Name="checkGoogleStateButton"
-                        Click="checkGoogleStateButton_Click"
-                        Content="Check Google State" />
-                    <Button
-                        x:Name="copyGoogleDebugInfoButton"
-                        Click="copyGoogleDebugInfoButton_Click"
-                        Content="Copy OAuth Debug Info" />
-                    <Button
-                        x:Name="runGoogleOAuthSmokeTestButton"
-                        Click="runGoogleOAuthSmokeTestButton_Click"
-                        Content="Run OAuth Smoke Test" />
-                    <TextBlock
-                        x:Name="googleConnectedAtText"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Google last connected: -" />
-                    <TextBlock
-                        x:Name="googleTokenPathText"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Token path: -"
-                        TextWrapping="WrapWholeWords" />
                     <TextBlock
                         x:Name="vaultRecoveryHintText"
                         Foreground="{ThemeResource SystemFillColorCautionBrush}"

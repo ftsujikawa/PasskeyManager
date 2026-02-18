@@ -24,10 +24,10 @@
       }
     },
     "alice-01": {
-      "VaultVersion": 3,
-      "DeviceClock": "2026-02-18T14:13:08.4765815+00:00",
+      "VaultVersion": 5,
+      "DeviceClock": "2026-02-18T15:15:21.9456364+00:00",
       "VaultBlob": {
-        "ciphertext_b64": "AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAALODnBUUpC0GQB6bTWu7-dAAAAAACAAAAAAAQZgAAAAEAACAAAAC2WoPvOF6VBM7kv7hp2oC67d5Zr3WEiX1EemJVVI_mLgAAAAAOgAAAAAIAACAAAAA8F3W1GRVNbpxdVDjfHDLixn5HLehzLUix--zJYc2ORTAAAABtPAzVw94I3SWFeTY6LZ2d8RSdwEVQQzmd7nMyuAeyE-AGGPJV7wIRxO8qnOd1fthAAAAALyqeRfi0O3bej5vlTfe0yxRhYGeHUz1-lkm4GzewqdmPfX77ywgivLss9_IN8GoEms7TdasQNMyPhqzJzIdx4g",
+        "ciphertext_b64": "AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAALODnBUUpC0GQB6bTWu7-dAAAAAACAAAAAAAQZgAAAAEAACAAAAAe94eItU1Lyngn6oObKjH5dxrK27LeNKL5oZS2Ab_trAAAAAAOgAAAAAIAACAAAAAXgZt7TG-8_E_J-bZ1a7s3QIfNOiJNYF03RlV-n-8OIDAAAADXx875Opnsi6sCGMTrBSlmirmnWfoFnH_FTLP-esoVXBaWXbsdFjmyns8rSWwnFYdAAAAASJIJH5Qnle6pyvRmbQpLG4VoAIh-pKJekVfdteR90-gDpXfUX0eSDx48W7jNi2mreqnkwlgRsEcMkS-kAJAfRw",
         "nonce_b64": "",
         "aad_b64": "",
         "alg": "AES-256-GCM"
@@ -41,7 +41,7 @@
       },
       "Meta": {
         "CreatedAt": "2026-02-18T13:05:16.8008185+00:00",
-        "UpdatedAt": "2026-02-18T14:13:08.4765815+00:00",
+        "UpdatedAt": "2026-02-18T15:15:21.9456364+00:00",
         "LastWriterDeviceId": "tsupasswd_core_windows",
         "BlobSha256Base64": ""
       }

@@ -775,7 +775,17 @@ namespace winrt::PasskeyManager::implementation
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
-        HRESULT hr = PluginCredentialManager::getInstance().DeleteAllPluginCredentials();
+        auto& credentialManager = PluginCredentialManager::getInstance();
+        credentialManager.ReloadCredentialManager();
+        HRESULT hr = S_OK;
+        if (credentialManager.GetCachedCredentialCount() == 0)
+        {
+            hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        }
+        else
+        {
+            hr = credentialManager.DeleteAllPluginCredentials();
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
 
@@ -786,6 +796,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            self->LogWarning(L"No credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            co_return;
+        }
         if (FAILED(hr))
         {
             self->LogFailure(L"Failed to delete credential from system cache", hr);
@@ -823,7 +838,31 @@ namespace winrt::PasskeyManager::implementation
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
-        HRESULT hr = PluginCredentialManager::getInstance().DeletePluginCredentialById(credentialIdList, false);
+        auto& credentialManager = PluginCredentialManager::getInstance();
+        credentialManager.ReloadCredentialManager();
+
+        std::vector<std::vector<UINT8>> cachedCredentialIdList;
+        cachedCredentialIdList.reserve(credentialIdList.size());
+        for (auto const& credentialId : credentialIdList)
+        {
+            if (!credentialId.empty() &&
+                credentialManager.IsPluginCredentialIdAutofillSupported(
+                    static_cast<DWORD>(credentialId.size()),
+                    const_cast<PBYTE>(credentialId.data())))
+            {
+                cachedCredentialIdList.push_back(credentialId);
+            }
+        }
+
+        HRESULT hr = S_OK;
+        if (cachedCredentialIdList.empty())
+        {
+            hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        }
+        else
+        {
+            hr = credentialManager.DeletePluginCredentialById(cachedCredentialIdList, false);
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
 
@@ -834,6 +873,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            self->LogWarning(L"No selected credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            co_return;
+        }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
@@ -872,7 +916,31 @@ namespace winrt::PasskeyManager::implementation
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
-        HRESULT hr = PluginCredentialManager::getInstance().DeletePluginCredentialById(credentialIdList, true);
+        auto& credentialManager = PluginCredentialManager::getInstance();
+        credentialManager.ReloadCredentialManager();
+
+        std::vector<std::vector<UINT8>> cachedCredentialIdList;
+        cachedCredentialIdList.reserve(credentialIdList.size());
+        for (auto const& credentialId : credentialIdList)
+        {
+            if (!credentialId.empty() &&
+                credentialManager.IsPluginCredentialIdAutofillSupported(
+                    static_cast<DWORD>(credentialId.size()),
+                    const_cast<PBYTE>(credentialId.data())))
+            {
+                cachedCredentialIdList.push_back(credentialId);
+            }
+        }
+
+        HRESULT hr = S_OK;
+        if (cachedCredentialIdList.empty())
+        {
+            hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        }
+        else
+        {
+            hr = credentialManager.DeletePluginCredentialById(cachedCredentialIdList, true);
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
 
@@ -883,6 +951,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            self->LogWarning(L"No selected credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            co_return;
+        }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);

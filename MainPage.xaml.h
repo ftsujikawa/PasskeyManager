@@ -87,6 +87,13 @@ namespace winrt::PasskeyManager::implementation
         void LogInProgress(const winrt::hstring& input) {
             UpdatePasskeyOperationStatusText(winrt::hstring{ input + L"\U000023F3"});
         }
+        void LogInfo(const winrt::hstring& input) {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: " + input + L"\U00002139"});
+        }
+        void LogInfo(const winrt::hstring& input, HRESULT hr) {
+            std::wstring result = L"INFO: " + std::wstring(input.c_str()) + L": " + winrt::to_hstring(static_cast<int>(hr)).c_str() + L"\U00002139";
+            UpdatePasskeyOperationStatusText(winrt::hstring{ result });
+        }
         void LogWarning(const winrt::hstring& input, HRESULT hr = S_OK) {
             if (hr == S_OK)
             {
@@ -110,9 +117,11 @@ namespace winrt::PasskeyManager::implementation
         wil::unique_folder_change_reader_nothrow m_googleTokenWatcher;
         std::atomic_bool m_googleOAuthInProgress{ false };
         std::wstring m_lastGoogleConnectedAt{};
+        bool m_suppressVaultLockSwitchToggled = false;
 
         void UpdateGoogleConnectionUiState(bool connected);
         void UpdateVaultUnlockControlText(bool isLocked);
+        void SetVaultLockSwitchState(bool isOn);
     };
 }
 

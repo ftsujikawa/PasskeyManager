@@ -28,6 +28,33 @@ namespace winrt
 namespace winrt::PasskeyManager::implementation
 {
     namespace {
+        void PersistLastMakeCredentialStatus(HRESULT hr) noexcept
+        {
+            wil::unique_hkey hKey;
+            if (RegCreateKeyEx(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                0,
+                nullptr,
+                REG_OPTION_NON_VOLATILE,
+                KEY_WRITE,
+                nullptr,
+                &hKey,
+                nullptr) != ERROR_SUCCESS)
+            {
+                return;
+            }
+
+            const DWORD status = static_cast<DWORD>(hr);
+            (void)RegSetValueEx(
+                hKey.get(),
+                c_windowsPluginLastMakeCredentialStatusRegKeyName,
+                0,
+                REG_DWORD,
+                reinterpret_cast<const BYTE*>(&status),
+                sizeof(status));
+        }
+
         // Helper function to get request signing public key with proper error handling
         std::vector<uint8_t> GetRequestSigningPubKey()
         {
@@ -194,6 +221,7 @@ namespace winrt::PasskeyManager::implementation
     {
         RETURN_HR_IF(E_INVALIDARG, requestBuffer.empty());
         winrt::com_ptr<winrt::PasskeyManager::implementation::App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<winrt::PasskeyManager::implementation::App>();
+        bool vaultLocked = PluginCredentialManager::getInstance().GetVaultLock();
 
         try
         {
@@ -217,21 +245,28 @@ namespace winrt::PasskeyManager::implementation
                 SetEvent(curApp->m_hVaultConsentComplete.get());
             }
 
-            // Wait for user confirmation to proceed with the operation Create/Signin/Cancel button
-            // This is a mock up for plugin requiring UI.
+            if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
             {
-                HANDLE handles[2] = { 
-                    curApp->m_hPluginProceedButtonEvent.get(), 
-                    m_hPluginCancelOperationEvent.get() 
+                // For local Vault passkey creation, do not depend on plugin window button clicks.
+                // Immediate cancel events can otherwise race and end up as ERROR_CANCELLED.
+                SetEvent(curApp->m_hPluginProceedButtonEvent.get());
+            }
+            else
+            {
+                // Wait for user confirmation to proceed with the operation Create/Signin/Cancel button
+                // This is a mock up for plugin requiring UI.
+                HANDLE handles[2] = {
+                    curApp->m_hPluginProceedButtonEvent.get(),
+                    m_hPluginCancelOperationEvent.get()
                 };
                 DWORD cWait = ARRAYSIZE(handles);
                 DWORD hIndex = 0;
 
                 RETURN_IF_FAILED(CoWaitForMultipleHandles(
-                    COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS, 
-                    INFINITE, 
-                    cWait, 
-                    handles, 
+                    COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS,
+                    INFINITE,
+                    cWait,
+                    handles,
                     &hIndex));
 
                 if (hIndex == 1) // Cancel button clicked
@@ -241,8 +276,15 @@ namespace winrt::PasskeyManager::implementation
                 }
             }
 
+            // For local Vault passkey creation, rely on the WebAuthN MakeCredential ceremony itself and
+            // skip the plugin-specific UV prompt to avoid cancellation races and duplicate prompts.
+            if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
+            {
+                return S_OK;
+            }
+
             // Skip user verification if the user has already performed a gesture to unlock the vault to avoid double prompting
-            if (PluginCredentialManager::getInstance().GetVaultLock())
+            if (vaultLocked)
             {
                 return S_OK;
             }
@@ -547,8 +589,18 @@ namespace winrt::PasskeyManager::implementation
             bool expected = false;
             if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
             {
-                return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
+                // Recover once from a potentially stale in-progress flag left by a previous failed flow.
+                curApp->m_isOperationInProgress = false;
+                expected = false;
+                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+                {
+                    PersistLastMakeCredentialStatus(HRESULT_FROM_WIN32(ERROR_BUSY));
+                    return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
+                }
             }
+
+            PersistLastMakeCredentialStatus(S_FALSE);
+
             // Ensure the flag is cleared when the function exits, for any reason.
             auto clearOperationInProgress = wil::scope_exit([&]
             {
@@ -571,7 +623,17 @@ namespace winrt::PasskeyManager::implementation
                 WebAuthNFreeDecodedMakeCredentialRequest(pDecodedMakeCredentialRequest);
             });
 
-            THROW_HR_IF(NTE_NOT_SUPPORTED, wcscmp(pDecodedMakeCredentialRequest->pRpInformation->pwszName, c_pluginRpId) == 0);
+            std::string rpIdFromRequest;
+            if (pDecodedMakeCredentialRequest->pbRpId != nullptr && pDecodedMakeCredentialRequest->cbRpId > 0)
+            {
+                rpIdFromRequest.assign(
+                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId),
+                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId) + pDecodedMakeCredentialRequest->cbRpId);
+            }
+            THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
+
+            std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
+            THROW_HR_IF(NTE_NOT_SUPPORTED, _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) != 0);
             auto rpName = wil::make_cotaskmem_string(pDecodedMakeCredentialRequest->pRpInformation->pwszName);
 
             auto userName = wil::make_cotaskmem_string(pDecodedMakeCredentialRequest->pUserInformation->pwszName);
@@ -722,11 +784,13 @@ namespace winrt::PasskeyManager::implementation
 
             response->cbEncodedResponse = cbAttestationBuffer;
             response->pbEncodedResponse = pbAttestationBuffer.release();
+            PersistLastMakeCredentialStatus(S_OK);
             return S_OK;
         }
         catch (...)
         {
             hr = wil::ResultFromCaughtException();
+            PersistLastMakeCredentialStatus(hr);
             try
             {
                 com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
@@ -1162,14 +1226,16 @@ namespace winrt::PasskeyManager::implementation
             RETURN_HR_IF_NULL(E_INVALIDARG, pCancelRequest);
 
             com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-            RETURN_HR_IF(NTE_NOT_FOUND, curApp->GetPluginTransactionId() != pCancelRequest->transactionId);
-
-            SetEvent(m_hPluginOpCompletedEvent.get());
-
-            RETURN_HR_IF(E_UNEXPECTED, !curApp->GetDispatcherQueue().TryEnqueue([curApp]()
+            if (curApp->GetPluginTransactionId() != pCancelRequest->transactionId)
             {
-                curApp->PluginCancelAction();
-            }));
+                // Cancellation can legitimately arrive after the operation already completed/reset.
+                // Treat this as a no-op success to avoid surfacing a platform error dialog.
+                return S_OK;
+            }
+
+            // Notify the operation thread that cancellation was requested.
+            // HandlePluginOperations will consume this and execute PluginCancelAction in one place.
+            SetEvent(m_hPluginCancelOperationEvent.get());
             return S_OK;
         }
         catch (...)

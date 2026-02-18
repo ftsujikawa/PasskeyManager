@@ -119,6 +119,7 @@ void App::ResetPluginOperationState()
     }
     // Reset operation status
     m_pluginOperationStatus = PluginOperationStatus{};
+    m_isOperationInProgress = false;
 
     CloseOrHideWindow();
 }
@@ -259,11 +260,12 @@ void App::HandlePluginOperations()
 
         if (hIndex == 2) // user canceled before window could be setup
         {
-            break;
-        }
-        else if (hIndex == 1) // Plugin operation completed without parsing display information. No UI to be displayed.
-        {
             PluginCancelAction();
+            continue; // keep handling subsequent operations
+        }
+        else if (hIndex == 1) // Plugin operation completed before display info was parsed. No UI to be displayed.
+        {
+            ResetPluginOperationState();
             continue; // Continue to next operation
         }
         else if (m_pluginOperationOptions.silentMode)
@@ -277,7 +279,9 @@ void App::HandlePluginOperations()
         else
         {
             LOG_IF_FAILED(CoWaitForMultipleHandles(COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS, dwSleepMilliseconds, 1, m_hWindowReady.addressof(), &hIndex));
-            break;
+            LOG_IF_FAILED(CoWaitForMultipleHandles(COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS, dwSleepMilliseconds, 1, m_hPluginOpCompletedEvent.addressof(), &hIndex));
+            ResetPluginOperationState();
+            continue; // keep handling subsequent operations
         }
     }
 }
@@ -318,6 +322,7 @@ bool App::SetPluginPerformOperationOptions(HWND hWnd,
 {
     auto& credMgr = PluginCredentialManager::getInstance();
     credMgr.ReloadRegistryValues();
+    bool vaultLocked = credMgr.GetVaultLock();
     {
         std::lock_guard<std::mutex> lock(m_pluginOperationOptionsMutex);
         m_pluginOperationOptions.hWnd = hWnd;
@@ -325,6 +330,14 @@ bool App::SetPluginPerformOperationOptions(HWND hWnd,
         m_pluginOperationOptions.rpName = rpName;
         m_pluginOperationOptions.userName = userName;
         m_pluginOperationOptions.silentMode = credMgr.GetSilentOperation();
+
+        // Local make-credential for Vault recovery should not show plugin-owned UI.
+        // Keep the operation in silent mode and let the WebAuthN platform prompt drive UX.
+        if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
+        {
+            m_pluginOperationOptions.silentMode = true;
+        }
+
         if (m_pluginOperationOptions.matchingCredentials.size() > 1 || credMgr.GetVaultLock())
         {
             m_pluginOperationOptions.silentMode = false;
@@ -447,12 +460,6 @@ bool App::PluginCancelAction()
     if (m_window)
     {
         m_window.as<MainWindow>()->UpdatePasskeyOperationStatus(NTE_USER_CANCELLED);
-    }
-
-    // If cancel was done externally, we will close this instance to reset
-    if (!m_window.Visible())
-    {
-        m_window.Close();
     }
 
     // Operation completed, continue to next operation

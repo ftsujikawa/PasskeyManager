@@ -66,9 +66,13 @@ namespace winrt::PasskeyManager::implementation
     void MainWindow::OnClosed(IInspectable const&, winrt::Microsoft::UI::Xaml::WindowEventArgs const&)
     {
         auto curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-        // call PluginCancelAction if this is a plugin operation window
+        // call PluginCancelAction only when an interactive plugin operation UI is actually active.
         std::wstring argsString{ curApp->m_args };
-        if (argsString.find(L"-PluginActivated") != std::wstring::npos)
+        auto frame = this->Content().try_as<Frame>();
+        bool isPluginOperationPageActive = frame && frame.Content() && frame.Content().try_as<IPluginOperationPage>();
+        if (argsString.find(L"-PluginActivated") != std::wstring::npos &&
+            isPluginOperationPageActive &&
+            curApp->m_isOperationInProgress.load())
         {
             curApp->PluginCancelAction();
         }

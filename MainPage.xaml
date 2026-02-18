@@ -255,6 +255,10 @@
                     Click="refreshButton_Click"
                     Content="Refresh"
                     Style="{StaticResource AccentButtonStyle}" />
+                <Button
+                    x:Name="quickCreateVaultPasskeyButton"
+                    Click="runVaultRecoveryButton_Click"
+                    Content="Create Vault Passkey" />
                 <DropDownButton Content="Add">
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">

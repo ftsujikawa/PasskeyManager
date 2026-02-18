@@ -769,10 +769,18 @@ namespace tsupasswd
             body += L"&client_secret=" + UrlEncode(cfg.Google.ClientSecret);
         }
 
-        std::string resp = HttpPostFormUrlEncoded(kGoogleTokenHost, kGoogleTokenPath, body);
-        OAuthTokenResponse tokens = ParseTokenResponseJson(resp);
-        if (!tokens.Error.empty())
+        std::string resp;
+        OAuthTokenResponse tokens{};
+        for (int attempt = 0; attempt < 2; ++attempt)
         {
+            resp = HttpPostFormUrlEncoded(kGoogleTokenHost, kGoogleTokenPath, body);
+            tokens = ParseTokenResponseJson(resp);
+            if (tokens.Error.empty())
+            {
+                g_lastGoogleOAuthDebugInfo.clear();
+                break;
+            }
+
             std::wstring msg = L"Google OAuth token error: error='" + tokens.Error +
                 L"' description='" + tokens.ErrorDescription + L"'";
             OutputDebugStringW(msg.c_str());
@@ -783,6 +791,19 @@ namespace tsupasswd
             OutputDebugStringW(raw.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo += L" | " + raw;
+
+            if (tokens.Error == L"internal_failure" && attempt == 0)
+            {
+                OutputDebugStringW(L"Google OAuth token endpoint returned internal_failure. Retrying once...\n");
+                Sleep(300);
+                continue;
+            }
+
+            THROW_HR(HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER));
+        }
+
+        if (!tokens.Error.empty())
+        {
             THROW_HR(HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER));
         }
 

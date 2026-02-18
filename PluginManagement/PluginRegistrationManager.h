@@ -5,7 +5,7 @@
 #include <MainPage.xaml.h>
 #include <PluginAuthenticator/PluginAuthenticatorImpl.h>
 
-constexpr wchar_t c_pluginName[] = L"Contoso Passkey Manager";
+constexpr wchar_t c_pluginName[] = L"tsupasswd_core";
 constexpr wchar_t c_pluginRpId[] = L"contoso.com";
 constexpr wchar_t c_rpName[] = L"Contoso";
 constexpr wchar_t c_userName[] = L"ContosoUser";
@@ -31,6 +31,7 @@ constexpr wchar_t c_windowsPluginDBUpdateInd[] = L"PluginDBUpdate";
 constexpr wchar_t c_pluginHMACSecretInput[] = L"HMACSecretInput";
 constexpr wchar_t c_pluginEncryptedVaultData[] = L"EncryptedVaultData";
 constexpr wchar_t c_windowsPluginVaultUnlockMethodRegKeyName[] = L"VaultUnlockMethod";
+constexpr wchar_t c_windowsPluginLastMakeCredentialStatusRegKeyName[] = L"LastMakeCredentialStatus";
 
 namespace winrt::PasskeyManager::implementation
 {

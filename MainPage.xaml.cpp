@@ -17,6 +17,7 @@
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Security.Credentials.UI.h>
 
 namespace winrt {
     using namespace winrt::Microsoft::UI::Xaml;
@@ -338,7 +339,7 @@ namespace winrt::PasskeyManager::implementation
         co_await ui_thread;
         VaultUnlockControl().IsChecked(vaultLocked);
         UpdateVaultUnlockControlText(vaultLocked);
-        vaultLockSwitch().IsOn(vaultUnlockMethod == VaultUnlockMethod::Passkey);
+        SetVaultLockSwitchState(vaultUnlockMethod == VaultUnlockMethod::Passkey);
         silentOperationSwitch().IsOn(silentOperation);
         if (FAILED(hr))
         {
@@ -346,10 +347,13 @@ namespace winrt::PasskeyManager::implementation
             auto resources = Application::Current().Resources();
             auto neutralBrush = resources.Lookup(winrt::box_value(L"SystemFillColorNeutralBrush")).as<winrt::Microsoft::UI::Xaml::Media::SolidColorBrush>();
             pluginStateRun().Foreground(neutralBrush);
+            pluginActivationHintText().Text(L"Plugin is not registered. If it still appears in Windows Settings, close and reopen Settings, then click Refresh.");
+            pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
             registerPluginButton().IsEnabled(true);
             updatePluginButton().IsEnabled(false);
             unregisterPluginButton().IsEnabled(false);
             activatePluginButton().IsEnabled(false);
+            activatePluginButton().Content(box_value(L"Enable"));
         }
         else
         {
@@ -426,7 +430,7 @@ namespace winrt::PasskeyManager::implementation
         Windows::ApplicationModel::DataTransfer::Clipboard::Flush();
         if (oauthDebug.empty())
         {
-            LogWarning(L"OAuth raw debug info is empty. Copied state snapshot only.");
+            LogInfo(L"OAuth raw debug info is empty. Copied state snapshot only.");
             co_return;
         }
         LogSuccess(L"OAuth debug snapshot copied to clipboard.");
@@ -462,30 +466,139 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::runVaultRecoveryButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
+        auto strongThis = get_strong();
         auto weakThis = get_weak();
         runVaultRecoveryButton().IsEnabled(false);
+        quickCreateVaultPasskeyButton().IsEnabled(false);
         LogInProgress(L"Running Vault recovery flow");
+        vaultRecoveryHintText().Text(L"Vault passkey registration in progress. In storage selection, choose tsupasswd_core and complete the prompt.");
+        vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 
         com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
         HWND hwnd = curApp->GetNativeWindowHandle();
 
         co_await winrt::resume_background();
-        HRESULT hrSetMethod = PluginCredentialManager::getInstance().SetVaultUnlockMethod(VaultUnlockMethod::Passkey);
-        HRESULT hrCreatePasskey = SUCCEEDED(hrSetMethod)
-            ? PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd)
-            : hrSetMethod;
+        HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+        AUTHENTICATOR_STATE pluginState = PluginRegistrationManager::getInstance().GetPluginState();
+        bool pluginEnabled = SUCCEEDED(hrState) && pluginState == AuthenticatorState_Enabled;
+        for (int attempt = 0; attempt < 5 && !pluginEnabled; ++attempt)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+            pluginState = PluginRegistrationManager::getInstance().GetPluginState();
+            pluginEnabled = SUCCEEDED(hrState) && pluginState == AuthenticatorState_Enabled;
+        }
+        HRESULT hrSetMethod = pluginEnabled
+            ? PluginCredentialManager::getInstance().SetVaultUnlockMethod(VaultUnlockMethod::Passkey)
+            : HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        HRESULT hrSetSilent = pluginEnabled
+            ? PluginCredentialManager::getInstance().SetSilentOperation(false)
+            : HRESULT_FROM_WIN32(ERROR_NOT_READY);
 
         co_await wil::resume_foreground(DispatcherQueue());
+        if (!pluginEnabled)
+        {
+            if (auto self{ weakThis.get() })
+            {
+                std::wstring stateText = L"Unknown";
+                if (SUCCEEDED(hrState))
+                {
+                    if (pluginState == AuthenticatorState_Enabled)
+                    {
+                        stateText = L"Enabled";
+                    }
+                    else if (pluginState == AuthenticatorState_Disabled)
+                    {
+                        stateText = L"Disabled";
+                    }
+                }
+
+                self->runVaultRecoveryButton().IsEnabled(true);
+                self->quickCreateVaultPasskeyButton().IsEnabled(true);
+                self->SetVaultLockSwitchState(false);
+                self->vaultRecoveryHintText().Text(L"Plugin is not enabled. Click 'Enable in Settings', then run Create Vault Passkey again.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                self->LogWarning(winrt::hstring{ L"Plugin is not Enabled. Current plugin state=" + stateText + L". Opening Settings now..." });
+
+                auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
+                bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
+                if (launched)
+                {
+                    self->LogSuccess(L"Windows Settings opened. Enable the plugin, return to the app, then retry Create Vault Passkey.");
+                }
+                else
+                {
+                    self->LogWarning(L"Failed to open Windows Settings. Open Settings > Accounts > Passkeys > Advanced options and enable this plugin.");
+                }
+            }
+            co_return;
+        }
+
         if (auto self{ weakThis.get() })
         {
-            self->vaultLockSwitch().IsOn(true);
+            self->LogInfo(L"Vault recovery precheck passed. Starting Create Vault Passkey...");
+        }
+
+        // Let the log/hint text render before WebAuthN dialog appears.
+        co_await winrt::resume_after(std::chrono::milliseconds(150));
+
+        if (IsIconic(hwnd))
+        {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+        ShowWindow(hwnd, SW_SHOW);
+        SetForegroundWindow(hwnd);
+        SetActiveWindow(hwnd);
+
+        HRESULT hrCreatePasskey = hrSetMethod;
+        if (SUCCEEDED(hrSetMethod))
+        {
+            co_await winrt::resume_background();
+            hrCreatePasskey = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd);
+            co_await wil::resume_foreground(DispatcherQueue());
+        }
+        if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+        {
+            if (auto self{ weakThis.get() })
+            {
+                self->LogInfo(L"Create Vault Passkey was cancelled. Skipping immediate retry to avoid plugin busy race.", hrCreatePasskey);
+            }
+        }
+        if (auto self{ weakThis.get() })
+        {
+            self->SetVaultLockSwitchState(true);
             self->runVaultRecoveryButton().IsEnabled(true);
+            self->quickCreateVaultPasskeyButton().IsEnabled(true);
 
             if (FAILED(hrSetMethod))
             {
-                self->vaultLockSwitch().IsOn(false);
+                self->SetVaultLockSwitchState(false);
+                self->vaultRecoveryHintText().Text(L"Failed to switch Vault Unlock method to Passkey. Retry after Refresh.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
                 self->LogFailure(L"Failed to set Vault Unlock Method to Passkey", hrSetMethod);
                 co_return;
+            }
+
+            if (FAILED(hrSetSilent))
+            {
+                self->LogWarning(L"Failed to force plugin UI visibility (silent mode off). Passkey prompt may be cancelled unexpectedly.", hrSetSilent);
+            }
+
+            self->LogInfo(L"Create Vault Passkey returned", hrCreatePasskey);
+            if (FAILED(hrCreatePasskey))
+            {
+                HRESULT pluginPerformStatus = S_OK;
+                HRESULT pluginUvStatus = S_OK;
+                HRESULT pluginRequestSignStatus = S_OK;
+                {
+                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                    pluginPerformStatus = curApp->m_pluginOperationStatus.performOperationStatus;
+                    pluginUvStatus = curApp->m_pluginOperationStatus.uvSignatureVerificationStatus;
+                    pluginRequestSignStatus = curApp->m_pluginOperationStatus.requestSignatureVerificationStatus;
+                }
+                self->LogInfo(L"Plugin performOperationStatus", pluginPerformStatus);
+                self->LogInfo(L"Plugin uvSignatureVerificationStatus", pluginUvStatus);
+                self->LogInfo(L"Plugin requestSignatureVerificationStatus", pluginRequestSignStatus);
             }
 
             if (SUCCEEDED(hrCreatePasskey))
@@ -506,13 +619,26 @@ namespace winrt::PasskeyManager::implementation
                 co_return;
             }
 
-            self->vaultLockSwitch().IsOn(false);
+            if (hrCreatePasskey == NTE_NOT_SUPPORTED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED))
+            {
+                self->SetVaultLockSwitchState(false);
+                self->vaultRecoveryHintText().Text(L"Passkey registration is not supported by the selected authenticator. Try selecting tsupasswd_core and retry.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                self->LogWarning(L"Selected authenticator does not support required PRF/HMAC extension. Select tsupasswd_core and retry Create Vault Passkey.");
+                co_return;
+            }
+
+            self->SetVaultLockSwitchState(false);
             if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
             {
-                self->LogWarning(L"Vault recovery was cancelled", hrCreatePasskey);
+                self->vaultRecoveryHintText().Text(L"Passkey registration was cancelled (0x800704C7). In storage selection choose tsupasswd_core and complete the prompt.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                self->LogInfo(L"Vault recovery cancelled. If 'Something went wrong' appeared, select tsupasswd_core in storage selection and retry.", hrCreatePasskey);
             }
             else
             {
+                self->vaultRecoveryHintText().Text(L"Vault passkey registration failed. Check the latest FAILED/INFO log line for the HRESULT and retry.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
                 self->LogFailure(L"Vault recovery failed during passkey registration", hrCreatePasskey);
             }
         }
@@ -543,6 +669,11 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::vaultLockSwitch_Toggled(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        if (m_suppressVaultLockSwitchToggled)
+        {
+            co_return;
+        }
+
         auto toggleSwitch = sender.as<Microsoft::UI::Xaml::Controls::ToggleSwitch>();
         bool toggleSwitchState = toggleSwitch.IsOn();
 
@@ -553,12 +684,17 @@ namespace winrt::PasskeyManager::implementation
         co_await winrt::resume_background();
         auto unlockMethod = toggleSwitchState ? VaultUnlockMethod::Passkey : VaultUnlockMethod::Consent;
         auto hr = PluginCredentialManager::getInstance().SetVaultUnlockMethod(unlockMethod);
+        HRESULT hrSetSilent = S_OK;
+        if (unlockMethod == VaultUnlockMethod::Passkey)
+        {
+            hrSetSilent = PluginCredentialManager::getInstance().SetSilentOperation(false);
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
         auto self = weakThis.get();
         if (FAILED(hr))
         {
-            toggleSwitch.IsOn(!toggleSwitchState);
+            SetVaultLockSwitchState(!toggleSwitchState);
             if (self)
             {
                 self->LogFailure(L"Failed to change 'Vault Unlock Control'", hr);
@@ -567,15 +703,38 @@ namespace winrt::PasskeyManager::implementation
         else if (self)
         {
             self->LogSuccess(L"Changed 'Vault Unlock Control Method'");
+            if (unlockMethod == VaultUnlockMethod::Passkey && FAILED(hrSetSilent))
+            {
+                self->LogWarning(L"Failed to force plugin UI visibility (silent mode off). Passkey prompt may be cancelled unexpectedly.", hrSetSilent);
+            }
         }
 
         if (unlockMethod == VaultUnlockMethod::Passkey)
         {
-            weakThis = get_weak();
-            co_await winrt::resume_background();
-            hr = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd);
+            if (self)
+            {
+                self->LogInfo(L"Starting Create Vault Passkey from unlock method toggle...");
+            }
+            // Let the log render before WebAuthN blocks the UI thread.
+            co_await winrt::resume_after(std::chrono::milliseconds(50));
 
-            co_await wil::resume_foreground(DispatcherQueue());
+            if (IsIconic(hwnd))
+            {
+                ShowWindow(hwnd, SW_RESTORE);
+            }
+            ShowWindow(hwnd, SW_SHOW);
+            SetForegroundWindow(hwnd);
+            SetActiveWindow(hwnd);
+
+            hr = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd);
+            if (hr == NTE_USER_CANCELLED || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+            {
+                if (self)
+                {
+                    self->LogInfo(L"Create Vault Passkey was cancelled. Skipping immediate retry to avoid plugin busy race.", hr);
+                }
+            }
+
             self = weakThis.get();
             if (SUCCEEDED(hr) || hr == NTE_EXISTS)
             {
@@ -593,12 +752,12 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                toggleSwitch.IsOn(false);
+                SetVaultLockSwitchState(false);
                 if (self)
                 {
                     if (hr == NTE_USER_CANCELLED || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
                     {
-                        self->LogWarning(L"Passkey registration cancelled", hr);
+                        self->LogInfo(L"Passkey registration cancelled. Select tsupasswd_core in storage selection and retry.", hr);
                     }
                     else
                     {
@@ -991,7 +1150,7 @@ namespace winrt::PasskeyManager::implementation
             if (auto self = weakThis.get())
             {
                 self->UpdateCredentialList();
-                self->LogWarning(L"No local credentials to sync yet. Create or import a passkey first, then retry Add All.");
+                self->LogWarning(L"No local credentials to sync yet. Click 'Create Vault Passkey' (or import passkeys), then retry Add All.");
             }
             co_return;
         }
@@ -1342,6 +1501,17 @@ namespace winrt::PasskeyManager::implementation
         {
             VaultUnlockControl().Content(box_value(L"Vault Unlocked"));
         }
+    }
+
+    void MainPage::SetVaultLockSwitchState(bool isOn)
+    {
+        auto resetGuard = wil::scope_exit([this]()
+        {
+            m_suppressVaultLockSwitchToggled = false;
+        });
+
+        m_suppressVaultLockSwitchToggled = true;
+        vaultLockSwitch().IsOn(isOn);
     }
 
     winrt::IAsyncAction MainPage::VaultUnlockControl_IsCheckedChanged(winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButton const& sender, winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButtonIsCheckedChangedEventArgs const& args)

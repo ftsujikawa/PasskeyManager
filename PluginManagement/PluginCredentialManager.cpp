@@ -783,11 +783,7 @@ namespace winrt::PasskeyManager::implementation
 
         PluginRegistrationManager::getInstance().ReloadRegistryValues();
         std::vector<BYTE> hmacSecretValue = PluginRegistrationManager::getInstance().GetHMACSecret();
-        if (hmacSecretValue.empty())
-        {
-            LogVaultUnlockWarning(L"Vault unlock secret is missing. Recovery: run Vault recovery to re-create Vault Unlock passkey.");
-            return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-        }
+        bool usePrf = !hmacSecretValue.empty();
 
         WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
         hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(hmacSecretValue.size());
@@ -801,7 +797,7 @@ namespace winrt::PasskeyManager::implementation
         webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
         webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
         webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
-        webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
+        webAuthNGetAssertionOptions.pHmacSecretSaltValues = usePrf ? &hmacSecretSaltValues : nullptr;
 
         unique_webauthn_assertion pAssertion = nullptr;
         RETURN_IF_FAILED(WebAuthNAuthenticatorGetAssertion(
@@ -811,16 +807,20 @@ namespace winrt::PasskeyManager::implementation
             &webAuthNGetAssertionOptions,
             &pAssertion));
 
-        if (pAssertion.get()->pHmacSecret == nullptr)
+        if (usePrf && pAssertion.get()->pHmacSecret == nullptr)
         {
             LogVaultUnlockWarning(L"Selected authenticator does not provide PRF/HMAC secret. Recovery: use a PRF-capable passkey authenticator.");
             return NTE_NOT_SUPPORTED; // The chosen authenticator does not support PRF.
         }
 
-        DATA_BLOB entropy = {
-            .cbData = pAssertion.get()->pHmacSecret->cbFirst,
-            .pbData = pAssertion.get()->pHmacSecret->pbFirst
-        };
+        DATA_BLOB entropy = {};
+        DATA_BLOB* pEntropy = nullptr;
+        if (usePrf)
+        {
+            entropy.cbData = pAssertion.get()->pHmacSecret->cbFirst;
+            entropy.pbData = pAssertion.get()->pHmacSecret->pbFirst;
+            pEntropy = &entropy;
+        }
 
         std::vector<uint8_t> cipherText;
         HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText);
@@ -839,7 +839,7 @@ namespace winrt::PasskeyManager::implementation
         if (!CryptUnprotectData(
             &cipherTextBlob,
             nullptr,
-            &entropy,
+            pEntropy,
             nullptr,
             nullptr,
             CRYPTPROTECT_UI_FORBIDDEN,

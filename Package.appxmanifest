@@ -11,7 +11,7 @@
   <Identity
     Name="Contoso.tsupasswdcore"
     Publisher="CN=Contoso Software, O=Contoso Corporation, C=US"
-    Version="1.0.33.0" />
+    Version="1.0.47.0" />
 
   <Properties>
     <DisplayName>tsupasswd_core</DisplayName>
@@ -28,7 +28,7 @@
 
   <Applications>
     <Application Id="tsupasswdcore"
-      Executable="$targetnametoken$.exe"
+      Executable="tsupasswd_core.exe"
       EntryPoint="$targetentrypoint$">
         <uap:VisualElements
             DisplayName="tsupasswd_core"
@@ -42,7 +42,7 @@
         <Extensions>
           <com:Extension Category="windows.comServer">
             <com:ComServer>
-              <com:ExeServer Executable="tsupasswd-core.exe" Arguments="-PluginActivated" DisplayName="tsupasswd_core">
+              <com:ExeServer Executable="tsupasswd_core.exe" Arguments="-PluginActivated" DisplayName="tsupasswd_core">
                 <com:Class Id="7fa07696-e94e-4a72-b8fd-6890c5897a35" DisplayName="tsupasswd-core"/>
               </com:ExeServer>
             </com:ComServer>

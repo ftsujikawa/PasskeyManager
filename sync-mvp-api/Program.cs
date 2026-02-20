@@ -11,7 +11,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
-var requiredToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DEV_BEARER_TOKEN") ?? "dev-token";
+var requiredToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_BEARER_TOKEN")
+    ?? Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DEV_BEARER_TOKEN")
+    ?? "dev-token";
 var storePath = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_STORE_PATH")
     ?? Path.Combine(AppContext.BaseDirectory, "vault-store.json");
 

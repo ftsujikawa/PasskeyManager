@@ -25,8 +25,12 @@
     <ClCompile Include="PluginAuthenticator\PluginAuthenticatorImpl.cpp" />
     <ClCompile Include="PluginManagement\PluginCredentialManager.cpp" />
     <ClCompile Include="Converter\BitwiseFlagToVisibilityConverter.cpp" />
-    <ClCompile Include="src\Config.cpp" />
-    <ClCompile Include="src\SyncClient.cpp" />
+    <ClCompile Include="src\Config.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SyncClient.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -37,9 +41,15 @@
     <ClInclude Include="PluginManagement\PluginCredentialManager.h" />
     <ClInclude Include="Converter\BitwiseFlagToVisibilityConverter.h" />
     <ClInclude Include="helpers\buffer_read_write.h" />
-    <ClInclude Include="src\Config.h" />
-    <ClInclude Include="src\DiagnosticsConfig.h" />
-    <ClInclude Include="src\SyncClient.h" />
+    <ClInclude Include="src\Config.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DiagnosticsConfig.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SyncClient.h">
+      <Filter>src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\SplashScreen.scale-100.png" />
@@ -351,6 +361,18 @@
     <Filter Include="Assets">
       <UniqueIdentifier>{4fcf5980-c8b1-4e00-93d9-f79c7b718387}</UniqueIdentifier>
     </Filter>
+    <Filter Include="docs">
+      <UniqueIdentifier>{1CFF31B3-6B15-428D-B048-0C5E9C40E7A0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="publish">
+      <UniqueIdentifier>{5F7984E2-3C40-4BC3-9E56-45A21B4E62D2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sync-mvp-api">
+      <UniqueIdentifier>{C52E1287-3A49-46AA-B783-A18E2D4D6746}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{66BD6107-0812-4014-A3C2-1ED357A03E58}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -362,6 +384,51 @@
     <None Include="packages.config" />
     <None Include="Assets\Square192x192Logo.svg" />
     <None Include="Assets\PasskeyManager.svg" />
+    <None Include="docs\google_oauth_state_test.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\google_oauth_state_test_dev.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\google_oauth_state_test_qa.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\plugin_state_transition_test.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\release_notes_google_oauth.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.deps.json">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.dll">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.exe">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.pdb">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.runtimeconfig.json">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\SyncMvpApi.staticwebassets.endpoints.json">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="publish\web.config">
+      <Filter>publish</Filter>
+    </None>
+    <None Include="sync-mvp-api\Program.cs">
+      <Filter>sync-mvp-api</Filter>
+    </None>
+    <None Include="sync-mvp-api\README.md">
+      <Filter>sync-mvp-api</Filter>
+    </None>
+    <None Include="sync-mvp-api\SyncMvpApi.csproj">
+      <Filter>sync-mvp-api</Filter>
+    </None>
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
     <None Include="happyfactory.pfx" />
   </ItemGroup>

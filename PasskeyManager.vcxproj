@@ -305,8 +305,23 @@
     <None Include="Assets\Square192x192Logo.svg">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
     </None>
+    <None Include="docs\google_oauth_state_test.md" />
+    <None Include="docs\google_oauth_state_test_dev.md" />
+    <None Include="docs\google_oauth_state_test_qa.md" />
+    <None Include="docs\plugin_state_transition_test.md" />
+    <None Include="docs\release_notes_google_oauth.md" />
     <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
+    <None Include="publish\SyncMvpApi.deps.json" />
+    <None Include="publish\SyncMvpApi.dll" />
+    <None Include="publish\SyncMvpApi.exe" />
+    <None Include="publish\SyncMvpApi.pdb" />
+    <None Include="publish\SyncMvpApi.runtimeconfig.json" />
+    <None Include="publish\SyncMvpApi.staticwebassets.endpoints.json" />
+    <None Include="publish\web.config" />
+    <None Include="sync-mvp-api\Program.cs" />
+    <None Include="sync-mvp-api\README.md" />
+    <None Include="sync-mvp-api\SyncMvpApi.csproj" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>

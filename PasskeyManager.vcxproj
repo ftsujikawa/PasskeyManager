@@ -305,9 +305,6 @@
     <None Include="Assets\Square192x192Logo.svg">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
     </None>
-    <None Include="docs\google_oauth_state_test.md" />
-    <None Include="docs\google_oauth_state_test_dev.md" />
-    <None Include="docs\google_oauth_state_test_qa.md" />
     <None Include="docs\plugin_state_transition_test.md" />
     <None Include="docs\release_notes_google_oauth.md" />
     <None Include="docs\sync_mvp_api_issue_templates.md" />

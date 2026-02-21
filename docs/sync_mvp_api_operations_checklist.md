@@ -23,6 +23,20 @@ curl -sS http://127.0.0.1:8088/healthz
 
 期待値:
 - `{"ok":true,...}` が返る
+- `db_path` が期待する SQLite ファイルを指す
+
+### 2.1 JSON -> DB 初回移行の確認
+
+前提: `.env` に `TSUPASSWD_SYNC_DB_PATH` と `TSUPASSWD_SYNC_STORE_PATH` を設定済み。
+
+```bash
+sudo systemctl restart sync-mvp-api
+curl -sS http://127.0.0.1:8088/healthz
+```
+
+確認ポイント:
+- `db_path` が想定パスである
+- その後の 403/200/409 スモーク（本チェックリストの「3」）が成功する
 
 ## 3. API スモークテスト（403 / 200 / 409）
 

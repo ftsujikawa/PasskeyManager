@@ -144,7 +144,9 @@ sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault
 
 期待値（例）:
 - `method` に `GET` / `PUT` が出る
+- `path` が `/v1/vaults/{userId}` 系で出る
 - `result_code` に `200` / `403` / `409`（必要に応じて `401` / `404`）が出る
+- `request_id` が出る（同一リクエスト追跡に利用）
 - `user_id` / `remote_addr` が出る
 - vault 本文（`ciphertext_b64` 等）が出力されない
 

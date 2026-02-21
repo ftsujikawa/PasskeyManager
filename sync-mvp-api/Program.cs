@@ -369,10 +369,12 @@ static IResult? Authorize(HttpContext http, string requiredToken, ILogger logger
 static void AuditVaultOperation(ILogger logger, HttpContext http, string userId, int resultCode, string outcome, long? serverVersion)
 {
     logger.LogInformation(
-        "audit.vault_op ts={Timestamp} user_id={UserId} method={Method} result_code={ResultCode} remote_addr={RemoteAddr} outcome={Outcome} server_version={ServerVersion}",
+        "audit.vault_op ts={Timestamp} request_id={RequestId} user_id={UserId} method={Method} path={Path} result_code={ResultCode} remote_addr={RemoteAddr} outcome={Outcome} server_version={ServerVersion}",
         DateTimeOffset.UtcNow.ToString("O"),
+        http.TraceIdentifier,
         userId,
         http.Request.Method,
+        http.Request.Path.ToString(),
         resultCode,
         GetRemoteAddress(http),
         outcome,

@@ -199,6 +199,15 @@ sudo ./scripts/deploy_sync_mvp_api_publish.sh /tmp/sync-mvp-api-publish.tar.gz
 - `sync-mvp-api` 再起動
 - `healthz` 確認
 
+### 3) 監査ログ確認（request_id 追跡）
+
+監査ログは `audit.vault_op` プレフィックスで出力され、`request_id` と `path` を含みます。
+
+```bash
+sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault_op"
+sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault_op" | grep "request_id="
+```
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

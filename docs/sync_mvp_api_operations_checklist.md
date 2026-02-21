@@ -117,6 +117,79 @@ sudo certbot certificates
 - `nginx -t` が成功
 - 証明書期限が十分残っている
 
+### 5.1 TLS 設定を厳格化する（初回または設定変更時）
+
+`/etc/nginx/sites-available/tsupasswd.com`（実運用の server ブロック）で、少なくとも以下を満たす:
+
+- `ssl_protocols TLSv1.2 TLSv1.3;`
+- 弱い暗号/古いプロトコルを許可しない
+- `server_tokens off;`
+
+反映コマンド:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 5.2 セキュリティヘッダを有効化する
+
+同じ server ブロックで、以下ヘッダを有効化する（`always` 推奨）:
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+```
+
+反映後の確認:
+
+```bash
+curl -I https://tsupasswd.com/healthz
+```
+
+期待値:
+- `Strict-Transport-Security` が含まれる
+- `X-Content-Type-Options: nosniff` が含まれる
+- `X-Frame-Options: DENY` が含まれる
+- `Referrer-Policy` が含まれる
+
+### 5.3 既存 API フロー退行確認
+
+ヘッダ/TLS 変更後に、必ず 403/200/409 スモークテスト（本チェックリストの「3」）を再実施する。
+
+### 5.4 nginx `server` ブロック最小サンプル
+
+`/etc/nginx/sites-available/tsupasswd.com` の例（環境に応じて `server_name` と証明書パスを調整）:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name tsupasswd.com;
+
+    ssl_certificate /etc/letsencrypt/live/tsupasswd.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tsupasswd.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    server_tokens off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
 ## 6. 障害時の初動
 
 ```bash

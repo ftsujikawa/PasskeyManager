@@ -59,6 +59,16 @@ $env:TSUPASSWD_SYNC_USER_ID = "ContosoUserId"
 Invoke-RestMethod -Uri "http://127.0.0.1:8088/healthz"
 ```
 
+`/healthz` は以下の運用向けフィールドを返します（機密値は返しません）。
+
+- `ok` / `db_reachable`（DB疎通の成否）
+- `vault_count`（保存済みvault件数）
+- `db_path` / `legacy_json_store_path`
+- `rate_limit_per_minute` / `rate_limit_queue_limit`
+- `token_source`（どの環境変数を採用したか。トークン値そのものは非表示）
+
+DB疎通に失敗した場合は、`ok=false` かつ HTTP `503` を返します。
+
 ### 初回 GET（404 expected）
 ```powershell
 $h = @{ Authorization = "Bearer dev-token" }

@@ -43,9 +43,16 @@ var logger = app.Logger;
 
 app.UseRateLimiter();
 
-var requiredToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_BEARER_TOKEN")
-    ?? Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DEV_BEARER_TOKEN")
+var configuredBearerToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_BEARER_TOKEN");
+var configuredDevToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DEV_BEARER_TOKEN");
+var requiredToken = configuredBearerToken
+    ?? configuredDevToken
     ?? "dev-token";
+var tokenSource = !string.IsNullOrWhiteSpace(configuredBearerToken)
+    ? "TSUPASSWD_SYNC_BEARER_TOKEN"
+    : !string.IsNullOrWhiteSpace(configuredDevToken)
+        ? "TSUPASSWD_SYNC_DEV_BEARER_TOKEN"
+        : "default(dev-token)";
 var dbPath = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DB_PATH")
     ?? Path.Combine(AppContext.BaseDirectory, "vault-store.db");
 var legacyJsonStorePath = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_STORE_PATH")
@@ -54,13 +61,27 @@ var legacyJsonStorePath = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_STO
 EnsureDbSchema(dbPath);
 TryMigrateJsonStoreToDb(legacyJsonStorePath, dbPath);
 
-app.MapGet("/healthz", () => Results.Ok(new
+app.MapGet("/healthz", () =>
 {
-    ok = true,
-    service = "sync-mvp-api",
-    db_path = dbPath,
-    legacy_json_store_path = legacyJsonStorePath
-}));
+    var dbReachable = TryGetDbHealth(dbPath, out var vaultCount, out var dbError);
+    var payload = new
+    {
+        ok = dbReachable,
+        service = "sync-mvp-api",
+        db_path = dbPath,
+        legacy_json_store_path = legacyJsonStorePath,
+        db_reachable = dbReachable,
+        vault_count = dbReachable ? vaultCount : (long?)null,
+        db_error = dbReachable ? null : dbError,
+        rate_limit_per_minute = rateLimitPerMinute,
+        rate_limit_queue_limit = rateLimitQueueLimit,
+        token_source = tokenSource
+    };
+
+    return dbReachable
+        ? Results.Ok(payload)
+        : Results.Json(payload, statusCode: StatusCodes.Status503ServiceUnavailable);
+});
 
 app.MapGet("/v1/vaults/{userId}", (HttpContext http, string userId) =>
 {
@@ -289,6 +310,22 @@ static long GetVaultCount(string dbPath)
     using var command = connection.CreateCommand();
     command.CommandText = "SELECT COUNT(*) FROM vaults;";
     return Convert.ToInt64(command.ExecuteScalar());
+}
+
+static bool TryGetDbHealth(string dbPath, out long vaultCount, out string? dbError)
+{
+    try
+    {
+        vaultCount = GetVaultCount(dbPath);
+        dbError = null;
+        return true;
+    }
+    catch (Exception ex)
+    {
+        vaultCount = 0;
+        dbError = ex.GetType().Name;
+        return false;
+    }
 }
 
 static SqliteConnection CreateConnection(string dbPath)

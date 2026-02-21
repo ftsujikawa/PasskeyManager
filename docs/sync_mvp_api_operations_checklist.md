@@ -24,6 +24,14 @@ curl -sS http://127.0.0.1:8088/healthz
 期待値:
 - `{"ok":true,...}` が返る
 - `db_path` が期待する SQLite ファイルを指す
+- `db_reachable=true` が返る
+- `vault_count` が数値で返る
+- `token_source` が返る（トークン値そのものは返らない）
+
+異常系（DB未到達）の期待値:
+- HTTP `503`
+- `ok=false`
+- `db_error` にエラー種別が入る
 
 ### 2.1 JSON -> DB 初回移行の確認
 

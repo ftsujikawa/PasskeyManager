@@ -26,6 +26,20 @@ curl -sS http://127.0.0.1:8088/healthz
 
 ## 3. API スモークテスト（403 / 200 / 409）
 
+### シェル再接続時の事前手順（401 防止）
+
+```bash
+set -a
+source /opt/sync-mvp-api/.env
+set +a
+TOKEN="${TSUPASSWD_SYNC_BEARER_TOKEN:-$TSUPASSWD_SYNC_DEV_BEARER_TOKEN}"
+echo "TOKEN_LEN=${#TOKEN}"
+```
+
+確認ポイント:
+- `TOKEN_LEN` が `0` でないこと
+- `TOKEN` が空の場合は以降の API 呼び出しを実行しないこと
+
 ```bash
 TOKEN="<TSUPASSWD_SYNC_BEARER_TOKEN>"
 BASE="https://tsupasswd.com"

@@ -91,6 +91,40 @@ sudo journalctl -u sync-mvp-api -f
 - 連続クラッシュがない
 - 5xx 相当のエラーが急増していない
 
+### 4.1 監査ログ（vault 操作）確認
+
+監査ログは `audit.vault_op` プレフィックスで出力される。主な確認コマンド:
+
+```bash
+sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault_op"
+```
+
+期待値（例）:
+- `method` に `GET` / `PUT` が出る
+- `result_code` に `200` / `403` / `409`（必要に応じて `401` / `404`）が出る
+- `user_id` / `remote_addr` が出る
+- vault 本文（`ciphertext_b64` 等）が出力されない
+
+### 4.2 ログ保管期間・ローテーション方針
+
+- 保管期間: `journalctl` を 30 日保持（または運用要件に合わせて延長）
+- ローテーション: systemd-journald のサイズ上限を設定し、ディスク逼迫を防ぐ
+
+設定例（`/etc/systemd/journald.conf`）:
+
+```ini
+[Journal]
+SystemMaxUse=1G
+MaxRetentionSec=30day
+```
+
+反映:
+
+```bash
+sudo systemctl restart systemd-journald
+sudo journalctl --disk-usage
+```
+
 ## 5. nginx / TLS 確認
 
 ```bash

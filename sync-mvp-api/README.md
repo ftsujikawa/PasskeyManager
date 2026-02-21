@@ -29,6 +29,11 @@ dotnet run
 2. `TSUPASSWD_SYNC_DEV_BEARER_TOKEN`
 3. 未設定時は `dev-token`
 
+レート制限の環境変数:
+
+- `TSUPASSWD_SYNC_RATE_LIMIT_PER_MINUTE`（既定: `60`）
+- `TSUPASSWD_SYNC_RATE_LIMIT_QUEUE_LIMIT`（既定: `0`）
+
 永続化関連の環境変数:
 
 1. `TSUPASSWD_SYNC_DB_PATH`（保存先SQLite DB）
@@ -115,6 +120,25 @@ $conflictBody = @"
 "@
 Invoke-WebRequest -Method Put -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserId" -Headers $h -Body $conflictBody
 ```
+
+### 429（レート制限）
+`TSUPASSWD_SYNC_RATE_LIMIT_PER_MINUTE=2` など低めに設定して起動後、短時間に連続リクエストする。
+
+```powershell
+$h = @{ Authorization = "Bearer dev-token" }
+1..5 | ForEach-Object {
+  try {
+    Invoke-WebRequest -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserId" -Headers $h
+    "[$_] allowed"
+  }
+  catch {
+    "[$_] status=$($_.Exception.Response.StatusCode.value__)"
+  }
+}
+```
+
+期待値:
+- しきい値を超えたリクエストで `429` が返る
 
 ## 備考
 

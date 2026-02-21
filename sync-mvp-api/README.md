@@ -12,7 +12,10 @@ PasskeyManager の `SyncClient` から呼ばれる最小 API です。
 # 1) API 側トークン（未設定なら dev-token）
 $env:TSUPASSWD_SYNC_DEV_BEARER_TOKEN = "dev-token"
 
-# 1.5) 保存ファイル（未設定なら 実行フォルダ\vault-store.json）
+# 1.5) DB保存先（未設定なら 実行フォルダ\vault-store.db）
+$env:TSUPASSWD_SYNC_DB_PATH = "c:\\AppPackages\\PasskeyManager\\sync-mvp-api\\data\\vault-store.db"
+
+# 1.6) 旧JSON保存先（初回移行元。未設定なら 実行フォルダ\vault-store.json）
 $env:TSUPASSWD_SYNC_STORE_PATH = "c:\\AppPackages\\PasskeyManager\\sync-mvp-api\\data\\vault-store.json"
 
 # 2) 起動
@@ -25,6 +28,11 @@ dotnet run
 1. `TSUPASSWD_SYNC_BEARER_TOKEN`
 2. `TSUPASSWD_SYNC_DEV_BEARER_TOKEN`
 3. 未設定時は `dev-token`
+
+永続化関連の環境変数:
+
+1. `TSUPASSWD_SYNC_DB_PATH`（保存先SQLite DB）
+2. `TSUPASSWD_SYNC_STORE_PATH`（旧JSON。DB空時の初回移行元）
 
 起動URL:
 - `http://127.0.0.1:8088`
@@ -110,6 +118,19 @@ Invoke-WebRequest -Method Put -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserI
 
 ## 備考
 
-- このMVPは PUT 後に JSON ファイルへ永続化します（再起動後も復元）。
-- 保存先は `TSUPASSWD_SYNC_STORE_PATH` で変更できます。
+- このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。
+- 保存先は `TSUPASSWD_SYNC_DB_PATH` で変更できます。
+- DB が空で旧JSONファイルが存在する場合、起動時に JSON から DB へ一度だけ移行します。
 - 本番化時は DB 永続化・TLS・監査ログ・レート制限を追加してください。
+
+## JSON -> DB 移行（運用手順）
+
+1. サービス停止
+2. `.env` に `TSUPASSWD_SYNC_DB_PATH` と `TSUPASSWD_SYNC_STORE_PATH` を設定
+3. サービス起動（初回起動で DB が空なら自動移行）
+4. smoke test（403/200/409）で動作確認
+
+```bash
+sudo systemctl restart sync-mvp-api
+curl -sS http://127.0.0.1:8088/healthz
+```

@@ -324,6 +324,7 @@
     <None Include="sync-mvp-api\Program.cs" />
     <None Include="sync-mvp-api\README.md" />
     <None Include="sync-mvp-api\SyncMvpApi.csproj" />
+    <None Include="sync-mvp-api\SyncMvpApi.sln" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>

@@ -437,6 +437,9 @@
     </None>
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
     <None Include="happyfactory.pfx" />
+    <None Include="sync-mvp-api\SyncMvpApi.sln">
+      <Filter>sync-mvp-api</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="PasskeyManager.rc" />

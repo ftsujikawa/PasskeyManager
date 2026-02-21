@@ -384,15 +384,6 @@
     <None Include="packages.config" />
     <None Include="Assets\Square192x192Logo.svg" />
     <None Include="Assets\PasskeyManager.svg" />
-    <None Include="docs\google_oauth_state_test.md">
-      <Filter>docs</Filter>
-    </None>
-    <None Include="docs\google_oauth_state_test_dev.md">
-      <Filter>docs</Filter>
-    </None>
-    <None Include="docs\google_oauth_state_test_qa.md">
-      <Filter>docs</Filter>
-    </None>
     <None Include="docs\plugin_state_transition_test.md">
       <Filter>docs</Filter>
     </None>

@@ -20,6 +20,12 @@ cd c:\AppPackages\PasskeyManager\sync-mvp-api
 dotnet run
 ```
 
+トークン環境変数の優先順位:
+
+1. `TSUPASSWD_SYNC_BEARER_TOKEN`
+2. `TSUPASSWD_SYNC_DEV_BEARER_TOKEN`
+3. 未設定時は `dev-token`
+
 起動URL:
 - `http://127.0.0.1:8088`
 
@@ -78,6 +84,28 @@ Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserI
 ### GET（保存確認）
 ```powershell
 Invoke-RestMethod -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserId" -Headers $h
+```
+
+### 403（トークン不一致）
+```powershell
+$bad = @{ Authorization = "Bearer wrong-token" }
+Invoke-WebRequest -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserId" -Headers $bad
+```
+
+### 409（バージョン競合）
+```powershell
+$h = @{ Authorization = "Bearer dev-token"; "Content-Type" = "application/json" }
+$conflictBody = @"
+{
+  "expected_version": 0,
+  "new_version": 2,
+  "device_id": "dev_win_02",
+  "vault_blob": { "ciphertext_b64": "dGVzdA", "nonce_b64": "", "aad_b64": "", "alg": "AES-256-GCM" },
+  "key_envelope": { "kek_scheme": "passkey+recovery_code_v1", "wrapped_dek_b64": "", "wrap_nonce_b64": "", "kdf_salt_b64": "", "kdf_info": "vault-dek-wrap" },
+  "meta": { "blob_sha256_b64": "" }
+}
+"@
+Invoke-WebRequest -Method Put -Uri "http://127.0.0.1:8088/v1/vaults/ContosoUserId" -Headers $h -Body $conflictBody
 ```
 
 ## 備考

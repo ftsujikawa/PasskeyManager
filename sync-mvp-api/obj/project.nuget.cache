@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "4hN4i4GizJs=",
+  "dgSpecHash": "Qkox/7/EOF4=",
   "success": true,
-  "projectFilePath": "c:\\AppPackages\\PasskeyManager\\sync-mvp-api\\SyncMvpApi.csproj",
+  "projectFilePath": "C:\\AppPackages\\PasskeyManager\\sync-mvp-api\\SyncMvpApi.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\f-tsu\\.nuget\\packages\\microsoft.data.sqlite\\8.0.11\\microsoft.data.sqlite.8.0.11.nupkg.sha512",
     "C:\\Users\\f-tsu\\.nuget\\packages\\microsoft.data.sqlite.core\\8.0.11\\microsoft.data.sqlite.core.8.0.11.nupkg.sha512",

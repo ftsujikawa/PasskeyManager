@@ -7,6 +7,9 @@ PUBLISH_DIR="${PUBLISH_DIR:-$APP_ROOT/publish}"
 SERVICE_NAME="${SERVICE_NAME:-sync-mvp-api}"
 APP_USER="${APP_USER:-www-data}"
 APP_GROUP="${APP_GROUP:-www-data}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8088/healthz}"
+HEALTH_RETRY_COUNT="${HEALTH_RETRY_COUNT:-10}"
+HEALTH_RETRY_INTERVAL_SEC="${HEALTH_RETRY_INTERVAL_SEC:-1}"
 
 if [ ! -f "$ARTIFACT_TAR" ]; then
   echo "ERROR: artifact not found: $ARTIFACT_TAR" >&2
@@ -40,8 +43,23 @@ echo "Restart service: $SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 systemctl status "$SERVICE_NAME" --no-pager
 
-echo "Health check"
-curl -sS http://127.0.0.1:8088/healthz
+echo "Health check (retry up to ${HEALTH_RETRY_COUNT} times)"
+attempt=1
+while [ "$attempt" -le "$HEALTH_RETRY_COUNT" ]; do
+  if curl -fsS "$HEALTH_URL"; then
+    echo
+    echo "healthz OK on attempt $attempt"
+    break
+  fi
+
+  if [ "$attempt" -eq "$HEALTH_RETRY_COUNT" ]; then
+    echo "ERROR: healthz failed after $HEALTH_RETRY_COUNT attempts: $HEALTH_URL" >&2
+    exit 1
+  fi
+
+  sleep "$HEALTH_RETRY_INTERVAL_SEC"
+  attempt=$((attempt + 1))
+done
 
 echo
 echo "OK: deploy complete."

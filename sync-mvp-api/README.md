@@ -140,6 +140,55 @@ $h = @{ Authorization = "Bearer dev-token" }
 期待値:
 - しきい値を超えたリクエストで `429` が返る
 
+## 運用自動化スクリプト
+
+### 1) 回帰スモーク自動化（403/200/409/429 + audit）
+
+`scripts/smoke_sync_mvp_api.sh` を VPS 上に配置して実行する。
+
+```bash
+chmod +x scripts/smoke_sync_mvp_api.sh
+sudo ./scripts/smoke_sync_mvp_api.sh
+```
+
+主な環境変数（必要時のみ上書き）:
+
+- `BASE_URL`（既定: `http://127.0.0.1:8088`）
+- `ENV_FILE`（既定: `/opt/sync-mvp-api/.env`）
+- `SERVICE_NAME`（既定: `sync-mvp-api`）
+- `USER_ID`（既定: `SmokeUser<timestamp>`）
+- `BURST_COUNT`（既定: `90`）
+- `EXPECT_429_MIN`（既定: `1`）
+
+例:
+
+```bash
+sudo BASE_URL="https://tsupasswd.com" ENV_FILE="/opt/sync-mvp-api/.env" ./scripts/smoke_sync_mvp_api.sh
+```
+
+### 2) 成果物配置運用向けデプロイ自動化
+
+Windows 側で publish + tar.gz を作る:
+
+```bat
+sync-mvp-api\scripts\package_sync_mvp_api.cmd
+```
+
+作成された `sync-mvp-api-publish.tar.gz` を VPS に転送後、VPS で反映:
+
+```bash
+chmod +x scripts/deploy_sync_mvp_api_publish.sh
+sudo ./scripts/deploy_sync_mvp_api_publish.sh /tmp/sync-mvp-api-publish.tar.gz
+```
+
+`deploy_sync_mvp_api_publish.sh` は以下を自動実行する:
+
+- tar.gz 展開
+- `/opt/sync-mvp-api/publish` へ反映
+- 権限調整（`www-data:www-data`）
+- `sync-mvp-api` 再起動
+- `healthz` 確認
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

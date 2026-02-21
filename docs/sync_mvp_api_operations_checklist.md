@@ -94,6 +94,27 @@ curl -i -X PUT "$BASE/v1/vaults/$USER" \
 - 初回PUT: HTTP 200
 - 競合PUT: HTTP 409 (`server_version` を含む)
 
+### 3.1 スモーク自動実行（推奨）
+
+手動実行の代わりに、以下スクリプトで `403/200/409/429 + audit` を一括検証できる。
+
+```bash
+chmod +x scripts/smoke_sync_mvp_api.sh
+sudo ./scripts/smoke_sync_mvp_api.sh
+```
+
+必要時のみ上書きする主な変数:
+
+- `BASE_URL`（既定: `http://127.0.0.1:8088`）
+- `ENV_FILE`（既定: `/opt/sync-mvp-api/.env`）
+- `SERVICE_NAME`（既定: `sync-mvp-api`）
+- `BURST_COUNT`（既定: `90`）
+
+期待値:
+
+- 終了コード `0`
+- 末尾に `OK: smoke test passed (403/200/409/429 + audit).`
+
 ## 4. ログ監視
 
 ```bash
@@ -237,3 +258,31 @@ curl -i http://127.0.0.1:8088/healthz
 - 直前のデプロイ/設定変更
 - `journalctl` の該当ログ
 - `curl` のレスポンス（HTTPコードと本文）
+
+## 7. 成果物配置運用のデプロイ自動化
+
+本番サーバーが Git clone ではなく `/opt/sync-mvp-api/publish` に成果物配置する構成向け。
+
+### 7.1 Windows 側で成果物を作成
+
+```bat
+sync-mvp-api\scripts\package_sync_mvp_api.cmd
+```
+
+出力物:
+
+- `sync-mvp-api\sync-mvp-api-publish.tar.gz`
+
+### 7.2 VPS で反映
+
+tar.gz を `/tmp/sync-mvp-api-publish.tar.gz` へ転送後、以下を実行:
+
+```bash
+chmod +x scripts/deploy_sync_mvp_api_publish.sh
+sudo ./scripts/deploy_sync_mvp_api_publish.sh /tmp/sync-mvp-api-publish.tar.gz
+```
+
+期待値:
+
+- `systemctl status sync-mvp-api` が `active (running)`
+- `curl -sS http://127.0.0.1:8088/healthz` が `{"ok":true,...}` を返す

@@ -25,8 +25,16 @@ namespace winrt {
 // and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace {
+    constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
+    constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
+    constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
+
     std::wstring DescribeCredentialOperationFailure(HRESULT hr)
     {
+        if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+        {
+            return L"Credential is already present in system cache.";
+        }
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             return L"No credentials are available to sync. Click Refresh, then retry after credentials appear.";
@@ -44,6 +52,141 @@ namespace {
             return L"Invalid credential selection was supplied.";
         }
         return L"Unexpected credential operation failure.";
+    }
+
+    std::wstring TrimCopy(std::wstring value)
+    {
+        auto first = value.find_first_not_of(L" \t\r\n");
+        if (first == std::wstring::npos)
+        {
+            return L"";
+        }
+        auto last = value.find_last_not_of(L" \t\r\n");
+        return value.substr(first, last - first + 1);
+    }
+
+    std::wstring GetProcessEnvironmentValue(wchar_t const* name)
+    {
+        DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
+        if (needed == 0)
+        {
+            return L"";
+        }
+
+        std::wstring value;
+        value.resize(needed);
+        DWORD written = GetEnvironmentVariableW(name, value.data(), needed);
+        if (written == 0)
+        {
+            return L"";
+        }
+
+        value.resize(written);
+        return value;
+    }
+
+    std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
+    {
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        auto keyCleanup = wil::scope_exit([&]() {
+            RegCloseKey(hKey);
+        });
+
+        DWORD type = 0;
+        DWORD sizeBytes = 0;
+        LONG queryResult = RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &sizeBytes);
+        if (queryResult != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) || sizeBytes < sizeof(wchar_t))
+        {
+            return L"";
+        }
+
+        std::wstring value;
+        value.resize(sizeBytes / sizeof(wchar_t));
+        queryResult = RegQueryValueExW(
+            hKey,
+            name,
+            nullptr,
+            &type,
+            reinterpret_cast<LPBYTE>(value.data()),
+            &sizeBytes);
+        if (queryResult != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        while (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    std::wstring ReadSyncSettingValue(wchar_t const* name)
+    {
+        auto processValue = GetProcessEnvironmentValue(name);
+        if (!processValue.empty())
+        {
+            return processValue;
+        }
+
+        return GetUserEnvironmentRegistryValue(name);
+    }
+
+    HRESULT WriteSyncSettingValue(wchar_t const* name, std::wstring const& value)
+    {
+        wil::unique_hkey hKey;
+        RETURN_IF_WIN32_ERROR(RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            L"Environment",
+            0,
+            nullptr,
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            nullptr,
+            &hKey,
+            nullptr));
+
+        if (value.empty())
+        {
+            LONG deleteResult = RegDeleteValueW(hKey.get(), name);
+            if (deleteResult != ERROR_SUCCESS && deleteResult != ERROR_FILE_NOT_FOUND)
+            {
+                RETURN_HR(HRESULT_FROM_WIN32(deleteResult));
+            }
+            RETURN_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(name, nullptr));
+            return S_OK;
+        }
+
+        auto bytes = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
+        RETURN_IF_WIN32_ERROR(RegSetValueExW(
+            hKey.get(),
+            name,
+            0,
+            REG_SZ,
+            reinterpret_cast<BYTE const*>(value.c_str()),
+            bytes));
+
+        RETURN_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(name, value.c_str()));
+        return S_OK;
+    }
+
+    bool IsValidSyncBaseUrl(std::wstring const& baseUrl)
+    {
+        if (baseUrl.empty())
+        {
+            return false;
+        }
+
+        auto lower = winrt::to_string(winrt::hstring(baseUrl));
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0;
     }
 
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
@@ -547,6 +690,64 @@ namespace winrt::PasskeyManager::implementation
     {
         UpdatePluginEnableState();
         UpdateCredentialList();
+        co_await loadSyncSettingsButton_Click(nullptr, nullptr);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::loadSyncSettingsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto baseUrl = ReadSyncSettingValue(kSyncBaseUrlEnv);
+        auto token = ReadSyncSettingValue(kSyncBearerTokenEnv);
+        auto userId = ReadSyncSettingValue(kSyncUserIdEnv);
+
+        syncBaseUrlTextBox().Text(baseUrl);
+        syncBearerTokenBox().Password(token);
+        syncUserIdTextBox().Text(userId);
+
+        syncStatusTextBlock().Text(L"Sync status: Settings loaded");
+        LogInfo(L"Sync settings loaded from process/registry.");
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::saveSyncSettingsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        std::wstring baseUrl = TrimCopy(syncBaseUrlTextBox().Text().c_str());
+        std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
+        std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+
+        if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
+        {
+            syncStatusTextBlock().Text(L"Sync status: Save failed (invalid Base URL)");
+            LogWarning(L"Sync Base URL must start with http:// or https://");
+            co_return;
+        }
+        if (!userId.empty() && userId.find(L' ') != std::wstring::npos)
+        {
+            syncStatusTextBlock().Text(L"Sync status: Save failed (invalid User ID)");
+            LogWarning(L"Sync User ID must not include spaces.");
+            co_return;
+        }
+
+        HRESULT hr = S_OK;
+        hr = WriteSyncSettingValue(kSyncBaseUrlEnv, baseUrl);
+        if (SUCCEEDED(hr))
+        {
+            hr = WriteSyncSettingValue(kSyncBearerTokenEnv, token);
+        }
+        if (SUCCEEDED(hr))
+        {
+            hr = WriteSyncSettingValue(kSyncUserIdEnv, userId);
+        }
+
+        if (FAILED(hr))
+        {
+            syncStatusTextBlock().Text(L"Sync status: Save failed");
+            LogFailure(L"Failed to save sync settings", hr);
+            co_return;
+        }
+
+        syncStatusTextBlock().Text(L"Sync status: Settings saved");
+        LogSuccess(L"Sync settings saved (TSUPASSWD_SYNC_BASE_URL / TOKEN / USER_ID)");
         co_return;
     }
 
@@ -712,6 +913,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+        {
+            self->LogInfo(L"Some credentials were already in system cache. Add All completed with no new items.");
+            co_return;
+        }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
@@ -759,6 +965,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+        {
+            self->LogInfo(L"Selected credentials are already present in system cache.");
+            co_return;
+        }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
@@ -798,7 +1009,7 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogWarning(L"No credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            self->LogInfo(L"No credentials are currently present in system cache.");
             co_return;
         }
         if (FAILED(hr))
@@ -875,7 +1086,7 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogWarning(L"No selected credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            self->LogInfo(L"No selected credentials are currently present in system cache.");
             co_return;
         }
         if (FAILED(hr))
@@ -953,7 +1164,7 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogWarning(L"No selected credentials are currently present in system cache. Click Refresh, then retry after credentials appear.", hr);
+            self->LogInfo(L"No selected credentials are currently present in system cache.");
             co_return;
         }
         if (FAILED(hr))
@@ -1016,6 +1227,11 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdateCredentialList();
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) && resetResult)
+        {
+            self->LogInfo(L"System cache already had no credentials. All local credentials were deleted.");
+            co_return;
+        }
         if (FAILED(hr) || !resetResult)
         {
             HRESULT effectiveHr = FAILED(hr) ? hr : HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);

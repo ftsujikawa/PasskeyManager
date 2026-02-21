@@ -143,6 +143,49 @@ namespace
 
         return encoded;
     }
+
+    std::wstring BuildSyncFailureStatusMessage(HRESULT hrSync, tsupasswd::SyncHttpStatus const& status)
+    {
+        std::wstring detail;
+        switch (status.StatusCode)
+        {
+        case 401:
+            detail = L"Self-hosted sync failed: unauthorized (401). Check Authorization header format and token setting.";
+            break;
+        case 403:
+            detail = L"Self-hosted sync failed: forbidden (403). Verify TSUPASSWD_SYNC_BEARER_TOKEN matches server token.";
+            break;
+        case 409:
+            detail = L"Self-hosted sync failed: version conflict (409). Try sync again after refreshing latest state.";
+            if (status.ServerVersion >= 0)
+            {
+                detail += L" server_version=" + std::to_wstring(status.ServerVersion);
+            }
+            break;
+        case 429:
+            detail = L"Self-hosted sync failed: rate limited (429). Wait about 1 minute, then retry.";
+            break;
+        default:
+            detail = L"Self-hosted sync failed (local save is kept).";
+            if (status.StatusCode > 0)
+            {
+                detail += L" status=" + std::to_wstring(status.StatusCode) + L".";
+            }
+            break;
+        }
+
+        if (!status.ErrorCode.empty())
+        {
+            detail += L" code=" + status.ErrorCode + L".";
+        }
+        if (!status.ErrorMessage.empty())
+        {
+            detail += L" message=" + status.ErrorMessage + L".";
+        }
+
+        detail += L" hr=" + std::to_wstring(static_cast<int>(hrSync));
+        return detail;
+    }
 }
 
 namespace winrt::PasskeyManager::implementation {
@@ -539,10 +582,7 @@ namespace winrt::PasskeyManager::implementation {
                 }
                 else
                 {
-                    std::wstring syncWarning =
-                        L"WARNING: Self-hosted vault sync failed (local save is kept). hr=" +
-                        std::to_wstring(static_cast<int>(hrSync)) +
-                        L", status=" + std::to_wstring(syncStatus.StatusCode);
+                    std::wstring syncWarning = L"WARNING: " + BuildSyncFailureStatusMessage(hrSync, syncStatus);
                     UpdatePasskeyOperationStatusText(winrt::hstring{ syncWarning });
                 }
             }

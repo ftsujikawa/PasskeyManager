@@ -146,66 +146,151 @@
                 Grid.Row="3"
                 Grid.Column="1"
                 Style="{StaticResource CardStyle}">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <StackPanel
-                    Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <ToggleSplitButton
-                        x:Name="VaultUnlockControl"
-                        Content="Vault Unlocked"
-                        IsCheckedChanged="VaultUnlockControl_IsCheckedChanged">
-                        <ToggleSplitButton.Flyout>
-                            <Flyout Placement="Bottom">
-                                <ToggleSwitch
-                                    x:Name="vaultLockSwitch"
-                                    Header="Unlock Method"
-                                    IsOn="False"
-                                    OffContent="Consent"
-                                    OnContent="Passkey"
-                                    Toggled="vaultLockSwitch_Toggled">
-                                    <ToggleSwitch.HeaderTemplate>
-                                        <DataTemplate>
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                Padding="0,0,0,0"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding}" />
-                                        </DataTemplate>
-                                    </ToggleSwitch.HeaderTemplate>
-                                </ToggleSwitch>
-                            </Flyout>
-                        </ToggleSplitButton.Flyout>
-                    </ToggleSplitButton>
-                    <ToggleSwitch
-                        x:Name="silentOperationSwitch"
-                        Header="Minimize UI"
-                        IsOn="False"
-                        OffContent="Show"
-                        OnContent="Hide"
-                        Toggled="silentOperationSwitch_Toggled">
-                        <ToggleSwitch.HeaderTemplate>
-                            <DataTemplate>
-                                <TextBlock
-                                    Margin="0,0,0,0"
-                                    Padding="0,0,0,0"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding}" />
-                            </DataTemplate>
-                        </ToggleSwitch.HeaderTemplate>
-                    </ToggleSwitch>
+                    <StackPanel
+                        Grid.Row="0"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <ToggleSplitButton
+                            x:Name="VaultUnlockControl"
+                            Content="Vault Unlocked"
+                            IsCheckedChanged="VaultUnlockControl_IsCheckedChanged">
+                            <ToggleSplitButton.Flyout>
+                                <Flyout Placement="Bottom">
+                                    <ToggleSwitch
+                                        x:Name="vaultLockSwitch"
+                                        Header="Unlock Method"
+                                        IsOn="False"
+                                        OffContent="Consent"
+                                        OnContent="Passkey"
+                                        Toggled="vaultLockSwitch_Toggled">
+                                        <ToggleSwitch.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock
+                                                    Margin="0,0,0,0"
+                                                    Padding="0,0,0,0"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ToggleSwitch.HeaderTemplate>
+                                    </ToggleSwitch>
+                                </Flyout>
+                            </ToggleSplitButton.Flyout>
+                        </ToggleSplitButton>
+                        <ToggleSwitch
+                            x:Name="silentOperationSwitch"
+                            Header="Minimize UI"
+                            IsOn="False"
+                            OffContent="Show"
+                            OnContent="Hide"
+                            Toggled="silentOperationSwitch_Toggled">
+                            <ToggleSwitch.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock
+                                        Margin="0,0,0,0"
+                                        Padding="0,0,0,0"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding}" />
+                                </DataTemplate>
+                            </ToggleSwitch.HeaderTemplate>
+                        </ToggleSwitch>
+                        <TextBlock
+                            x:Name="vaultRecoveryHintText"
+                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                            Text=""
+                            TextWrapping="WrapWholeWords"
+                            Visibility="Collapsed" />
+                        <Button
+                            x:Name="runVaultRecoveryButton"
+                            Click="runVaultRecoveryButton_Click"
+                            Content="Run Vault Recovery"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <Grid
+                        Grid.Row="1"
+                        ColumnSpacing="8"
+                        RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Sync Base URL" />
+                        <TextBox
+                            x:Name="syncBaseUrlTextBox"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            PlaceholderText="https://tsupasswd.com/"
+                            TextWrapping="NoWrap" />
+
+                        <TextBlock
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Sync Token" />
+                        <PasswordBox
+                            x:Name="syncBearerTokenBox"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            PlaceholderText="Bearer token" />
+
+                        <TextBlock
+                            Grid.Row="2"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Sync User ID" />
+                        <TextBox
+                            x:Name="syncUserIdTextBox"
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            PlaceholderText="ContosoUserId"
+                            TextWrapping="NoWrap" />
+
+                        <StackPanel
+                            Grid.Row="0"
+                            Grid.Column="2"
+                            Grid.RowSpan="3"
+                            Orientation="Vertical"
+                            Spacing="8">
+                            <Button
+                                x:Name="loadSyncSettingsButton"
+                                Click="loadSyncSettingsButton_Click"
+                                Content="Load" />
+                            <Button
+                                x:Name="saveSyncSettingsButton"
+                                Click="saveSyncSettingsButton_Click"
+                                Content="Save"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Grid>
+
                     <TextBlock
-                        x:Name="vaultRecoveryHintText"
-                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                        Text=""
-                        TextWrapping="WrapWholeWords"
-                        Visibility="Collapsed" />
-                    <Button
-                        x:Name="runVaultRecoveryButton"
-                        Click="runVaultRecoveryButton_Click"
-                        Content="Run Vault Recovery"
-                        Visibility="Collapsed" />
-                </StackPanel>
+                        x:Name="syncStatusTextBlock"
+                        Grid.Row="2"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Sync status: Not synced yet"
+                        TextWrapping="WrapWholeWords" />
+                </Grid>
             </Grid>
 
 

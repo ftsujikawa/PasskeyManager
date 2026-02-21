@@ -9,6 +9,7 @@
 #include "Converter/BitwiseFlagToVisibilityConverter.h"
 #include <wil\filesystem.h>
 #include <atomic>
+#include <ctime>
 
 namespace winrt {
     using namespace Windows::Foundation;
@@ -46,6 +47,8 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction VaultUnlockControl_IsCheckedChanged(winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButton const& sender, winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButtonIsCheckedChangedEventArgs const& args);
         winrt::IAsyncAction TestPasskeyVaultUnlock_Click(IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::IAsyncAction runVaultRecoveryButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction loadSyncSettingsButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction saveSyncSettingsButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -59,6 +62,29 @@ namespace winrt::PasskeyManager::implementation
             textContent().Inlines().InsertAt(0, statusTextBlock);
 
             std::wstring status = statusText.c_str();
+            auto nowLabel = []() -> std::wstring
+            {
+                std::time_t raw = std::time(nullptr);
+                std::tm tmLocal{};
+                localtime_s(&tmLocal, &raw);
+                wchar_t buffer[16]{};
+                wcsftime(buffer, ARRAYSIZE(buffer), L"%H:%M:%S", &tmLocal);
+                return buffer;
+            };
+
+            if (status.find(L"SUCCESS: Self-hosted vault sync completed") != std::wstring::npos)
+            {
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Success at " + nowLabel() });
+            }
+            else if (status.find(L"WARNING: Self-hosted sync failed") != std::wstring::npos)
+            {
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Failed at " + nowLabel() + L" (see Logs)" });
+            }
+            else if (status.find(L"Self-hosted sync skipped") != std::wstring::npos)
+            {
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Skipped at " + nowLabel() });
+            }
+
             if (status.find(L"Vault data is") != std::wstring::npos)
             {
                 vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");

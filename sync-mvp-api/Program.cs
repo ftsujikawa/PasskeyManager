@@ -1,15 +1,46 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var rateLimitPerMinute = ReadPositiveIntFromEnv("TSUPASSWD_SYNC_RATE_LIMIT_PER_MINUTE", 60);
+var rateLimitQueueLimit = ReadNonNegativeIntFromEnv("TSUPASSWD_SYNC_RATE_LIMIT_QUEUE_LIMIT", 0);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        var body = JsonSerializer.Serialize(new ErrorResponse("RATE_LIMITED", "too many requests"));
+        await context.HttpContext.Response.WriteAsync(body, cancellationToken);
+    };
+
+    options.AddPolicy("vaults-per-ip", httpContext =>
+    {
+        var clientKey = GetRateLimitClientKey(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(clientKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitPerMinute,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = rateLimitQueueLimit,
+            AutoReplenishment = true
+        });
+    });
+});
+
 var app = builder.Build();
+
+app.UseRateLimiter();
 
 var requiredToken = Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_BEARER_TOKEN")
     ?? Environment.GetEnvironmentVariable("TSUPASSWD_SYNC_DEV_BEARER_TOKEN")
@@ -38,7 +69,7 @@ app.MapGet("/v1/vaults/{userId}", (HttpContext http, string userId) =>
     }
 
     return Results.Ok(doc.ToResponse(userId));
-});
+}).RequireRateLimiting("vaults-per-ip");
 
 app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
 {
@@ -98,7 +129,7 @@ app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
         vault_version = next.VaultVersion,
         updated_at = next.Meta.UpdatedAt.ToString("O")
     });
-});
+}).RequireRateLimiting("vaults-per-ip");
 
 app.Run("http://127.0.0.1:8088");
 
@@ -181,6 +212,43 @@ static IResult? Authorize(HttpContext http, string requiredToken)
     }
 
     return null;
+}
+
+static int ReadPositiveIntFromEnv(string name, int defaultValue)
+{
+    var raw = Environment.GetEnvironmentVariable(name);
+    if (int.TryParse(raw, out var parsed) && parsed > 0)
+    {
+        return parsed;
+    }
+
+    return defaultValue;
+}
+
+static int ReadNonNegativeIntFromEnv(string name, int defaultValue)
+{
+    var raw = Environment.GetEnvironmentVariable(name);
+    if (int.TryParse(raw, out var parsed) && parsed >= 0)
+    {
+        return parsed;
+    }
+
+    return defaultValue;
+}
+
+static string GetRateLimitClientKey(HttpContext http)
+{
+    var forwardedFor = http.Request.Headers["X-Forwarded-For"].ToString();
+    if (!string.IsNullOrWhiteSpace(forwardedFor))
+    {
+        var first = forwardedFor.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(first))
+        {
+            return first;
+        }
+    }
+
+    return http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
 
 record ErrorResponse(string code, string message);

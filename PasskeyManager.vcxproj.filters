@@ -399,6 +399,12 @@
     <None Include="docs\release_notes_google_oauth.md">
       <Filter>docs</Filter>
     </None>
+    <None Include="docs\sync_mvp_api_issue_templates.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync_mvp_api_operations_checklist.md">
+      <Filter>docs</Filter>
+    </None>
     <None Include="publish\SyncMvpApi.deps.json">
       <Filter>publish</Filter>
     </None>

@@ -310,6 +310,8 @@
     <None Include="docs\google_oauth_state_test_qa.md" />
     <None Include="docs\plugin_state_transition_test.md" />
     <None Include="docs\release_notes_google_oauth.md" />
+    <None Include="docs\sync_mvp_api_issue_templates.md" />
+    <None Include="docs\sync_mvp_api_operations_checklist.md" />
     <None Include="happyfactory.pfx" />
     <None Include="packages.config" />
     <None Include="publish\SyncMvpApi.deps.json" />

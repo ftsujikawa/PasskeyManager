@@ -39,6 +39,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+var logger = app.Logger;
 
 app.UseRateLimiter();
 
@@ -63,7 +64,7 @@ app.MapGet("/healthz", () => Results.Ok(new
 
 app.MapGet("/v1/vaults/{userId}", (HttpContext http, string userId) =>
 {
-    var auth = Authorize(http, requiredToken);
+    var auth = Authorize(http, requiredToken, logger, userId);
     if (auth is not null)
     {
         return auth;
@@ -71,15 +72,17 @@ app.MapGet("/v1/vaults/{userId}", (HttpContext http, string userId) =>
 
     if (!TryGetVaultFromDb(dbPath, userId, out var doc) || doc is null)
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status404NotFound, "vault_not_found", null);
         return Results.NotFound(new ErrorResponse("VAULT_NOT_FOUND", "vault not found"));
     }
 
+    AuditVaultOperation(logger, http, userId, StatusCodes.Status200OK, "vault_get_ok", doc.VaultVersion);
     return Results.Ok(doc.ToResponse(userId));
 }).RequireRateLimiting("vaults-per-ip");
 
 app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
 {
-    var auth = Authorize(http, requiredToken);
+    var auth = Authorize(http, requiredToken, logger, userId);
     if (auth is not null)
     {
         return auth;
@@ -88,11 +91,13 @@ app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
     var request = await http.Request.ReadFromJsonAsync<PutVaultRequest>();
     if (request is null)
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status400BadRequest, "invalid_body", null);
         return Results.BadRequest(new ErrorResponse("INVALID_BODY", "request body is required"));
     }
 
     if (request.NewVersion <= 0)
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status400BadRequest, "invalid_version", null);
         return Results.BadRequest(new ErrorResponse("INVALID_VERSION", "new_version must be > 0"));
     }
 
@@ -101,6 +106,7 @@ app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
 
     if (request.ExpectedVersion != currentVersion)
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status409Conflict, "version_conflict", currentVersion);
         return Results.Conflict(new
         {
             code = "VERSION_CONFLICT",
@@ -134,6 +140,8 @@ app.MapPut("/v1/vaults/{userId}", async (HttpContext http, string userId) =>
             server_version = serverVersion
         });
     }
+
+    AuditVaultOperation(logger, http, userId, StatusCodes.Status200OK, "vault_put_ok", next.VaultVersion);
 
     return Results.Ok(new
     {
@@ -295,10 +303,11 @@ static SqliteConnection CreateConnection(string dbPath)
     return new SqliteConnection(builder.ConnectionString);
 }
 
-static IResult? Authorize(HttpContext http, string requiredToken)
+static IResult? Authorize(HttpContext http, string requiredToken, ILogger logger, string userId)
 {
     if (!http.Request.Headers.TryGetValue("Authorization", out var authHeader))
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status401Unauthorized, "auth_missing_header", null);
         return Results.Unauthorized();
     }
 
@@ -306,16 +315,46 @@ static IResult? Authorize(HttpContext http, string requiredToken)
     const string prefix = "Bearer ";
     if (!value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status401Unauthorized, "auth_invalid_scheme", null);
         return Results.Unauthorized();
     }
 
     var token = value[prefix.Length..].Trim();
     if (!string.Equals(token, requiredToken, StringComparison.Ordinal))
     {
+        AuditVaultOperation(logger, http, userId, StatusCodes.Status403Forbidden, "auth_token_mismatch", null);
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
 
     return null;
+}
+
+static void AuditVaultOperation(ILogger logger, HttpContext http, string userId, int resultCode, string outcome, long? serverVersion)
+{
+    logger.LogInformation(
+        "audit.vault_op ts={Timestamp} user_id={UserId} method={Method} result_code={ResultCode} remote_addr={RemoteAddr} outcome={Outcome} server_version={ServerVersion}",
+        DateTimeOffset.UtcNow.ToString("O"),
+        userId,
+        http.Request.Method,
+        resultCode,
+        GetRemoteAddress(http),
+        outcome,
+        serverVersion);
+}
+
+static string GetRemoteAddress(HttpContext http)
+{
+    var forwardedFor = http.Request.Headers["X-Forwarded-For"].ToString();
+    if (!string.IsNullOrWhiteSpace(forwardedFor))
+    {
+        var first = forwardedFor.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(first))
+        {
+            return first;
+        }
+    }
+
+    return http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
 
 static int ReadPositiveIntFromEnv(string name, int defaultValue)
@@ -342,17 +381,7 @@ static int ReadNonNegativeIntFromEnv(string name, int defaultValue)
 
 static string GetRateLimitClientKey(HttpContext http)
 {
-    var forwardedFor = http.Request.Headers["X-Forwarded-For"].ToString();
-    if (!string.IsNullOrWhiteSpace(forwardedFor))
-    {
-        var first = forwardedFor.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(first))
-        {
-            return first;
-        }
-    }
-
-    return http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    return GetRemoteAddress(http);
 }
 
 record ErrorResponse(string code, string message);

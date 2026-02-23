@@ -4,6 +4,8 @@
 #include "src/SyncClient.h"
 #include <CorError.h>
 #include <wil/safecast.h>
+#include <functional>
+#include <thread>
 
 #pragma comment(lib, "Crypt32.lib")
 
@@ -185,6 +187,101 @@ namespace
 
         detail += L" hr=" + std::to_wstring(static_cast<int>(hrSync));
         return detail;
+    }
+
+    HRESULT SyncEncryptedVaultWithRetry(
+        std::vector<BYTE> const& encryptedVaultData,
+        std::wstring const& syncUserId,
+        std::function<void(winrt::hstring const&)> const& statusSink)
+    {
+        std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
+        if (syncBaseUrl.empty())
+        {
+            statusSink(L"INFO: Self-hosted sync skipped (TSUPASSWD_SYNC_BASE_URL is not set).ℹ");
+            return S_FALSE;
+        }
+
+        statusSink(winrt::hstring{ L"INFO: Self-hosted sync user_id: " + syncUserId + L"ℹ" });
+
+        tsupasswd::SyncClient syncClient(syncBaseUrl);
+        std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
+        if (!bearerToken.empty())
+        {
+            syncClient.SetBearerToken(bearerToken);
+        }
+
+        tsupasswd::PutVaultRequest putRequest{};
+        putRequest.ExpectedVersion = 0;
+        putRequest.NewVersion = 1;
+        putRequest.DeviceId = L"tsupasswd_core_windows";
+        putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64UrlEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
+        putRequest.Blob.NonceBase64 = L"";
+        putRequest.Blob.AadBase64 = L"";
+        putRequest.Meta.CreatedAt = GetNowIsoLikeTimestamp();
+        putRequest.Meta.UpdatedAt = putRequest.Meta.CreatedAt;
+        putRequest.Meta.LastWriterDeviceId = putRequest.DeviceId;
+
+        constexpr int kMaxAttempts = 3;
+        DWORD backoffMs = 500;
+        HRESULT hrSync = E_FAIL;
+        tsupasswd::PutVaultResponse putResponse{};
+        tsupasswd::SyncHttpStatus syncStatus{};
+
+        for (int attempt = 1; attempt <= kMaxAttempts; ++attempt)
+        {
+            syncStatus = {};
+            hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &syncStatus);
+
+            if (hrSync == HRESULT_FROM_WIN32(ERROR_REVISION_MISMATCH) && syncStatus.ServerVersion >= 0)
+            {
+                putRequest.ExpectedVersion = syncStatus.ServerVersion;
+                putRequest.NewVersion = syncStatus.ServerVersion + 1;
+                statusSink(
+                    winrt::hstring{
+                        L"INFO: Self-hosted sync version conflict detected. Retrying with server_version=" +
+                        std::to_wstring(syncStatus.ServerVersion) + L"...ℹ" });
+                continue;
+            }
+
+            if (SUCCEEDED(hrSync))
+            {
+                statusSink(L"SUCCESS: Self-hosted vault sync completed.✅");
+                return S_OK;
+            }
+
+            bool shouldRetry =
+                attempt < kMaxAttempts &&
+                syncStatus.StatusCode != 401 &&
+                syncStatus.StatusCode != 403 &&
+                syncStatus.StatusCode != 404 &&
+                syncStatus.StatusCode != 409;
+
+            if (!shouldRetry)
+            {
+                break;
+            }
+
+            statusSink(
+                winrt::hstring{
+                    L"INFO: Self-hosted sync retry " +
+                    std::to_wstring(attempt + 1) +
+                    L"/" +
+                    std::to_wstring(kMaxAttempts) +
+                    L" in " +
+                    std::to_wstring(backoffMs) +
+                    L"ms...ℹ" });
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
+            backoffMs *= 2;
+        }
+
+        std::wstring syncWarning = L"WARNING: " + BuildSyncFailureStatusMessage(hrSync, syncStatus);
+        if (syncStatus.StatusCode == 409)
+        {
+            syncWarning += L" Recovery: click Resync Now to fetch latest server version and retry.";
+        }
+        statusSink(winrt::hstring{ syncWarning });
+        return hrSync;
     }
 }
 
@@ -531,61 +628,13 @@ namespace winrt::PasskeyManager::implementation {
             RETURN_IF_FAILED(WriteEncryptedVaultData(encryptedVaultData));
 
             // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.
-            std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
-            if (syncBaseUrl.empty())
-            {
-                UpdatePasskeyOperationStatusText(L"INFO: Self-hosted sync skipped (TSUPASSWD_SYNC_BASE_URL is not set).ℹ");
-            }
-            else
-            {
-                UpdatePasskeyOperationStatusText(
-                    winrt::hstring{ L"INFO: Self-hosted sync user_id: " + syncUserId + L"ℹ" });
-
-                tsupasswd::SyncClient syncClient(syncBaseUrl);
-                std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
-                if (!bearerToken.empty())
+            SyncEncryptedVaultWithRetry(
+                encryptedVaultData,
+                syncUserId,
+                [this](winrt::hstring const& status)
                 {
-                    syncClient.SetBearerToken(bearerToken);
-                }
-
-                tsupasswd::PutVaultRequest putRequest{};
-                putRequest.ExpectedVersion = 0;
-                putRequest.NewVersion = 1;
-                putRequest.DeviceId = L"tsupasswd_core_windows";
-                putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64UrlEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
-                putRequest.Blob.NonceBase64 = L"";
-                putRequest.Blob.AadBase64 = L"";
-                putRequest.Meta.CreatedAt = GetNowIsoLikeTimestamp();
-                putRequest.Meta.UpdatedAt = putRequest.Meta.CreatedAt;
-                putRequest.Meta.LastWriterDeviceId = putRequest.DeviceId;
-
-                tsupasswd::PutVaultResponse putResponse{};
-                tsupasswd::SyncHttpStatus syncStatus{};
-                HRESULT hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &syncStatus);
-                if (hrSync == HRESULT_FROM_WIN32(ERROR_REVISION_MISMATCH) && syncStatus.ServerVersion >= 0)
-                {
-                    putRequest.ExpectedVersion = syncStatus.ServerVersion;
-                    putRequest.NewVersion = syncStatus.ServerVersion + 1;
-                    UpdatePasskeyOperationStatusText(
-                        winrt::hstring{
-                            L"INFO: Self-hosted sync version conflict detected. Retrying once with server_version=" +
-                            std::to_wstring(syncStatus.ServerVersion) + L"...ℹ" });
-
-                    tsupasswd::SyncHttpStatus retryStatus{};
-                    hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &retryStatus);
-                    syncStatus = retryStatus;
-                }
-
-                if (SUCCEEDED(hrSync))
-                {
-                    UpdatePasskeyOperationStatusText(L"SUCCESS: Self-hosted vault sync completed.✅");
-                }
-                else
-                {
-                    std::wstring syncWarning = L"WARNING: " + BuildSyncFailureStatusMessage(hrSync, syncStatus);
-                    UpdatePasskeyOperationStatusText(winrt::hstring{ syncWarning });
-                }
-            }
+                    UpdatePasskeyOperationStatusText(status);
+                });
         }
 
         std::wstring finalResult = L"INFO: CreateVaultPasskey final HRESULT: " + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
@@ -670,5 +719,32 @@ namespace winrt::PasskeyManager::implementation {
 
         cipherText = opt.value();
         return S_OK;
+    }
+
+    HRESULT PluginRegistrationManager::ManualResyncSelfHostedVault()
+    {
+        std::wstring syncUserId = GetUserEnvironmentRegistryValue(kSyncUserIdEnv);
+        if (syncUserId.empty())
+        {
+            syncUserId = GetProcessEnvironmentVariableValue(kSyncUserIdEnv);
+        }
+        if (syncUserId.empty())
+        {
+            syncUserId = kDefaultSyncUserId;
+        }
+
+        std::vector<BYTE> encryptedVaultData;
+        RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData));
+
+        UpdatePasskeyOperationStatusText(L"INFO: Manual self-hosted resync started.ℹ");
+        auto hrSync = SyncEncryptedVaultWithRetry(
+            encryptedVaultData,
+            syncUserId,
+            [this](winrt::hstring const& status)
+            {
+                UpdatePasskeyOperationStatusText(status);
+            });
+
+        return hrSync;
     }
 }

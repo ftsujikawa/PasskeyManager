@@ -10,6 +10,7 @@
 #include <wil\filesystem.h>
 #include <atomic>
 #include <ctime>
+#include <vector>
 
 namespace winrt {
     using namespace Windows::Foundation;
@@ -49,6 +50,10 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction runVaultRecoveryButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction loadSyncSettingsButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction saveSyncSettingsButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction testSyncConnectionButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction manualSyncButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction logsFilterCombo_SelectionChanged(IInspectable const& sender, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& args);
+        winrt::IAsyncAction copyLatestLogButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -56,10 +61,8 @@ namespace winrt::PasskeyManager::implementation
 
         void UpdatePasskeyOperationStatusText(hstring const& statusText)
         {
-            textContent().Inlines().InsertAt(0, Microsoft::UI::Xaml::Documents::LineBreak{});
-            Microsoft::UI::Xaml::Documents::Run statusTextBlock;
-            statusTextBlock.Text(statusText);
-            textContent().Inlines().InsertAt(0, statusTextBlock);
+            m_logEntries.push_back(statusText);
+            RebuildLogView();
 
             std::wstring status = statusText.c_str();
             auto nowLabel = []() -> std::wstring
@@ -133,11 +136,14 @@ namespace winrt::PasskeyManager::implementation
     private:
         PasskeyManager::CredentialListViewModel m_credentialListViewModel{ nullptr };
         winrt::IMap<winrt::IBuffer, IInspectable> m_selectedCredentialsSet = winrt::single_threaded_map<winrt::IBuffer, IInspectable>();
+        std::vector<winrt::hstring> m_logEntries{};
         wil::unique_registry_watcher m_registryWatcher;
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         bool m_suppressVaultLockSwitchToggled = false;
         void UpdateVaultUnlockControlText(bool isLocked);
         void SetVaultLockSwitchState(bool isOn);
+        void RebuildLogView();
+        bool ShouldShowLogLine(std::wstring const& line);
     };
 }
 

@@ -9,6 +9,7 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
+#include "src/SyncClient.h"
 #include <future>
 #include <coroutine>
 #include <thread>
@@ -16,6 +17,7 @@
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 namespace winrt {
     using namespace winrt::Microsoft::UI::Xaml;
@@ -187,6 +189,34 @@ namespace {
             return static_cast<char>(std::tolower(c));
         });
         return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0;
+    }
+
+    bool IsValidSyncUserId(std::wstring const& userId)
+    {
+        if (userId.empty())
+        {
+            return false;
+        }
+
+        return std::all_of(userId.begin(), userId.end(), [](wchar_t ch)
+        {
+            return (ch >= L'0' && ch <= L'9') ||
+                (ch >= L'a' && ch <= L'z') ||
+                (ch >= L'A' && ch <= L'Z') ||
+                ch == L'-' ||
+                ch == L'_' ||
+                ch == L'.';
+        });
+    }
+
+    std::wstring NormalizeSyncBaseUrl(std::wstring baseUrl)
+    {
+        baseUrl = TrimCopy(std::move(baseUrl));
+        if (!baseUrl.empty() && baseUrl.back() != L'/')
+        {
+            baseUrl.push_back(L'/');
+        }
+        return baseUrl;
     }
 
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
@@ -711,9 +741,11 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::saveSyncSettingsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        std::wstring baseUrl = TrimCopy(syncBaseUrlTextBox().Text().c_str());
+        std::wstring baseUrl = NormalizeSyncBaseUrl(syncBaseUrlTextBox().Text().c_str());
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+
+        syncBaseUrlTextBox().Text(baseUrl);
 
         if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
         {
@@ -721,10 +753,10 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(L"Sync Base URL must start with http:// or https://");
             co_return;
         }
-        if (!userId.empty() && userId.find(L' ') != std::wstring::npos)
+        if (!userId.empty() && !IsValidSyncUserId(userId))
         {
             syncStatusTextBlock().Text(L"Sync status: Save failed (invalid User ID)");
-            LogWarning(L"Sync User ID must not include spaces.");
+            LogWarning(L"Sync User ID must be [a-zA-Z0-9._-].");
             co_return;
         }
 
@@ -748,6 +780,103 @@ namespace winrt::PasskeyManager::implementation
 
         syncStatusTextBlock().Text(L"Sync status: Settings saved");
         LogSuccess(L"Sync settings saved (TSUPASSWD_SYNC_BASE_URL / TOKEN / USER_ID)");
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::testSyncConnectionButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        std::wstring baseUrl = NormalizeSyncBaseUrl(syncBaseUrlTextBox().Text().c_str());
+        std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
+        std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+
+        syncBaseUrlTextBox().Text(baseUrl);
+
+        if (!IsValidSyncBaseUrl(baseUrl))
+        {
+            syncStatusTextBlock().Text(L"Sync status: Test failed (invalid Base URL)");
+            LogWarning(L"Sync Base URL must start with http:// or https://");
+            co_return;
+        }
+        if (token.empty())
+        {
+            syncStatusTextBlock().Text(L"Sync status: Test failed (token is empty)");
+            LogWarning(L"Sync Token is empty. Enter bearer token and retry Test Connection.");
+            co_return;
+        }
+        if (!IsValidSyncUserId(userId))
+        {
+            syncStatusTextBlock().Text(L"Sync status: Test failed (invalid User ID)");
+            LogWarning(L"Sync User ID must be [a-zA-Z0-9._-].");
+            co_return;
+        }
+
+        auto weakThis = get_weak();
+        testSyncConnectionButton().IsEnabled(false);
+        syncStatusTextBlock().Text(L"Sync status: Testing connection...");
+        LogInProgress(L"Testing self-hosted sync connection...");
+
+        co_await winrt::resume_background();
+        tsupasswd::SyncClient syncClient(baseUrl);
+        syncClient.SetBearerToken(token);
+        tsupasswd::VaultRecord record{};
+        tsupasswd::SyncHttpStatus status{};
+        HRESULT hr = syncClient.GetVault(userId, record, &status);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        auto self = weakThis.get();
+        if (!self)
+        {
+            co_return;
+        }
+
+        self->testSyncConnectionButton().IsEnabled(true);
+        if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            self->syncStatusTextBlock().Text(L"Sync status: Connection test passed");
+            self->LogSuccess(L"Sync connection test passed");
+            co_return;
+        }
+
+        std::wstring detail = L"Sync connection test failed.";
+        if (status.StatusCode > 0)
+        {
+            detail += L" status=" + std::to_wstring(status.StatusCode) + L".";
+        }
+        if (!status.ErrorCode.empty())
+        {
+            detail += L" code=" + status.ErrorCode + L".";
+        }
+        if (!status.ErrorMessage.empty())
+        {
+            detail += L" message=" + status.ErrorMessage + L".";
+        }
+        self->syncStatusTextBlock().Text(L"Sync status: Connection test failed");
+        self->LogWarning(winrt::hstring{ detail }, hr);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::manualSyncButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto weakThis = get_weak();
+        manualSyncButton().IsEnabled(false);
+        LogInProgress(L"Starting manual self-hosted resync...");
+
+        co_await winrt::resume_background();
+        HRESULT hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault();
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->manualSyncButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                self->LogSuccess(L"Manual self-hosted resync finished");
+            }
+            else
+            {
+                self->LogWarning(L"Manual self-hosted resync ended with warning/failure", hr);
+            }
+        }
         co_return;
     }
 
@@ -1179,7 +1308,87 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::clearLogsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        m_logEntries.clear();
+        RebuildLogView();
+        syncStatusTextBlock().Text(L"Sync status: Logs cleared");
+        co_return;
+    }
+
+    bool MainPage::ShouldShowLogLine(std::wstring const& line)
+    {
+        auto selected = logsFilterCombo().SelectedItem();
+        if (!selected)
+        {
+            return true;
+        }
+
+        std::wstring filter = winrt::unbox_value<winrt::hstring>(selected).c_str();
+        if (filter == L"All")
+        {
+            return true;
+        }
+        if (filter == L"Info")
+        {
+            return line.rfind(L"INFO:", 0) == 0;
+        }
+        if (filter == L"Warning")
+        {
+            return line.rfind(L"WARNING:", 0) == 0;
+        }
+        if (filter == L"Failed")
+        {
+            return line.rfind(L"FAILED:", 0) == 0;
+        }
+        if (filter == L"Success")
+        {
+            return line.rfind(L"SUCCESS:", 0) == 0;
+        }
+        return true;
+    }
+
+    void MainPage::RebuildLogView()
+    {
         textContent().Inlines().Clear();
+
+        bool first = true;
+        for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
+        {
+            std::wstring line = it->c_str();
+            if (!ShouldShowLogLine(line))
+            {
+                continue;
+            }
+
+            if (!first)
+            {
+                textContent().Inlines().Append(Microsoft::UI::Xaml::Documents::LineBreak{});
+            }
+
+            Microsoft::UI::Xaml::Documents::Run run;
+            run.Text(*it);
+            textContent().Inlines().Append(run);
+            first = false;
+        }
+    }
+
+    winrt::IAsyncAction MainPage::logsFilterCombo_SelectionChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
+    {
+        RebuildLogView();
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::copyLatestLogButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        if (m_logEntries.empty())
+        {
+            LogInfo(L"No logs to copy.");
+            co_return;
+        }
+
+        winrt::Windows::ApplicationModel::DataTransfer::DataPackage package;
+        package.SetText(m_logEntries.back());
+        winrt::Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
+        LogSuccess(L"Latest log copied to clipboard");
         co_return;
     }
 

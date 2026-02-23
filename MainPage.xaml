@@ -281,6 +281,14 @@
                                 Click="saveSyncSettingsButton_Click"
                                 Content="Save"
                                 Style="{StaticResource AccentButtonStyle}" />
+                            <Button
+                                x:Name="testSyncConnectionButton"
+                                Click="testSyncConnectionButton_Click"
+                                Content="Test Connection" />
+                            <Button
+                                x:Name="manualSyncButton"
+                                Click="manualSyncButton_Click"
+                                Content="Resync Now" />
                         </StackPanel>
                     </Grid>
 
@@ -434,6 +442,22 @@
                 Grid.Column="1"
                 Orientation="Horizontal"
                 Spacing="8">
+                <ComboBox
+                    x:Name="logsFilterCombo"
+                    MinWidth="160"
+                    PlaceholderText="Filter logs"
+                    SelectedIndex="0"
+                    SelectionChanged="logsFilterCombo_SelectionChanged">
+                    <x:String>All</x:String>
+                    <x:String>Info</x:String>
+                    <x:String>Warning</x:String>
+                    <x:String>Failed</x:String>
+                    <x:String>Success</x:String>
+                </ComboBox>
+                <Button
+                    x:Name="copyLatestLogButton"
+                    Click="copyLatestLogButton_Click"
+                    Content="Copy Latest" />
                 <Button
                     x:Name="clearLogsButton"
                     Click="clearLogsButton_Click"

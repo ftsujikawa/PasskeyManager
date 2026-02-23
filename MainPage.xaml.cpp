@@ -944,10 +944,12 @@ namespace winrt::PasskeyManager::implementation
         entry.Timestamp = BuildHistoryTimestamp();
         entry.Operation = InferHistoryOperation(rawLine);
         entry.Result = InferHistoryResult(rawLine);
-        entry.StatusCode = _wtoi(ExtractLogTokenValue(rawLine, L"status=").c_str());
+        auto statusCode = ExtractLogTokenValue(rawLine, L"status=");
+        entry.StatusCode = statusCode.empty() ? 0 : _wtoi(statusCode.c_str());
         entry.ErrorCode = ExtractLogTokenValue(rawLine, L"code=");
         entry.ErrorMessage = ExtractLogTokenValue(rawLine, L"message=");
-        entry.ServerVersion = _wtoi64(ExtractLogTokenValue(rawLine, L"server_version=").c_str());
+        auto serverVersion = ExtractLogTokenValue(rawLine, L"server_version=");
+        entry.ServerVersion = serverVersion.empty() ? -1 : _wtoi64(serverVersion.c_str());
         entry.RequestId = ExtractLogTokenValue(rawLine, L"request_id=");
         entry.RawLine = rawLine;
 

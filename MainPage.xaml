@@ -476,7 +476,25 @@
                         Grid.Row="1"
                         FontFamily="Cascadia Code"
                         SelectionChanged="syncHistoryListView_SelectionChanged"
-                        SelectionMode="Single" />
+                        SelectionMode="Extended">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="Padding" Value="4,2" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    FontSize="12"
+                                    IsTextSelectionEnabled="True"
+                                    LineHeight="16"
+                                    Margin="0"
+                                    Text="{Binding}"
+                                    TextWrapping="WrapWholeWords" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                 </Grid>
             </Grid>
 
@@ -500,7 +518,7 @@
                 <Button
                     x:Name="copyLatestLogButton"
                     Click="copyLatestLogButton_Click"
-                    Content="Copy Latest" />
+                    Content="Copy Visible" />
                 <Button
                     x:Name="clearLogsButton"
                     Click="clearLogsButton_Click"

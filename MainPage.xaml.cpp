@@ -1689,10 +1689,63 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
+        std::wstring clipboardText;
+        auto selectedItems = syncHistoryListView().SelectedItems();
+        uint32_t copiedLines = 0;
+        if (selectedItems && selectedItems.Size() > 0)
+        {
+            for (uint32_t i = 0; i < selectedItems.Size(); ++i)
+            {
+                if (i > 0)
+                {
+                    clipboardText += L"\r\n";
+                }
+                clipboardText += winrt::unbox_value<winrt::hstring>(selectedItems.GetAt(i)).c_str();
+                ++copiedLines;
+            }
+        }
+        else
+        {
+            auto visibleItems = syncHistoryListView().Items();
+            for (uint32_t i = 0; i < visibleItems.Size(); ++i)
+            {
+                if (i > 0)
+                {
+                    clipboardText += L"\r\n";
+                }
+                clipboardText += winrt::unbox_value<winrt::hstring>(visibleItems.GetAt(i)).c_str();
+                ++copiedLines;
+            }
+
+            if (copiedLines == 0)
+            {
+                clipboardText = m_logEntries.back().c_str();
+                copiedLines = 1;
+            }
+        }
+
         winrt::Windows::ApplicationModel::DataTransfer::DataPackage package;
-        package.SetText(m_logEntries.back());
+        package.SetText(winrt::hstring{ clipboardText });
         winrt::Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
-        LogSuccess(L"Latest log copied to clipboard");
+        if (selectedItems && selectedItems.Size() > 1)
+        {
+            LogSuccess(winrt::hstring{ L"Selected logs copied to clipboard (" + std::to_wstring(selectedItems.Size()) + L" lines)" });
+        }
+        else if (selectedItems && selectedItems.Size() == 1)
+        {
+            LogSuccess(L"Selected log copied to clipboard");
+        }
+        else
+        {
+            if (copiedLines > 1)
+            {
+                LogSuccess(winrt::hstring{ L"Visible logs copied to clipboard (" + std::to_wstring(copiedLines) + L" lines)" });
+            }
+            else
+            {
+                LogSuccess(L"Visible log copied to clipboard");
+            }
+        }
         co_return;
     }
 

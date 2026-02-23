@@ -88,6 +88,54 @@ namespace {
         return value;
     }
 
+    std::wstring InferHistoryResult(std::wstring const& rawLine)
+    {
+        if (rawLine.rfind(L"SUCCESS:", 0) == 0)
+        {
+            return L"success";
+        }
+        if (rawLine.rfind(L"FAILED:", 0) == 0)
+        {
+            return L"failed";
+        }
+        if (rawLine.rfind(L"WARNING:", 0) == 0)
+        {
+            return L"warning";
+        }
+        if (rawLine.rfind(L"INFO:", 0) == 0)
+        {
+            return L"info";
+        }
+        return L"unknown";
+    }
+
+    std::wstring InferHistoryOperation(std::wstring const& rawLine)
+    {
+        if (rawLine.find(L"Snapshot") != std::wstring::npos)
+        {
+            return L"snapshot";
+        }
+        if (rawLine.find(L"Queue") != std::wstring::npos)
+        {
+            return L"queue";
+        }
+        if (rawLine.find(L"sync") != std::wstring::npos || rawLine.find(L"Self-hosted") != std::wstring::npos)
+        {
+            return L"sync";
+        }
+        return L"general";
+    }
+
+    std::wstring BuildHistoryTimestamp()
+    {
+        std::time_t raw = std::time(nullptr);
+        std::tm tmLocal{};
+        localtime_s(&tmLocal, &raw);
+        wchar_t buffer[32]{};
+        wcsftime(buffer, ARRAYSIZE(buffer), L"%Y-%m-%d %H:%M:%S", &tmLocal);
+        return buffer;
+    }
+
     std::wstring BuildSnapshotCandidateLabel(tsupasswd::SyncSnapshotRecord const& snapshot)
     {
         std::wstring label = snapshot.CapturedAt;
@@ -891,7 +939,19 @@ namespace winrt::PasskeyManager::implementation
 
     void MainPage::PersistSyncHistoryEntry(winrt::hstring const& line)
     {
-        auto hr = tsupasswd::SyncHistoryStore::Append(line);
+        std::wstring rawLine = line.c_str();
+        tsupasswd::SyncHistoryEntry entry{};
+        entry.Timestamp = BuildHistoryTimestamp();
+        entry.Operation = InferHistoryOperation(rawLine);
+        entry.Result = InferHistoryResult(rawLine);
+        entry.StatusCode = _wtoi(ExtractLogTokenValue(rawLine, L"status=").c_str());
+        entry.ErrorCode = ExtractLogTokenValue(rawLine, L"code=");
+        entry.ErrorMessage = ExtractLogTokenValue(rawLine, L"message=");
+        entry.ServerVersion = _wtoi64(ExtractLogTokenValue(rawLine, L"server_version=").c_str());
+        entry.RequestId = ExtractLogTokenValue(rawLine, L"request_id=");
+        entry.RawLine = rawLine;
+
+        auto hr = tsupasswd::SyncHistoryStore::Append(entry);
         if (FAILED(hr))
         {
             OutputDebugStringW((L"MainPage::PersistSyncHistoryEntry failed. hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());

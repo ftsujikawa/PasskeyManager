@@ -475,7 +475,8 @@
                         x:Name="syncHistoryListView"
                         Grid.Row="1"
                         FontFamily="Cascadia Code"
-                        SelectionMode="None" />
+                        SelectionChanged="syncHistoryListView_SelectionChanged"
+                        SelectionMode="Single" />
                 </Grid>
             </Grid>
 

@@ -1607,27 +1607,38 @@ namespace winrt::PasskeyManager::implementation
 
     void MainPage::UpdateLogDetailSummary()
     {
-        std::wstring latestLine;
-        for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
+        std::wstring detailTarget;
+        std::wstring detailLabel = L"Latest detail:";
+        auto selected = syncHistoryListView().SelectedItem();
+        if (selected)
         {
-            std::wstring line = it->c_str();
-            if (ShouldShowLogLine(line))
+            detailTarget = winrt::unbox_value<winrt::hstring>(selected).c_str();
+            detailLabel = L"Selected detail:";
+        }
+        else
+        {
+            for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
             {
-                latestLine = std::move(line);
-                break;
+                std::wstring line = it->c_str();
+                if (ShouldShowLogLine(line))
+                {
+                    detailTarget = std::move(line);
+                    break;
+                }
             }
         }
 
-        if (latestLine.empty())
+        if (detailTarget.empty())
         {
             logDetailTextBlock().Text(L"Latest detail: Not available");
             return;
         }
 
-        std::wstring detail = L"Latest detail:";
-        auto statusCode = ExtractLogTokenValue(latestLine, L"status=");
-        auto code = ExtractLogTokenValue(latestLine, L"code=");
-        auto serverVersion = ExtractLogTokenValue(latestLine, L"server_version=");
+        std::wstring detail = detailLabel;
+        auto statusCode = ExtractLogTokenValue(detailTarget, L"status=");
+        auto code = ExtractLogTokenValue(detailTarget, L"code=");
+        auto message = ExtractLogTokenValue(detailTarget, L"message=");
+        auto serverVersion = ExtractLogTokenValue(detailTarget, L"server_version=");
 
         if (!statusCode.empty())
         {
@@ -1637,18 +1648,22 @@ namespace winrt::PasskeyManager::implementation
         {
             detail += L" code=" + code;
         }
+        if (!message.empty())
+        {
+            detail += L" message=" + message;
+        }
         if (!serverVersion.empty())
         {
             detail += L" server_version=" + serverVersion;
         }
 
-        if (detail == L"Latest detail:")
+        if (detail == detailLabel)
         {
-            if (latestLine.size() > 180)
+            if (detailTarget.size() > 180)
             {
-                latestLine = latestLine.substr(0, 180) + L"...";
+                detailTarget = detailTarget.substr(0, 180) + L"...";
             }
-            detail += L" " + latestLine;
+            detail += L" " + detailTarget;
         }
 
         logDetailTextBlock().Text(winrt::hstring{ detail });
@@ -1657,6 +1672,12 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::logsFilterCombo_SelectionChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
     {
         RebuildLogView();
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::syncHistoryListView_SelectionChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
+    {
+        UpdateLogDetailSummary();
         co_return;
     }
 

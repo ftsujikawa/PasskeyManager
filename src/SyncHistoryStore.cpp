@@ -6,6 +6,17 @@
 
 namespace
 {
+    template<typename T>
+    void TrimToMaxEntries(std::vector<T>& entries, size_t maxEntries)
+    {
+        if (entries.size() <= maxEntries)
+        {
+            return;
+        }
+
+        entries.erase(entries.begin(), entries.begin() + static_cast<ptrdiff_t>(entries.size() - maxEntries));
+    }
+
     std::wstring BuildHistoryPath()
     {
         wil::unique_cotaskmem_string localAppData;
@@ -209,6 +220,39 @@ namespace
         entry.Timestamp = timestamp;
         return entry;
     }
+
+    HRESULT WriteEntriesAtomically(std::wstring const& path, std::vector<tsupasswd::SyncHistoryEntry> const& entries)
+    {
+        std::wstring tempPath = path + L".tmp";
+
+        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        if (!out.is_open())
+        {
+            return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+        }
+
+        for (auto const& storedEntry : entries)
+        {
+            out << ToUtf8(SerializeEntry(storedEntry)) << "\n";
+        }
+        out.flush();
+        if (!out.good())
+        {
+            out.close();
+            DeleteFileW(tempPath.c_str());
+            return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+        }
+        out.close();
+
+        if (!MoveFileExW(tempPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            auto error = GetLastError();
+            DeleteFileW(tempPath.c_str());
+            return HRESULT_FROM_WIN32(error);
+        }
+
+        return S_OK;
+    }
 }
 
 namespace tsupasswd
@@ -225,24 +269,8 @@ namespace tsupasswd
             auto path = ResolveHistoryFilePath();
             auto entries = LoadEntries(maxEntries);
             entries.push_back(entry);
-
-            if (entries.size() > maxEntries)
-            {
-                entries.erase(entries.begin(), entries.begin() + static_cast<ptrdiff_t>(entries.size() - maxEntries));
-            }
-
-            std::ofstream out(path, std::ios::binary | std::ios::trunc);
-            if (!out.is_open())
-            {
-                return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
-            }
-
-            for (auto const& storedEntry : entries)
-            {
-                out << ToUtf8(SerializeEntry(storedEntry)) << "\n";
-            }
-
-            return S_OK;
+            TrimToMaxEntries(entries, maxEntries);
+            return WriteEntriesAtomically(path, entries);
         }
         catch (...)
         {
@@ -278,10 +306,7 @@ namespace tsupasswd
                 }
             }
 
-            if (entries.size() > maxEntries)
-            {
-                entries.erase(entries.begin(), entries.begin() + static_cast<ptrdiff_t>(entries.size() - maxEntries));
-            }
+            TrimToMaxEntries(entries, maxEntries);
 
             return entries;
         }

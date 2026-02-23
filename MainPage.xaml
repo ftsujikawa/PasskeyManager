@@ -471,30 +471,15 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Latest detail: Not available"
                         TextWrapping="WrapWholeWords" />
-                    <ListView
-                        x:Name="syncHistoryListView"
+                    <TextBox
+                        x:Name="syncHistoryTextBox"
                         Grid.Row="1"
+                        AcceptsReturn="True"
                         FontFamily="Cascadia Code"
-                        SelectionChanged="syncHistoryListView_SelectionChanged"
-                        SelectionMode="Extended">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="MinHeight" Value="0" />
-                                <Setter Property="Padding" Value="4,2" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock
-                                    FontSize="12"
-                                    IsTextSelectionEnabled="True"
-                                    LineHeight="16"
-                                    Margin="0"
-                                    Text="{Binding}"
-                                    TextWrapping="WrapWholeWords" />
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                        FontSize="12"
+                        IsReadOnly="True"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        TextWrapping="Wrap" />
                 </Grid>
             </Grid>
 

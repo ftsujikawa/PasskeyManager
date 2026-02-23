@@ -1589,7 +1589,8 @@ namespace winrt::PasskeyManager::implementation
 
     void MainPage::RebuildLogView()
     {
-        syncHistoryListView().Items().Clear();
+        std::wstring visibleLogs;
+        bool first = true;
 
         for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
         {
@@ -1599,8 +1600,15 @@ namespace winrt::PasskeyManager::implementation
                 continue;
             }
 
-            syncHistoryListView().Items().Append(winrt::box_value(*it));
+            if (!first)
+            {
+                visibleLogs += L"\r\n";
+            }
+            visibleLogs += line;
+            first = false;
         }
+
+        syncHistoryTextBox().Text(winrt::hstring{ visibleLogs });
 
         UpdateLogDetailSummary();
     }
@@ -1609,22 +1617,13 @@ namespace winrt::PasskeyManager::implementation
     {
         std::wstring detailTarget;
         std::wstring detailLabel = L"Latest detail:";
-        auto selected = syncHistoryListView().SelectedItem();
-        if (selected)
+        for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
         {
-            detailTarget = winrt::unbox_value<winrt::hstring>(selected).c_str();
-            detailLabel = L"Selected detail:";
-        }
-        else
-        {
-            for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
+            std::wstring line = it->c_str();
+            if (ShouldShowLogLine(line))
             {
-                std::wstring line = it->c_str();
-                if (ShouldShowLogLine(line))
-                {
-                    detailTarget = std::move(line);
-                    break;
-                }
+                detailTarget = std::move(line);
+                break;
             }
         }
 
@@ -1675,12 +1674,6 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
-    winrt::IAsyncAction MainPage::syncHistoryListView_SelectionChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)
-    {
-        UpdateLogDetailSummary();
-        co_return;
-    }
-
     winrt::IAsyncAction MainPage::copyLatestLogButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         if (m_logEntries.empty())
@@ -1689,62 +1682,36 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
-        std::wstring clipboardText;
-        auto selectedItems = syncHistoryListView().SelectedItems();
+        std::wstring clipboardText = syncHistoryTextBox().Text().c_str();
         uint32_t copiedLines = 0;
-        if (selectedItems && selectedItems.Size() > 0)
+        if (!clipboardText.empty())
         {
-            for (uint32_t i = 0; i < selectedItems.Size(); ++i)
+            copiedLines = 1;
+            for (wchar_t ch : clipboardText)
             {
-                if (i > 0)
+                if (ch == L'\n')
                 {
-                    clipboardText += L"\r\n";
+                    ++copiedLines;
                 }
-                clipboardText += winrt::unbox_value<winrt::hstring>(selectedItems.GetAt(i)).c_str();
-                ++copiedLines;
             }
         }
         else
         {
-            auto visibleItems = syncHistoryListView().Items();
-            for (uint32_t i = 0; i < visibleItems.Size(); ++i)
-            {
-                if (i > 0)
-                {
-                    clipboardText += L"\r\n";
-                }
-                clipboardText += winrt::unbox_value<winrt::hstring>(visibleItems.GetAt(i)).c_str();
-                ++copiedLines;
-            }
-
-            if (copiedLines == 0)
-            {
-                clipboardText = m_logEntries.back().c_str();
-                copiedLines = 1;
-            }
+            clipboardText = m_logEntries.back().c_str();
+            copiedLines = 1;
         }
 
         winrt::Windows::ApplicationModel::DataTransfer::DataPackage package;
         package.SetText(winrt::hstring{ clipboardText });
         winrt::Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
-        if (selectedItems && selectedItems.Size() > 1)
+
+        if (copiedLines > 1)
         {
-            LogSuccess(winrt::hstring{ L"Selected logs copied to clipboard (" + std::to_wstring(selectedItems.Size()) + L" lines)" });
-        }
-        else if (selectedItems && selectedItems.Size() == 1)
-        {
-            LogSuccess(L"Selected log copied to clipboard");
+            LogSuccess(winrt::hstring{ L"Visible logs copied to clipboard (" + std::to_wstring(copiedLines) + L" lines)" });
         }
         else
         {
-            if (copiedLines > 1)
-            {
-                LogSuccess(winrt::hstring{ L"Visible logs copied to clipboard (" + std::to_wstring(copiedLines) + L" lines)" });
-            }
-            else
-            {
-                LogSuccess(L"Visible log copied to clipboard");
-            }
+            LogSuccess(L"Visible log copied to clipboard");
         }
         co_return;
     }

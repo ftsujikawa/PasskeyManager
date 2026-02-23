@@ -226,6 +226,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock
@@ -266,10 +267,35 @@
                             PlaceholderText="ContosoUserId"
                             TextWrapping="NoWrap" />
 
+                        <TextBlock
+                            Grid.Row="3"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Snapshot History" />
+                        <StackPanel
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <ComboBox
+                                x:Name="snapshotCandidatesCombo"
+                                MinWidth="280"
+                                PlaceholderText="No snapshot history" />
+                            <Button
+                                x:Name="refreshSnapshotCandidatesButton"
+                                Click="refreshSnapshotCandidatesButton_Click"
+                                Content="Refresh List" />
+                            <Button
+                                x:Name="restoreSelectedSnapshotButton"
+                                Click="restoreSelectedSnapshotButton_Click"
+                                Content="Restore Selected" />
+                        </StackPanel>
+
                         <StackPanel
                             Grid.Row="0"
                             Grid.Column="2"
-                            Grid.RowSpan="3"
+                            Grid.RowSpan="4"
                             Orientation="Vertical"
                             Spacing="8">
                             <Button
@@ -289,6 +315,10 @@
                                 x:Name="manualSyncButton"
                                 Click="manualSyncButton_Click"
                                 Content="Resync Now" />
+                            <Button
+                                x:Name="restoreSyncSnapshotButton"
+                                Click="restoreSyncSnapshotButton_Click"
+                                Content="Restore Snapshot" />
                         </StackPanel>
                     </Grid>
 
@@ -430,11 +460,26 @@
                 Grid.Column="1"
                 VerticalAlignment="Stretch"
                 Style="{StaticResource CardStyle}">
-                <ScrollViewer x:Name="statusScrollArea" VerticalScrollBarVisibility="Auto">
-                    <RichTextBlock x:Name="statusTextBlock" FontFamily="Cascadia Code">
-                        <Paragraph x:Name="textContent" FontSize="12" />
-                    </RichTextBlock>
-                </ScrollViewer>
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        x:Name="logDetailTextBlock"
+                        Grid.Row="0"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Latest detail: Not available"
+                        TextWrapping="WrapWholeWords" />
+                    <ScrollViewer
+                        x:Name="statusScrollArea"
+                        Grid.Row="1"
+                        VerticalScrollBarVisibility="Auto">
+                        <RichTextBlock x:Name="statusTextBlock" FontFamily="Cascadia Code">
+                            <Paragraph x:Name="textContent" FontSize="12" />
+                        </RichTextBlock>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
 
             <StackPanel

@@ -5,6 +5,7 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Documents.h>
 #include "CredentialListViewModel.h"
+#include "src/SyncSnapshotStore.h"
 #include <winrt/Windows.Foundation.h>
 #include "Converter/BitwiseFlagToVisibilityConverter.h"
 #include <wil\filesystem.h>
@@ -52,6 +53,9 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction saveSyncSettingsButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction testSyncConnectionButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction manualSyncButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction restoreSyncSnapshotButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction refreshSnapshotCandidatesButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction restoreSelectedSnapshotButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction logsFilterCombo_SelectionChanged(IInspectable const& sender, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& args);
         winrt::IAsyncAction copyLatestLogButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
@@ -62,6 +66,10 @@ namespace winrt::PasskeyManager::implementation
         void UpdatePasskeyOperationStatusText(hstring const& statusText)
         {
             m_logEntries.push_back(statusText);
+            if (!m_isRestoringLogHistory)
+            {
+                PersistSyncHistoryEntry(statusText);
+            }
             RebuildLogView();
 
             std::wstring status = statusText.c_str();
@@ -140,10 +148,16 @@ namespace winrt::PasskeyManager::implementation
         wil::unique_registry_watcher m_registryWatcher;
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         bool m_suppressVaultLockSwitchToggled = false;
+        bool m_isRestoringLogHistory = false;
+        std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};
         void UpdateVaultUnlockControlText(bool isLocked);
         void SetVaultLockSwitchState(bool isOn);
         void RebuildLogView();
         bool ShouldShowLogLine(std::wstring const& line);
+        void UpdateLogDetailSummary();
+        void ReloadSnapshotCandidates();
+        void LoadSyncHistory();
+        void PersistSyncHistoryEntry(winrt::hstring const& line);
     };
 }
 

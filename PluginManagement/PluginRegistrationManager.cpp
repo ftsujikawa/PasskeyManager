@@ -2,6 +2,7 @@
 #include "MainPage.xaml.h"
 #include "PluginRegistrationManager.h"
 #include "src/SyncClient.h"
+#include "src/SyncSnapshotStore.h"
 #include <CorError.h>
 #include <wil/safecast.h>
 #include <functional>
@@ -146,6 +147,53 @@ namespace
         return encoded;
     }
 
+    bool Base64UrlDecode(std::wstring const& encodedWide, std::vector<BYTE>& outBytes)
+    {
+        outBytes.clear();
+        if (encodedWide.empty())
+        {
+            return false;
+        }
+
+        std::string encoded = winrt::to_string(encodedWide);
+        std::replace(encoded.begin(), encoded.end(), '-', '+');
+        std::replace(encoded.begin(), encoded.end(), '_', '/');
+        while ((encoded.size() % 4) != 0)
+        {
+            encoded.push_back('=');
+        }
+
+        DWORD required = 0;
+        if (!CryptStringToBinaryA(
+            encoded.c_str(),
+            static_cast<DWORD>(encoded.size()),
+            CRYPT_STRING_BASE64,
+            nullptr,
+            &required,
+            nullptr,
+            nullptr))
+        {
+            return false;
+        }
+
+        outBytes.resize(required);
+        if (!CryptStringToBinaryA(
+            encoded.c_str(),
+            static_cast<DWORD>(encoded.size()),
+            CRYPT_STRING_BASE64,
+            outBytes.data(),
+            &required,
+            nullptr,
+            nullptr))
+        {
+            outBytes.clear();
+            return false;
+        }
+
+        outBytes.resize(required);
+        return !outBytes.empty();
+    }
+
     std::wstring BuildSyncFailureStatusMessage(HRESULT hrSync, tsupasswd::SyncHttpStatus const& status)
     {
         std::wstring detail;
@@ -283,6 +331,7 @@ namespace
         statusSink(winrt::hstring{ syncWarning });
         return hrSync;
     }
+
 }
 
 namespace winrt::PasskeyManager::implementation {
@@ -627,6 +676,19 @@ namespace winrt::PasskeyManager::implementation {
             std::vector<BYTE> encryptedVaultData(cipherText.pbData, cipherText.pbData + cipherText.cbData);
             RETURN_IF_FAILED(WriteEncryptedVaultData(encryptedVaultData));
 
+            tsupasswd::SyncSnapshotRecord snapshot{};
+            snapshot.SnapshotId = GetNowIsoLikeTimestamp() + L"-local-create";
+            snapshot.CapturedAt = GetNowIsoLikeTimestamp();
+            snapshot.UserId = syncUserId;
+            snapshot.ServerVersion = -1;
+            snapshot.Source = L"local-create";
+            snapshot.CipherBytes = encryptedVaultData;
+            auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
+            if (FAILED(hrSnapshot))
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Snapshot history append failed. hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+            }
+
             // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.
             SyncEncryptedVaultWithRetry(
                 encryptedVaultData,
@@ -746,5 +808,77 @@ namespace winrt::PasskeyManager::implementation {
             });
 
         return hrSync;
+    }
+
+    HRESULT PluginRegistrationManager::RestoreSelfHostedVaultSnapshot()
+    {
+        std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
+        if (syncBaseUrl.empty())
+        {
+            UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore skipped (TSUPASSWD_SYNC_BASE_URL is not set).⚠");
+            return S_FALSE;
+        }
+
+        std::wstring syncUserId = GetEnvironmentVariableValue(kSyncUserIdEnv);
+        if (syncUserId.empty())
+        {
+            syncUserId = kDefaultSyncUserId;
+        }
+
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Restore snapshot started. user_id=" + syncUserId + L"ℹ" });
+
+        tsupasswd::SyncClient syncClient(syncBaseUrl);
+        std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
+        if (!bearerToken.empty())
+        {
+            syncClient.SetBearerToken(bearerToken);
+        }
+
+        tsupasswd::VaultRecord record{};
+        tsupasswd::SyncHttpStatus status{};
+        HRESULT hr = syncClient.GetVault(syncUserId, record, &status);
+        if (FAILED(hr))
+        {
+            if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || status.StatusCode == 404)
+            {
+                UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore failed. No server snapshot found (404).⚠");
+                return hr;
+            }
+
+            std::wstring warning = L"WARNING: Snapshot restore failed. " + BuildSyncFailureStatusMessage(hr, status);
+            UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
+            return hr;
+        }
+
+        std::vector<BYTE> cipherBytes;
+        if (!Base64UrlDecode(record.Blob.CiphertextBase64, cipherBytes))
+        {
+            UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore failed. Server ciphertext is missing or invalid.⚠");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        RETURN_IF_FAILED(WriteEncryptedVaultData(cipherBytes));
+
+        tsupasswd::SyncSnapshotRecord snapshot{};
+        snapshot.SnapshotId = GetNowIsoLikeTimestamp() + L"-server-restore";
+        snapshot.CapturedAt = GetNowIsoLikeTimestamp();
+        snapshot.UserId = syncUserId;
+        snapshot.ServerVersion = record.VaultVersion;
+        snapshot.Source = L"server-restore";
+        snapshot.CipherBytes = cipherBytes;
+        auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
+        if (FAILED(hrSnapshot))
+        {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Snapshot history append failed. hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+        }
+
+        std::wstring success =
+            L"SUCCESS: Snapshot restore completed. Restored encrypted vault bytes=" +
+            std::to_wstring(cipherBytes.size()) +
+            L", server_version=" +
+            std::to_wstring(record.VaultVersion) +
+            L".✅";
+        UpdatePasskeyOperationStatusText(winrt::hstring{ success });
+        return S_OK;
     }
 }

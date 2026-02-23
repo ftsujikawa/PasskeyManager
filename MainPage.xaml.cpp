@@ -9,6 +9,7 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
+#include "src/SyncHistoryStore.h"
 #include "src/SyncClient.h"
 #include <future>
 #include <coroutine>
@@ -85,6 +86,27 @@ namespace {
 
         value.resize(written);
         return value;
+    }
+
+    std::wstring BuildSnapshotCandidateLabel(tsupasswd::SyncSnapshotRecord const& snapshot)
+    {
+        std::wstring label = snapshot.CapturedAt;
+        if (label.empty())
+        {
+            label = snapshot.SnapshotId;
+        }
+
+        label += L" | source=" + snapshot.Source;
+        if (!snapshot.UserId.empty())
+        {
+            label += L" | user=" + snapshot.UserId;
+        }
+        if (snapshot.ServerVersion >= 0)
+        {
+            label += L" | v=" + std::to_wstring(snapshot.ServerVersion);
+        }
+        label += L" | bytes=" + std::to_wstring(snapshot.CipherBytes.size());
+        return label;
     }
 
     std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
@@ -219,6 +241,29 @@ namespace {
         return baseUrl;
     }
 
+    std::wstring ExtractLogTokenValue(std::wstring const& line, std::wstring const& token)
+    {
+        auto start = line.find(token);
+        if (start == std::wstring::npos)
+        {
+            return L"";
+        }
+
+        start += token.size();
+        auto end = line.find(L' ', start);
+        if (end == std::wstring::npos)
+        {
+            end = line.size();
+        }
+
+        std::wstring value = line.substr(start, end - start);
+        while (!value.empty() && (value.back() == L'.' || value.back() == L','))
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
     void CALLBACK WebAuthNStatusChangeCallback(void* context)
     {
         auto mainPage = static_cast<winrt::PasskeyManager::implementation::MainPage*>(context);
@@ -293,6 +338,94 @@ namespace winrt::PasskeyManager::implementation
             unregisterPluginButton().IsEnabled(true);
             activatePluginButton().IsEnabled(pluginState != AuthenticatorState_Enabled);
             UpdatePluginStateTextBlock(pluginState);
+        }
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::refreshSnapshotCandidatesButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        ReloadSnapshotCandidates();
+        LogInfo(L"Snapshot candidate list refreshed");
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::restoreSelectedSnapshotButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto selected = snapshotCandidatesCombo().SelectedItem();
+        if (!selected)
+        {
+            LogWarning(L"No snapshot candidate selected. Select a snapshot then retry restore.");
+            co_return;
+        }
+
+        auto selectedId = winrt::unbox_value<winrt::hstring>(selected).c_str();
+        tsupasswd::SyncSnapshotRecord chosen{};
+        bool found = false;
+        for (auto const& candidate : m_syncSnapshotCandidates)
+        {
+            if (candidate.SnapshotId == selectedId)
+            {
+                chosen = candidate;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            LogWarning(L"Selected snapshot no longer exists. Refresh candidate list and retry restore.");
+            co_return;
+        }
+
+        auto weakThis = get_weak();
+        restoreSelectedSnapshotButton().IsEnabled(false);
+        LogInProgress(L"Restoring selected snapshot to local vault storage...");
+
+        co_await winrt::resume_background();
+        HRESULT hr = PluginRegistrationManager::getInstance().WriteEncryptedVaultData(chosen.CipherBytes);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->restoreSelectedSnapshotButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                std::wstring detail =
+                    L"Selected snapshot restored. source=" +
+                    chosen.Source +
+                    L", bytes=" +
+                    std::to_wstring(chosen.CipherBytes.size());
+                self->LogSuccess(winrt::hstring{ detail });
+            }
+            else
+            {
+                self->LogFailure(L"Failed to restore selected snapshot", hr);
+            }
+        }
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::restoreSyncSnapshotButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto weakThis = get_weak();
+        restoreSyncSnapshotButton().IsEnabled(false);
+        LogInProgress(L"Starting restore from latest self-hosted snapshot...");
+
+        co_await winrt::resume_background();
+        HRESULT hr = PluginRegistrationManager::getInstance().RestoreSelfHostedVaultSnapshot();
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->restoreSyncSnapshotButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                self->LogSuccess(L"Snapshot restore finished");
+                self->ReloadSnapshotCandidates();
+            }
+            else
+            {
+                self->LogWarning(L"Snapshot restore ended with warning/failure", hr);
+            }
         }
         co_return;
     }
@@ -720,8 +853,49 @@ namespace winrt::PasskeyManager::implementation
     {
         UpdatePluginEnableState();
         UpdateCredentialList();
+        LoadSyncHistory();
+        ReloadSnapshotCandidates();
         co_await loadSyncSettingsButton_Click(nullptr, nullptr);
         co_return;
+    }
+
+    void MainPage::ReloadSnapshotCandidates()
+    {
+        m_syncSnapshotCandidates = tsupasswd::SyncSnapshotStore::Load();
+
+        snapshotCandidatesCombo().Items().Clear();
+        for (auto it = m_syncSnapshotCandidates.rbegin(); it != m_syncSnapshotCandidates.rend(); ++it)
+        {
+            snapshotCandidatesCombo().Items().Append(winrt::box_value(winrt::hstring{ it->SnapshotId }));
+        }
+
+        if (snapshotCandidatesCombo().Items().Size() > 0)
+        {
+            snapshotCandidatesCombo().SelectedIndex(0);
+            auto latest = m_syncSnapshotCandidates.back();
+            syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Snapshot candidates loaded (latest: " + BuildSnapshotCandidateLabel(latest) + L")" });
+        }
+        else
+        {
+            syncStatusTextBlock().Text(L"Sync status: No snapshot history");
+        }
+    }
+
+    void MainPage::LoadSyncHistory()
+    {
+        m_isRestoringLogHistory = true;
+        m_logEntries = tsupasswd::SyncHistoryStore::Load();
+        RebuildLogView();
+        m_isRestoringLogHistory = false;
+    }
+
+    void MainPage::PersistSyncHistoryEntry(winrt::hstring const& line)
+    {
+        auto hr = tsupasswd::SyncHistoryStore::Append(line);
+        if (FAILED(hr))
+        {
+            OutputDebugStringW((L"MainPage::PersistSyncHistoryEntry failed. hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
+        }
     }
 
     winrt::IAsyncAction MainPage::loadSyncSettingsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -1309,6 +1483,11 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::clearLogsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         m_logEntries.clear();
+        auto hr = tsupasswd::SyncHistoryStore::Clear();
+        if (FAILED(hr))
+        {
+            OutputDebugStringW((L"MainPage::clearLogsButton_Click failed to clear history file. hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
+        }
         RebuildLogView();
         syncStatusTextBlock().Text(L"Sync status: Logs cleared");
         co_return;
@@ -1369,6 +1548,57 @@ namespace winrt::PasskeyManager::implementation
             textContent().Inlines().Append(run);
             first = false;
         }
+
+        UpdateLogDetailSummary();
+    }
+
+    void MainPage::UpdateLogDetailSummary()
+    {
+        std::wstring latestLine;
+        for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
+        {
+            std::wstring line = it->c_str();
+            if (ShouldShowLogLine(line))
+            {
+                latestLine = std::move(line);
+                break;
+            }
+        }
+
+        if (latestLine.empty())
+        {
+            logDetailTextBlock().Text(L"Latest detail: Not available");
+            return;
+        }
+
+        std::wstring detail = L"Latest detail:";
+        auto statusCode = ExtractLogTokenValue(latestLine, L"status=");
+        auto code = ExtractLogTokenValue(latestLine, L"code=");
+        auto serverVersion = ExtractLogTokenValue(latestLine, L"server_version=");
+
+        if (!statusCode.empty())
+        {
+            detail += L" status=" + statusCode;
+        }
+        if (!code.empty())
+        {
+            detail += L" code=" + code;
+        }
+        if (!serverVersion.empty())
+        {
+            detail += L" server_version=" + serverVersion;
+        }
+
+        if (detail == L"Latest detail:")
+        {
+            if (latestLine.size() > 180)
+            {
+                latestLine = latestLine.substr(0, 180) + L"...";
+            }
+            detail += L" " + latestLine;
+        }
+
+        logDetailTextBlock().Text(winrt::hstring{ detail });
     }
 
     winrt::IAsyncAction MainPage::logsFilterCombo_SelectionChanged(IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&)

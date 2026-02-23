@@ -28,6 +28,12 @@
     <ClCompile Include="src\Config.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\SyncSnapshotStore.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SyncHistoryStore.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\SyncClient.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -45,6 +51,12 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="src\DiagnosticsConfig.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SyncSnapshotStore.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SyncHistoryStore.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="src\SyncClient.h">

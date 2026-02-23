@@ -471,14 +471,11 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Latest detail: Not available"
                         TextWrapping="WrapWholeWords" />
-                    <ScrollViewer
-                        x:Name="statusScrollArea"
+                    <ListView
+                        x:Name="syncHistoryListView"
                         Grid.Row="1"
-                        VerticalScrollBarVisibility="Auto">
-                        <RichTextBlock x:Name="statusTextBlock" FontFamily="Cascadia Code">
-                            <Paragraph x:Name="textContent" FontSize="12" />
-                        </RichTextBlock>
-                    </ScrollViewer>
+                        FontFamily="Cascadia Code"
+                        SelectionMode="None" />
                 </Grid>
             </Grid>
 

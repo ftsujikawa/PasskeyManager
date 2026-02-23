@@ -1589,9 +1589,8 @@ namespace winrt::PasskeyManager::implementation
 
     void MainPage::RebuildLogView()
     {
-        textContent().Inlines().Clear();
+        syncHistoryListView().Items().Clear();
 
-        bool first = true;
         for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
         {
             std::wstring line = it->c_str();
@@ -1600,15 +1599,7 @@ namespace winrt::PasskeyManager::implementation
                 continue;
             }
 
-            if (!first)
-            {
-                textContent().Inlines().Append(Microsoft::UI::Xaml::Documents::LineBreak{});
-            }
-
-            Microsoft::UI::Xaml::Documents::Run run;
-            run.Text(*it);
-            textContent().Inlines().Append(run);
-            first = false;
+            syncHistoryListView().Items().Append(winrt::box_value(*it));
         }
 
         UpdateLogDetailSummary();

@@ -840,7 +840,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore skipped (TSUPASSWD_SYNC_BASE_URL is not set).⚠");
+            UpdatePasskeyOperationStatusText(L"WARNING: sync result=skipped operation=restore_snapshot reason=base_url_missing hr=1⚠");
             return S_FALSE;
         }
 
@@ -850,7 +850,7 @@ namespace winrt::PasskeyManager::implementation {
             syncUserId = kDefaultSyncUserId;
         }
 
-        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Restore snapshot started. user_id=" + syncUserId + L"ℹ" });
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=restore_snapshot user_id=" + syncUserId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
@@ -866,11 +866,14 @@ namespace winrt::PasskeyManager::implementation {
         {
             if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || status.StatusCode == 404)
             {
-                UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore failed. No server snapshot found (404).⚠");
+                UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=restore_snapshot hr=-2147023728 status=404 reason=snapshot_not_found⚠");
                 return hr;
             }
 
-            std::wstring warning = L"WARNING: Snapshot restore failed. hr=" + std::to_wstring(static_cast<int>(hr)) + L" " + BuildSyncFailureStatusMessage(hr, status);
+            std::wstring warning =
+                L"WARNING: sync result=failed operation=restore_snapshot hr=" +
+                std::to_wstring(static_cast<int>(hr)) +
+                L" detail=" + BuildSyncFailureStatusMessage(hr, status);
             UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
             return hr;
         }
@@ -878,7 +881,7 @@ namespace winrt::PasskeyManager::implementation {
         std::vector<BYTE> cipherBytes;
         if (!Base64UrlDecode(record.Blob.CiphertextBase64, cipherBytes))
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: Snapshot restore failed. Server ciphertext is missing or invalid.⚠");
+            UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=restore_snapshot reason=invalid_ciphertext hr=-2147024883⚠");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
@@ -894,15 +897,15 @@ namespace winrt::PasskeyManager::implementation {
         auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
         if (FAILED(hrSnapshot))
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Snapshot history append failed. hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=restore_snapshot_snapshot_history_append hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
         }
 
         std::wstring success =
-            L"SUCCESS: Snapshot restore completed. Restored encrypted vault bytes=" +
+            L"SUCCESS: sync result=success operation=restore_snapshot hr=0 bytes=" +
             std::to_wstring(cipherBytes.size()) +
-            L", server_version=" +
+            L" server_version=" +
             std::to_wstring(record.VaultVersion) +
-            L".✅";
+            L"✅";
         UpdatePasskeyOperationStatusText(winrt::hstring{ success });
         return S_OK;
     }

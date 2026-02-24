@@ -1460,10 +1460,13 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentialsEverywhere_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        uint64_t requestId = ++m_deleteEverywhereRequestCounter;
+
         if (m_isDeleteEverywhereInProgress)
         {
             LogInfo(winrt::hstring{
-                L"Delete selected everywhere is already running (run #" +
+                L"Delete selected everywhere request #" + std::to_wstring(requestId) +
+                L" is already running (run #" +
                 std::to_wstring(m_deleteEverywhereActiveRunId) +
                 L"). Please wait for completion." });
             co_return;
@@ -1474,7 +1477,7 @@ namespace winrt::PasskeyManager::implementation
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(L"No credentials selected", E_NOT_SET);
+            LogWarning(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L": No credentials selected" }, E_NOT_SET);
             co_return;
         }
 

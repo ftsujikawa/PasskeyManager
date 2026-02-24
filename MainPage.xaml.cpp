@@ -1466,10 +1466,10 @@ namespace winrt::PasskeyManager::implementation
         if (m_isDeleteEverywhereInProgress)
         {
             LogWarning(winrt::hstring{
-                L"Delete selected everywhere request #" + std::to_wstring(requestId) +
-                L" is already running (run #" +
-                std::to_wstring(m_deleteEverywhereActiveRunId) +
-                L"). Please wait for completion." });
+                L"summary result=rejected reason=in_progress request=" +
+                std::to_wstring(requestId) +
+                L" active_run=" +
+                std::to_wstring(m_deleteEverywhereActiveRunId) });
             co_return;
         }
 
@@ -1478,7 +1478,7 @@ namespace winrt::PasskeyManager::implementation
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L": No credentials selected" }, E_NOT_SET);
+            LogWarning(winrt::hstring{ L"summary result=rejected reason=no_selection request=" + std::to_wstring(requestId) }, E_NOT_SET);
             co_return;
         }
 
@@ -1488,9 +1488,10 @@ namespace winrt::PasskeyManager::implementation
         auto runStartTime = std::chrono::steady_clock::now();
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(winrt::hstring{
-            L"Deleting selected credentials everywhere... (request #" +
+            L"summary state=running request=" +
             std::to_wstring(requestId) +
-            L", run #" + std::to_wstring(runId) + L")" });
+            L" run=" +
+            std::to_wstring(runId) });
 
         // find the list of creds with checkbox checked
 
@@ -1504,7 +1505,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        hstring statusText = winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": " + std::to_wstring(credentialIdList.size()) + L" credentials selected..." };
+        hstring statusText = winrt::hstring{ L"summary state=selected request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" selected=" + std::to_wstring(credentialIdList.size()) };
         UpdatePasskeyOperationStatusText(statusText);
 
         co_await winrt::resume_background();

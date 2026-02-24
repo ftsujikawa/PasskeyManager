@@ -194,7 +194,7 @@ namespace
         return !outBytes.empty();
     }
 
-    std::wstring BuildSyncFailureStatusMessage(HRESULT hrSync, tsupasswd::SyncHttpStatus const& status)
+    std::wstring BuildSyncFailureStatusMessage(HRESULT, tsupasswd::SyncHttpStatus const& status)
     {
         std::wstring detail;
         switch (status.StatusCode)
@@ -233,7 +233,6 @@ namespace
             detail += L" message=" + status.ErrorMessage + L".";
         }
 
-        detail += L" hr=" + std::to_wstring(static_cast<int>(hrSync));
         return detail;
     }
 
@@ -871,7 +870,7 @@ namespace winrt::PasskeyManager::implementation {
                 return hr;
             }
 
-            std::wstring warning = L"WARNING: Snapshot restore failed. " + BuildSyncFailureStatusMessage(hr, status);
+            std::wstring warning = L"WARNING: Snapshot restore failed. hr=" + std::to_wstring(static_cast<int>(hr)) + L" " + BuildSyncFailureStatusMessage(hr, status);
             UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
             return hr;
         }

@@ -274,6 +274,7 @@ namespace
         HRESULT hrSync = E_FAIL;
         tsupasswd::PutVaultResponse putResponse{};
         tsupasswd::SyncHttpStatus syncStatus{};
+        auto syncStartTime = std::chrono::steady_clock::now();
 
         for (int attempt = 1; attempt <= kMaxAttempts; ++attempt)
         {
@@ -282,12 +283,17 @@ namespace
 
             if (hrSync == HRESULT_FROM_WIN32(ERROR_REVISION_MISMATCH) && syncStatus.ServerVersion >= 0)
             {
+                auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - syncStartTime).count();
                 putRequest.ExpectedVersion = syncStatus.ServerVersion;
                 putRequest.NewVersion = syncStatus.ServerVersion + 1;
                 statusSink(
                     winrt::hstring{
                         L"INFO: Self-hosted sync version conflict detected. Retrying with server_version=" +
-                        std::to_wstring(syncStatus.ServerVersion) + L"...ℹ" });
+                        std::to_wstring(syncStatus.ServerVersion) +
+                        L" elapsed_ms=" +
+                        std::to_wstring(elapsedMs) +
+                        L"...ℹ" });
                 continue;
             }
 

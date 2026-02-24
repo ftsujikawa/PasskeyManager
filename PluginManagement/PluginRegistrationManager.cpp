@@ -299,7 +299,9 @@ namespace
 
             if (SUCCEEDED(hrSync))
             {
-                statusSink(L"SUCCESS: Self-hosted vault sync completed.✅");
+                auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - syncStartTime).count();
+                statusSink(winrt::hstring{ L"SUCCESS: Self-hosted vault sync completed. elapsed_ms=" + std::to_wstring(elapsedMs) + L", attempts=" + std::to_wstring(attempt) + L"✅" });
                 return S_OK;
             }
 
@@ -323,7 +325,10 @@ namespace
                     std::to_wstring(kMaxAttempts) +
                     L" in " +
                     std::to_wstring(backoffMs) +
-                    L"ms...ℹ" });
+                    L"ms (elapsed_ms=" +
+                    std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - syncStartTime).count()) +
+                    L")...ℹ" });
 
             std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
             backoffMs *= 2;
@@ -334,6 +339,8 @@ namespace
         {
             syncWarning += L" Recovery: click Resync Now to fetch latest server version and retry.";
         }
+        syncWarning += L" elapsed_ms=" + std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - syncStartTime).count());
         statusSink(winrt::hstring{ syncWarning });
         return hrSync;
     }

@@ -970,7 +970,7 @@ namespace winrt::PasskeyManager::implementation
         syncUserIdTextBox().Text(userId);
 
         syncStatusTextBlock().Text(L"Sync status: Settings loaded");
-        LogInfo(L"Sync settings loaded from process/registry.");
+        LogInfo(L"sync result=success operation=load_settings source=process_registry");
         co_return;
     }
 
@@ -985,13 +985,13 @@ namespace winrt::PasskeyManager::implementation
         if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
         {
             syncStatusTextBlock().Text(L"Sync status: Save failed (invalid Base URL)");
-            LogWarning(L"Sync Base URL must start with http:// or https://");
+            LogWarning(L"sync result=rejected operation=save_settings reason=invalid_base_url");
             co_return;
         }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {
             syncStatusTextBlock().Text(L"Sync status: Save failed (invalid User ID)");
-            LogWarning(L"Sync User ID must be [a-zA-Z0-9._-].");
+            LogWarning(L"sync result=rejected operation=save_settings reason=invalid_user_id");
             co_return;
         }
 
@@ -1014,7 +1014,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         syncStatusTextBlock().Text(L"Sync status: Settings saved");
-        LogSuccess(L"Sync settings saved (TSUPASSWD_SYNC_BASE_URL / TOKEN / USER_ID)");
+        LogSuccess(L"sync result=success operation=save_settings fields=base_url,token,user_id");
         co_return;
     }
 
@@ -1029,19 +1029,19 @@ namespace winrt::PasskeyManager::implementation
         if (!IsValidSyncBaseUrl(baseUrl))
         {
             syncStatusTextBlock().Text(L"Sync status: Test failed (invalid Base URL)");
-            LogWarning(L"Sync Base URL must start with http:// or https://");
+            LogWarning(L"sync result=rejected operation=test_connection reason=invalid_base_url");
             co_return;
         }
         if (token.empty())
         {
             syncStatusTextBlock().Text(L"Sync status: Test failed (token is empty)");
-            LogWarning(L"Sync Token is empty. Enter bearer token and retry Test Connection.");
+            LogWarning(L"sync result=rejected operation=test_connection reason=token_empty");
             co_return;
         }
         if (!IsValidSyncUserId(userId))
         {
             syncStatusTextBlock().Text(L"Sync status: Test failed (invalid User ID)");
-            LogWarning(L"Sync User ID must be [a-zA-Z0-9._-].");
+            LogWarning(L"sync result=rejected operation=test_connection reason=invalid_user_id");
             co_return;
         }
 
@@ -1068,7 +1068,7 @@ namespace winrt::PasskeyManager::implementation
         if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             self->syncStatusTextBlock().Text(L"Sync status: Connection test passed");
-            self->LogSuccess(L"Sync connection test passed");
+            self->LogSuccess(L"sync result=success operation=test_connection outcome=reachable_or_not_found");
             co_return;
         }
 

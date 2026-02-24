@@ -426,7 +426,7 @@ namespace winrt::PasskeyManager::implementation
 
         auto weakThis = get_weak();
         restoreSelectedSnapshotButton().IsEnabled(false);
-        LogInProgress(L"Restoring selected snapshot to local vault storage...");
+        LogInProgress(L"summary state=running operation=restore_selected_snapshot");
 
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().WriteEncryptedVaultData(chosen.CipherBytes);
@@ -483,7 +483,7 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         runVaultRecoveryButton().IsEnabled(false);
         quickCreateVaultPasskeyButton().IsEnabled(false);
-        LogInProgress(L"Running Vault recovery flow");
+        LogInProgress(L"summary state=running operation=vault_recovery");
         vaultRecoveryHintText().Text(L"Vault passkey registration in progress. In storage selection, choose tsupasswd_core and complete the prompt.");
         vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 
@@ -1048,7 +1048,7 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
         syncStatusTextBlock().Text(L"Sync status: Testing connection...");
-        LogInProgress(L"Testing self-hosted sync connection...");
+        LogInProgress(L"summary state=running operation=test_connection");
 
         co_await winrt::resume_background();
         tsupasswd::SyncClient syncClient(baseUrl);

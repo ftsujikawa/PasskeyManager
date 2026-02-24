@@ -156,6 +156,7 @@ namespace winrt::PasskeyManager::implementation
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         bool m_suppressVaultLockSwitchToggled = false;
         bool m_isRestoringLogHistory = false;
+        bool m_isDeleteEverywhereInProgress = false;
         std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};
         void UpdateVaultUnlockControlText(bool isLocked);
         void SetVaultLockSwitchState(bool isOn);

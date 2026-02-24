@@ -1460,6 +1460,12 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentialsEverywhere_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        if (m_isDeleteEverywhereInProgress)
+        {
+            LogInfo(L"Delete selected everywhere is already running. Please wait for completion.");
+            co_return;
+        }
+
         auto weakThis = get_weak();
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
@@ -1469,6 +1475,7 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
+        m_isDeleteEverywhereInProgress = true;
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(L"Deleting selected credentials everywhere...");
 
@@ -1522,6 +1529,7 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
+        self->m_isDeleteEverywhereInProgress = false;
         self->deleteSelectedLocalButton().IsEnabled(true);
 
         self->UpdateCredentialList();

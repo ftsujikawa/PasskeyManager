@@ -1552,15 +1552,18 @@ namespace winrt::PasskeyManager::implementation
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": No selected credentials are currently present in system cache. elapsed_ms=" + std::to_wstring(elapsedMs) });
+            self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": summary result=not_found selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" elapsed_ms=" + std::to_wstring(elapsedMs) });
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
             self->LogFailure(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Failed to delete credentials everywhere. " + detail + L" elapsed_ms=" + std::to_wstring(elapsedMs) }, hr);
+            self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": summary result=failed selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" elapsed_ms=" + std::to_wstring(elapsedMs) });
             co_return;
         }
         self->LogSuccess(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Selected credentials deleted everywhere. elapsed_ms=" + std::to_wstring(elapsedMs) });
+        self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": summary result=success selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" elapsed_ms=" + std::to_wstring(elapsedMs) });
         co_return;
     }
 

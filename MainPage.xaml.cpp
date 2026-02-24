@@ -1485,7 +1485,10 @@ namespace winrt::PasskeyManager::implementation
         m_deleteEverywhereActiveRunId = runId;
         m_isDeleteEverywhereInProgress = true;
         deleteSelectedLocalButton().IsEnabled(false);
-        LogInProgress(winrt::hstring{ L"Deleting selected credentials everywhere... (run #" + std::to_wstring(runId) + L")" });
+        LogInProgress(winrt::hstring{
+            L"Deleting selected credentials everywhere... (request #" +
+            std::to_wstring(requestId) +
+            L", run #" + std::to_wstring(runId) + L")" });
 
         // find the list of creds with checkbox checked
 
@@ -1499,7 +1502,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        hstring statusText = winrt::hstring{ L"run #" + std::to_wstring(runId) + L": " + std::to_wstring(credentialIdList.size()) + L" credentials selected..." };
+        hstring statusText = winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": " + std::to_wstring(credentialIdList.size()) + L" credentials selected..." };
         UpdatePasskeyOperationStatusText(statusText);
 
         co_await winrt::resume_background();

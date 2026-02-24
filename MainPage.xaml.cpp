@@ -14,6 +14,7 @@
 #include <future>
 #include <coroutine>
 #include <thread>
+#include <chrono>
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
@@ -1484,6 +1485,7 @@ namespace winrt::PasskeyManager::implementation
         uint64_t runId = ++m_deleteEverywhereRunCounter;
         m_deleteEverywhereActiveRunId = runId;
         m_isDeleteEverywhereInProgress = true;
+        auto runStartTime = std::chrono::steady_clock::now();
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(winrt::hstring{
             L"Deleting selected credentials everywhere... (request #" +
@@ -1543,20 +1545,22 @@ namespace winrt::PasskeyManager::implementation
         self->m_isDeleteEverywhereInProgress = false;
         self->m_deleteEverywhereActiveRunId = 0;
         self->deleteSelectedLocalButton().IsEnabled(true);
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - runStartTime).count();
 
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": No selected credentials are currently present in system cache." });
+            self->LogInfo(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": No selected credentials are currently present in system cache. elapsed_ms=" + std::to_wstring(elapsedMs) });
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Failed to delete credentials everywhere. " + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Failed to delete credentials everywhere. " + detail + L" elapsed_ms=" + std::to_wstring(elapsedMs) }, hr);
             co_return;
         }
-        self->LogSuccess(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Selected credentials deleted everywhere" });
+        self->LogSuccess(winrt::hstring{ L"request #" + std::to_wstring(requestId) + L", run #" + std::to_wstring(runId) + L": Selected credentials deleted everywhere. elapsed_ms=" + std::to_wstring(elapsedMs) });
         co_return;
     }
 

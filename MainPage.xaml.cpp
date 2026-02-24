@@ -1460,9 +1460,7 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentialsEverywhere_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Deleting selected credentials everywhere...");
-
-        // find the list of creds with checkbox checked
+        auto weakThis = get_weak();
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
@@ -1470,6 +1468,11 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(L"No credentials selected", E_NOT_SET);
             co_return;
         }
+
+        deleteSelectedLocalButton().IsEnabled(false);
+        LogInProgress(L"Deleting selected credentials everywhere...");
+
+        // find the list of creds with checkbox checked
 
         for (auto item : selectedItems)
         {
@@ -1484,7 +1487,6 @@ namespace winrt::PasskeyManager::implementation
         hstring statusText = winrt::to_hstring(credentialIdList.size()) + L" credentials selected...";
         UpdatePasskeyOperationStatusText(statusText);
 
-        auto weakThis = get_weak();
         co_await winrt::resume_background();
         auto& credentialManager = PluginCredentialManager::getInstance();
         credentialManager.ReloadCredentialManager();
@@ -1519,6 +1521,8 @@ namespace winrt::PasskeyManager::implementation
         {
             co_return;
         }
+
+        self->deleteSelectedLocalButton().IsEnabled(true);
 
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))

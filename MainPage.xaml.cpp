@@ -1536,16 +1536,16 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogInfo(L"No selected credentials are currently present in system cache.");
+            self->LogInfo(winrt::hstring{ L"run #" + std::to_wstring(runId) + L": No selected credentials are currently present in system cache." });
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"Failed to delete credentials everywhere. " + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"run #" + std::to_wstring(runId) + L": Failed to delete credentials everywhere. " + detail }, hr);
             co_return;
         }
-        self->LogSuccess(L"Selected credentials deleted everywhere");
+        self->LogSuccess(winrt::hstring{ L"run #" + std::to_wstring(runId) + L": Selected credentials deleted everywhere" });
         co_return;
     }
 

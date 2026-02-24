@@ -291,14 +291,14 @@ namespace
                 putRequest.NewVersion = syncStatus.ServerVersion + 1;
                 statusSink(
                     winrt::hstring{
-                        L"INFO: Self-hosted sync version conflict detected. Retrying with server_version=" +
-                        std::to_wstring(syncStatus.ServerVersion) +
-                        L" attempt=" +
+                        L"INFO: sync result=retry_conflict attempt=" +
                         std::to_wstring(attempt) +
                         L"/" +
                         std::to_wstring(kMaxAttempts) +
                         L" elapsed_ms=" +
                         std::to_wstring(elapsedMs) +
+                        L" server_version=" +
+                        std::to_wstring(syncStatus.ServerVersion) +
                         L"...ℹ" });
                 continue;
             }
@@ -307,7 +307,7 @@ namespace
             {
                 auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - syncStartTime).count();
-                statusSink(winrt::hstring{ L"SUCCESS: Self-hosted vault sync completed. elapsed_ms=" + std::to_wstring(elapsedMs) + L", attempts=" + std::to_wstring(attempt) + L"✅" });
+                statusSink(winrt::hstring{ L"SUCCESS: sync result=success attempts=" + std::to_wstring(attempt) + L"/" + std::to_wstring(kMaxAttempts) + L" elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=0✅" });
                 return S_OK;
             }
 
@@ -325,29 +325,35 @@ namespace
 
             statusSink(
                 winrt::hstring{
-                    L"INFO: Self-hosted sync retry " +
+                    L"INFO: sync result=retry_backoff attempt=" +
                     std::to_wstring(attempt + 1) +
                     L"/" +
                     std::to_wstring(kMaxAttempts) +
-                    L" in " +
+                    L" backoff_ms=" +
                     std::to_wstring(backoffMs) +
-                    L"ms (elapsed_ms=" +
+                    L" elapsed_ms=" +
                     std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - syncStartTime).count()) +
-                    L")...ℹ" });
+                    L"...ℹ" });
 
             std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
             backoffMs *= 2;
         }
 
-        std::wstring syncWarning = L"WARNING: " + BuildSyncFailureStatusMessage(hrSync, syncStatus);
+        std::wstring syncWarning =
+            L"WARNING: sync result=failed attempts=" +
+            std::to_wstring(attemptsUsed) +
+            L"/" +
+            std::to_wstring(kMaxAttempts) +
+            L" elapsed_ms=" +
+            std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - syncStartTime).count()) +
+            L" hr=" + std::to_wstring(static_cast<int>(hrSync)) +
+            L" detail=" + BuildSyncFailureStatusMessage(hrSync, syncStatus);
         if (syncStatus.StatusCode == 409)
         {
             syncWarning += L" Recovery: click Resync Now to fetch latest server version and retry.";
         }
-        syncWarning += L" elapsed_ms=" + std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - syncStartTime).count());
-        syncWarning += L" attempts=" + std::to_wstring(attemptsUsed) + L"/" + std::to_wstring(kMaxAttempts);
         statusSink(winrt::hstring{ syncWarning });
         return hrSync;
     }

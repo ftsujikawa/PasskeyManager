@@ -531,17 +531,17 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Plugin is not enabled. Click 'Enable in Settings', then run Create Vault Passkey again.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"Plugin is not Enabled. Current plugin state=" + stateText + L". Opening Settings now..." });
+                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=vault_recovery reason=plugin_not_enabled state=" + stateText + L" action=open_settings" });
 
                 auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
                 bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
                 if (launched)
                 {
-                    self->LogSuccess(L"Windows Settings opened. Enable the plugin, return to the app, then retry Create Vault Passkey.");
+                    self->LogSuccess(L"summary result=success operation=vault_recovery action=open_settings");
                 }
                 else
                 {
-                    self->LogWarning(L"Failed to open Windows Settings. Open Settings > Accounts > Passkeys > Advanced options and enable this plugin.");
+                    self->LogWarning(L"summary result=failed operation=vault_recovery action=open_settings reason=launch_failed");
                 }
             }
             co_return;
@@ -574,7 +574,7 @@ namespace winrt::PasskeyManager::implementation
         {
             if (auto self{ weakThis.get() })
             {
-                self->LogInfo(L"Create Vault Passkey was cancelled. Skipping immediate retry to avoid plugin busy race.", hrCreatePasskey);
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled" });
             }
         }
         if (auto self{ weakThis.get() })
@@ -594,7 +594,7 @@ namespace winrt::PasskeyManager::implementation
 
             if (FAILED(hrSetSilent))
             {
-                self->LogWarning(L"Failed to force plugin UI visibility (silent mode off). Passkey prompt may be cancelled unexpectedly.", hrSetSilent);
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=vault_recovery step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset" });
             }
 
             self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=create_vault_passkey_returned hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) });
@@ -609,9 +609,9 @@ namespace winrt::PasskeyManager::implementation
                     pluginUvStatus = curApp->m_pluginOperationStatus.uvSignatureVerificationStatus;
                     pluginRequestSignStatus = curApp->m_pluginOperationStatus.requestSignatureVerificationStatus;
                 }
-                self->LogInfo(L"Plugin performOperationStatus", pluginPerformStatus);
-                self->LogInfo(L"Plugin uvSignatureVerificationStatus", pluginUvStatus);
-                self->LogInfo(L"Plugin requestSignatureVerificationStatus", pluginRequestSignStatus);
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_perform_operation_status hr=" + std::to_wstring(static_cast<int>(pluginPerformStatus)) });
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_uv_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginUvStatus)) });
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_request_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginRequestSignStatus)) });
             }
 
             if (SUCCEEDED(hrCreatePasskey))
@@ -637,7 +637,7 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Passkey registration is not supported by the selected authenticator. Try selecting tsupasswd_core and retry.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(L"Selected authenticator does not support required PRF/HMAC extension. Select tsupasswd_core and retry Create Vault Passkey.");
+                self->LogWarning(L"summary result=failed operation=vault_recovery reason=authenticator_not_supported_prf_hmac");
                 co_return;
             }
 
@@ -646,7 +646,7 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->vaultRecoveryHintText().Text(L"Passkey registration was cancelled (0x800704C7). In storage selection choose tsupasswd_core and complete the prompt.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogInfo(L"Vault recovery cancelled. If 'Something went wrong' appeared, select tsupasswd_core in storage selection and retry.", hrCreatePasskey);
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled" });
             }
             else
             {

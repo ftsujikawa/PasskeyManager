@@ -622,7 +622,7 @@ namespace winrt::PasskeyManager::implementation {
         webAuthNCredentialOptions.bEnablePrf = false;
         webAuthNCredentialOptions.pPRFGlobalEval = nullptr;
 
-        UpdatePasskeyOperationStatusText(L"INFO: Opening passkey prompt. If 'Something went wrong' appears, complete or cancel and check the next HRESULT log.ℹ");
+        UpdatePasskeyOperationStatusText(L"INFO: summary state=running operation=vault_recovery step=open_passkey_promptℹ");
 
         unique_webauthn_credential_attestation pCredentialAttestation = nullptr;
         hr = WebAuthNAuthenticatorMakeCredential(
@@ -664,7 +664,7 @@ namespace winrt::PasskeyManager::implementation {
                     pCredentialAttestation.get()->pHmacSecret->pbFirst,
                     pCredentialAttestation.get()->pHmacSecret->pbFirst + pCredentialAttestation.get()->pHmacSecret->cbFirst);
                 RETURN_IF_FAILED(SetHMACSecret(hmacSecretInput));
-                UpdatePasskeyOperationStatusText(L"SUCCESS: PRF/HMAC secret returned and stored.✅");
+                UpdatePasskeyOperationStatusText(L"SUCCESS: summary result=success operation=vault_recovery step=prf_hmac_secret_stored✅");
                 entropy.cbData = pCredentialAttestation.get()->pHmacSecret->cbFirst;
                 entropy.pbData = pCredentialAttestation.get()->pHmacSecret->pbFirst;
                 pEntropy = &entropy;
@@ -673,7 +673,7 @@ namespace winrt::PasskeyManager::implementation {
             {
                 // PRF未対応時は、認証成功そのものをVault解除のゲートとして扱うフォールバックに切替える。
                 RETURN_IF_FAILED(SetHMACSecret({}));
-                UpdatePasskeyOperationStatusText(L"INFO: PRF/HMAC secret was not returned. Using non-PRF vault protection fallback.ℹ");
+                UpdatePasskeyOperationStatusText(L"INFO: summary state=observed operation=vault_recovery step=prf_hmac_secret_missing fallback=non_prfℹ");
             }
 
             DATA_BLOB vaultData = {
@@ -711,7 +711,7 @@ namespace winrt::PasskeyManager::implementation {
             auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
             if (FAILED(hrSnapshot))
             {
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: Snapshot history append failed. hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=vault_recovery_snapshot_history_append hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
             }
 
             // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.

@@ -1072,21 +1072,23 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
-        std::wstring detail = L"Sync connection test failed.";
+        std::wstring detail =
+            L"sync result=failed operation=test_connection attempts=1 hr=" +
+            std::to_wstring(static_cast<int>(hr));
         if (status.StatusCode > 0)
         {
-            detail += L" status=" + std::to_wstring(status.StatusCode) + L".";
+            detail += L" status=" + std::to_wstring(status.StatusCode);
         }
         if (!status.ErrorCode.empty())
         {
-            detail += L" code=" + status.ErrorCode + L".";
+            detail += L" code=" + status.ErrorCode;
         }
         if (!status.ErrorMessage.empty())
         {
-            detail += L" message=" + status.ErrorMessage + L".";
+            detail += L" message=" + status.ErrorMessage;
         }
         self->syncStatusTextBlock().Text(L"Sync status: Connection test failed");
-        self->LogWarning(winrt::hstring{ detail }, hr);
+        self->LogWarning(winrt::hstring{ detail });
         co_return;
     }
 

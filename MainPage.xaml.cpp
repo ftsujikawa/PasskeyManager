@@ -401,7 +401,7 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::refreshSnapshotCandidatesButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         ReloadSnapshotCandidates();
-        LogInfo(L"Snapshot candidate list refreshed");
+        LogInfo(L"sync result=success operation=refresh_snapshot_candidates");
         co_return;
     }
 
@@ -410,14 +410,14 @@ namespace winrt::PasskeyManager::implementation
         int32_t selectedIndex = snapshotCandidatesCombo().SelectedIndex();
         if (selectedIndex < 0)
         {
-            LogWarning(L"No snapshot candidate selected. Select a snapshot then retry restore.");
+            LogWarning(L"sync result=rejected operation=restore_selected_snapshot reason=no_selection");
             co_return;
         }
 
         size_t candidateCount = m_syncSnapshotCandidates.size();
         if (candidateCount == 0 || static_cast<size_t>(selectedIndex) >= candidateCount)
         {
-            LogWarning(L"Selected snapshot no longer exists. Refresh candidate list and retry restore.");
+            LogWarning(L"sync result=rejected operation=restore_selected_snapshot reason=candidate_stale");
             co_return;
         }
 
@@ -438,9 +438,9 @@ namespace winrt::PasskeyManager::implementation
             if (SUCCEEDED(hr))
             {
                 std::wstring detail =
-                    L"Selected snapshot restored. source=" +
+                    L"sync result=success operation=restore_selected_snapshot source=" +
                     chosen.Source +
-                    L", bytes=" +
+                    L" bytes=" +
                     std::to_wstring(chosen.CipherBytes.size());
                 self->LogSuccess(winrt::hstring{ detail });
             }

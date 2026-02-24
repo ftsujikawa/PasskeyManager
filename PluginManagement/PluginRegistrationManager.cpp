@@ -244,7 +244,7 @@ namespace
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
-            statusSink(L"INFO: Self-hosted sync skipped (TSUPASSWD_SYNC_BASE_URL is not set).ℹ");
+            statusSink(L"INFO: sync result=skipped operation=put_vault reason=base_url_missing hr=1ℹ");
             return S_FALSE;
         }
 
@@ -823,7 +823,7 @@ namespace winrt::PasskeyManager::implementation {
         std::vector<BYTE> encryptedVaultData;
         RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData));
 
-        UpdatePasskeyOperationStatusText(L"INFO: Manual self-hosted resync started.ℹ");
+        UpdatePasskeyOperationStatusText(L"INFO: sync state=start operation=manual_resyncℹ");
         auto hrSync = SyncEncryptedVaultWithRetry(
             encryptedVaultData,
             syncUserId,

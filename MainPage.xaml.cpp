@@ -466,12 +466,11 @@ namespace winrt::PasskeyManager::implementation
             self->restoreSyncSnapshotButton().IsEnabled(true);
             if (SUCCEEDED(hr))
             {
-                self->LogSuccess(L"Snapshot restore finished");
                 self->ReloadSnapshotCandidates();
             }
             else
             {
-                self->LogWarning(L"Snapshot restore ended with warning/failure", hr);
+                self->syncStatusTextBlock().Text(L"Sync status: Snapshot restore ended with warning/failure");
             }
         }
         co_return;
@@ -1103,13 +1102,9 @@ namespace winrt::PasskeyManager::implementation
         if (auto self = weakThis.get())
         {
             self->manualSyncButton().IsEnabled(true);
-            if (SUCCEEDED(hr))
+            if (FAILED(hr))
             {
-                self->LogSuccess(L"Manual self-hosted resync finished");
-            }
-            else
-            {
-                self->LogWarning(L"Manual self-hosted resync ended with warning/failure", hr);
+                self->syncStatusTextBlock().Text(L"Sync status: Manual self-hosted resync ended with warning/failure");
             }
         }
         co_return;

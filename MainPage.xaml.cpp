@@ -456,7 +456,7 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         restoreSyncSnapshotButton().IsEnabled(false);
-        LogInProgress(L"Starting restore from latest self-hosted snapshot...");
+        LogInProgress(L"summary state=running operation=restore_snapshot");
 
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().RestoreSelfHostedVaultSnapshot();
@@ -1096,7 +1096,7 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         manualSyncButton().IsEnabled(false);
-        LogInProgress(L"Starting manual self-hosted resync...");
+        LogInProgress(L"summary state=running operation=manual_resync");
 
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault();

@@ -248,7 +248,7 @@ namespace
             return S_FALSE;
         }
 
-        statusSink(winrt::hstring{ L"INFO: Self-hosted sync user_id: " + syncUserId + L"ℹ" });
+        statusSink(winrt::hstring{ L"INFO: sync state=start user_id=" + syncUserId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);

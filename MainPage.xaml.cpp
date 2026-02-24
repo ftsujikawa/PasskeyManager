@@ -157,6 +157,13 @@ namespace {
         return label;
     }
 
+    bool IsSyncRetryDetailLine(std::wstring const& line)
+    {
+        return line.rfind(L"INFO: Self-hosted sync user_id:", 0) == 0 ||
+            line.rfind(L"INFO: Self-hosted sync version conflict detected.", 0) == 0 ||
+            line.rfind(L"INFO: Self-hosted sync retry ", 0) == 0;
+    }
+
     std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
     {
         HKEY hKey = nullptr;
@@ -1600,11 +1607,17 @@ namespace winrt::PasskeyManager::implementation
                 continue;
             }
 
+            std::wstring displayLine = line;
+            if (IsSyncRetryDetailLine(line))
+            {
+                displayLine = L"  -> " + line;
+            }
+
             if (!first)
             {
                 visibleLogs += L"\r\n";
             }
-            visibleLogs += line;
+            visibleLogs += displayLine;
             first = false;
         }
 

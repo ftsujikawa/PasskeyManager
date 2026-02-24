@@ -87,6 +87,13 @@ namespace winrt::PasskeyManager::implementation
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Success at " + nowLabel() });
             }
+            else if (status.find(L"WARNING: Self-hosted sync failed: version conflict (409)") != std::wstring::npos)
+            {
+                syncStatusTextBlock().Text(
+                    winrt::hstring{
+                        L"Sync status: Conflict (409) at " + nowLabel() +
+                        L". Click 'Resync Now' to refresh latest server version and retry." });
+            }
             else if (status.find(L"WARNING: Self-hosted sync failed") != std::wstring::npos)
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Failed at " + nowLabel() + L" (see Logs)" });

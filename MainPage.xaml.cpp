@@ -549,7 +549,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (auto self{ weakThis.get() })
         {
-            self->LogInfo(L"Vault recovery precheck passed. Starting Create Vault Passkey...");
+            self->LogInfo(L"summary state=ready operation=vault_recovery stage=precheck_passed next=create_vault_passkey");
         }
 
         // Let the log/hint text render before WebAuthN dialog appears.
@@ -597,7 +597,7 @@ namespace winrt::PasskeyManager::implementation
                 self->LogWarning(L"Failed to force plugin UI visibility (silent mode off). Passkey prompt may be cancelled unexpectedly.", hrSetSilent);
             }
 
-            self->LogInfo(L"Create Vault Passkey returned", hrCreatePasskey);
+            self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=create_vault_passkey_returned hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) });
             if (FAILED(hrCreatePasskey))
             {
                 HRESULT pluginPerformStatus = S_OK;
@@ -619,7 +619,7 @@ namespace winrt::PasskeyManager::implementation
                 self->vaultRecoveryHintText().Text(L"");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->LogSuccess(L"Vault recovery completed. Passkey was created.");
+                self->LogSuccess(L"summary result=success operation=vault_recovery outcome=passkey_created");
                 co_return;
             }
 
@@ -628,7 +628,7 @@ namespace winrt::PasskeyManager::implementation
                 self->vaultRecoveryHintText().Text(L"");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->LogSuccess(L"Vault recovery completed. Vault Unlock passkey already exists.");
+                self->LogSuccess(L"summary result=success operation=vault_recovery outcome=passkey_already_exists");
                 co_return;
             }
 

@@ -634,7 +634,7 @@ namespace winrt::PasskeyManager::implementation {
             &webAuthNCredentialOptions,
             &pCredentialAttestation);
 
-        std::wstring makeCredentialResult = L"INFO: WebAuthNAuthenticatorMakeCredential returned: " + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
+        std::wstring makeCredentialResult = L"INFO: summary state=observed operation=vault_recovery step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ makeCredentialResult });
 
         auto pluginLastStatus = wil::reg::try_get_value_dword(
@@ -644,14 +644,14 @@ namespace winrt::PasskeyManager::implementation {
         if (pluginLastStatus.has_value())
         {
             std::wstring pluginStatusResult =
-                L"INFO: Plugin LastMakeCredentialStatus: " +
+                L"INFO: summary state=observed operation=vault_recovery step=plugin_last_make_credential_status hr=" +
                 std::to_wstring(static_cast<int>(static_cast<HRESULT>(pluginLastStatus.value()))) +
                 L"ℹ";
             UpdatePasskeyOperationStatusText(winrt::hstring{ pluginStatusResult });
         }
         else
         {
-            UpdatePasskeyOperationStatusText(L"INFO: Plugin LastMakeCredentialStatus: <not written>ℹ");
+            UpdatePasskeyOperationStatusText(L"INFO: summary state=observed operation=vault_recovery step=plugin_last_make_credential_status status=not_writtenℹ");
         }
 
         if (SUCCEEDED(hr))
@@ -724,7 +724,7 @@ namespace winrt::PasskeyManager::implementation {
                 });
         }
 
-        std::wstring finalResult = L"INFO: CreateVaultPasskey final HRESULT: " + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
+        std::wstring finalResult = L"INFO: summary state=done operation=vault_recovery step=create_vault_passkey_final hr=" + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ finalResult });
 
         return hr;

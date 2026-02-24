@@ -1462,7 +1462,10 @@ namespace winrt::PasskeyManager::implementation
     {
         if (m_isDeleteEverywhereInProgress)
         {
-            LogInfo(L"Delete selected everywhere is already running. Please wait for completion.");
+            LogInfo(winrt::hstring{
+                L"Delete selected everywhere is already running (run #" +
+                std::to_wstring(m_deleteEverywhereActiveRunId) +
+                L"). Please wait for completion." });
             co_return;
         }
 
@@ -1476,6 +1479,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         uint64_t runId = ++m_deleteEverywhereRunCounter;
+        m_deleteEverywhereActiveRunId = runId;
         m_isDeleteEverywhereInProgress = true;
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(winrt::hstring{ L"Deleting selected credentials everywhere... (run #" + std::to_wstring(runId) + L")" });
@@ -1531,6 +1535,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->m_isDeleteEverywhereInProgress = false;
+        self->m_deleteEverywhereActiveRunId = 0;
         self->deleteSelectedLocalButton().IsEnabled(true);
 
         self->UpdateCredentialList();

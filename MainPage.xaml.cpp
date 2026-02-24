@@ -406,30 +406,22 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::restoreSelectedSnapshotButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        auto selected = snapshotCandidatesCombo().SelectedItem();
-        if (!selected)
+        int32_t selectedIndex = snapshotCandidatesCombo().SelectedIndex();
+        if (selectedIndex < 0)
         {
             LogWarning(L"No snapshot candidate selected. Select a snapshot then retry restore.");
             co_return;
         }
 
-        auto selectedId = winrt::unbox_value<winrt::hstring>(selected).c_str();
-        tsupasswd::SyncSnapshotRecord chosen{};
-        bool found = false;
-        for (auto const& candidate : m_syncSnapshotCandidates)
-        {
-            if (candidate.SnapshotId == selectedId)
-            {
-                chosen = candidate;
-                found = true;
-                break;
-            }
-        }
-        if (!found)
+        size_t candidateCount = m_syncSnapshotCandidates.size();
+        if (candidateCount == 0 || static_cast<size_t>(selectedIndex) >= candidateCount)
         {
             LogWarning(L"Selected snapshot no longer exists. Refresh candidate list and retry restore.");
             co_return;
         }
+
+        size_t actualIndex = candidateCount - 1 - static_cast<size_t>(selectedIndex);
+        auto const chosen = m_syncSnapshotCandidates.at(actualIndex);
 
         auto weakThis = get_weak();
         restoreSelectedSnapshotButton().IsEnabled(false);
@@ -921,7 +913,7 @@ namespace winrt::PasskeyManager::implementation
         snapshotCandidatesCombo().Items().Clear();
         for (auto it = m_syncSnapshotCandidates.rbegin(); it != m_syncSnapshotCandidates.rend(); ++it)
         {
-            snapshotCandidatesCombo().Items().Append(winrt::box_value(winrt::hstring{ it->SnapshotId }));
+            snapshotCandidatesCombo().Items().Append(winrt::box_value(winrt::hstring{ BuildSnapshotCandidateLabel(*it) }));
         }
 
         if (snapshotCandidatesCombo().Items().Size() > 0)

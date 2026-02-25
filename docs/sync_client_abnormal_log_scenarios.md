@@ -218,6 +218,11 @@ gh workflow run sync-log-keys-check.yml -f scenario=pass
 gh workflow run sync-log-keys-check.yml -f scenario=fail
 ```
 
+単体実行の確認済み結果:
+
+- `scenario=pass`: `PASS sample should pass` のみ実行され、workflow 全体は `success`
+- `scenario=fail`: `FAIL sample should fail` のみ実行され、checker の失敗を期待どおり確認して workflow 全体は `success`
+
 実行結果の確認例:
 
 ```powershell

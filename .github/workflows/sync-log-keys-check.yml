@@ -40,13 +40,15 @@ jobs:
           if %ERRORLEVEL% NEQ 0 (
             echo PASS sample failed unexpectedly. checker_exit_code=%ERRORLEVEL%
             echo ### PASS sample result>>"%GITHUB_STEP_SUMMARY%"
-            echo status=failed_unexpectedly>>"%GITHUB_STEP_SUMMARY%"
-            echo checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo - status=failed_unexpectedly>>"%GITHUB_STEP_SUMMARY%"
+            echo - checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 1
           )
           echo ### PASS sample result>>"%GITHUB_STEP_SUMMARY%"
-          echo status=success_as_expected>>"%GITHUB_STEP_SUMMARY%"
-          echo checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo - status=success_as_expected>>"%GITHUB_STEP_SUMMARY%"
+          echo - checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: FAIL sample should fail
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
@@ -56,12 +58,14 @@ jobs:
           if %ERRORLEVEL% NEQ 0 (
             echo Expected failure confirmed.
             echo ### FAIL sample result>>"%GITHUB_STEP_SUMMARY%"
-            echo status=expected_failure_confirmed>>"%GITHUB_STEP_SUMMARY%"
-            echo checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo - status=expected_failure_confirmed>>"%GITHUB_STEP_SUMMARY%"
+            echo - checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
           echo Expected failure, but checker returned success.
           echo ### FAIL sample result>>"%GITHUB_STEP_SUMMARY%"
-          echo status=unexpected_success>>"%GITHUB_STEP_SUMMARY%"
-          echo checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo - status=unexpected_success>>"%GITHUB_STEP_SUMMARY%"
+          echo - checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1

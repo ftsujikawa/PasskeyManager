@@ -782,7 +782,8 @@ namespace tsupasswd
             }
 
             std::wstring msg = L"DEBUG: oauth result=failed operation=token_exchange code=" + tokens.Error +
-                L" description=" + tokens.ErrorDescription;
+                L" message_code=" + tokens.Error +
+                L" message=" + tokens.ErrorDescription;
             OutputDebugStringW(msg.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo = msg;

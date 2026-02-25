@@ -123,6 +123,19 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 
 採取したログをテキスト保存し、以下で3キーの有無を自動判定できる。
 
+### 推奨: 同梱 cmd スクリプトを使う
+
+```cmd
+docs\check_sync_log_keys.cmd captured_logs.txt
+```
+
+期待値:
+
+- 3キーが揃っていれば `PASS` が並び、終了コード `0`
+- 不足があれば `FAIL` が出て、終了コード `1`
+
+### 参考: PowerShell ワンライナー
+
 ```powershell
 $log = Get-Content -Raw -Path .\captured_logs.txt
 $checks = @(

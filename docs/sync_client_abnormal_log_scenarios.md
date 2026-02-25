@@ -191,6 +191,7 @@ findstr /i /r "token= authorization= bearer= access_token= refresh_token= client
 
 - `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
+- サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
 
 実行方法:
 

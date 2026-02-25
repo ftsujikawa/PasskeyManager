@@ -69,3 +69,29 @@ jobs:
           echo - checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
+
+      - name: Samples should not contain sensitive key-values
+        shell: cmd
+        run: |
+          setlocal EnableDelayedExpansion
+          set FOUND=0
+          for %%F in (docs\samples\abnormal_sync_logs_pass.txt docs\samples\abnormal_sync_logs_fail.txt) do (
+            findstr /i /r /c:"token=" /c:"bearer=" /c:"authorization=" /c:"access_token=" /c:"refresh_token=" /c:"client_secret=" "%%F" >nul
+            if !ERRORLEVEL! EQU 0 (
+              echo Sensitive marker detected in %%F
+              set FOUND=1
+            )
+          )
+
+          if !FOUND! EQU 1 (
+            echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
+            echo - status=failed_sensitive_marker_detected>>"%GITHUB_STEP_SUMMARY%"
+            echo - files=docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+
+          echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
+          echo - status=success_no_sensitive_markers>>"%GITHUB_STEP_SUMMARY%"
+          echo - files=docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"

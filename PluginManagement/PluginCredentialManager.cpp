@@ -15,6 +15,15 @@ namespace winrt::PasskeyManager::implementation
 {
     namespace
     {
+        std::wstring EnsureOperationToken(std::wstring message)
+        {
+            if (message.find(L" operation=") == std::wstring::npos)
+            {
+                message += L" operation=vault_unlock";
+            }
+            return message;
+        }
+
         void UpdateVaultStatusText(hstring const& statusText)
         {
             com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
@@ -26,8 +35,9 @@ namespace winrt::PasskeyManager::implementation
 
         void LogVaultUnlockWarning(std::wstring const& message)
         {
-            UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + message + L"⚠" });
-            std::wstring debug = L"DEBUG: summary result=warning operation=unlock_credential_vault_with_passkey detail=" + message + L"\n";
+            std::wstring normalized = EnsureOperationToken(message);
+            UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + normalized + L"⚠" });
+            std::wstring debug = L"DEBUG: summary result=warning operation=unlock_credential_vault_with_passkey detail=" + normalized + L"\n";
             OutputDebugStringW(debug.c_str());
         }
     }

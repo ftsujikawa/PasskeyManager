@@ -116,3 +116,42 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 - `MainPage.xaml.h`（LogInfo/LogWarning/LogFailureの共通整形）
 - `PluginManagement/PluginRegistrationManager.cpp`（sync retry / read_encrypted_vault_data）
 - `PluginManagement/PluginCredentialManager.cpp`（vault_unlock）
+
+---
+
+## 6. ログキー自動チェック（PowerShell）
+
+採取したログをテキスト保存し、以下で3キーの有無を自動判定できる。
+
+```powershell
+$log = Get-Content -Raw -Path .\captured_logs.txt
+$checks = @(
+  @{ Name = '409_recovery'; Pattern = 'recovery=manual_resync_now' },
+  @{ Name = 'read_encrypted_vault_data'; Pattern = 'operation=read_encrypted_vault_data\s+reason=' },
+  @{ Name = 'vault_unlock_ui_required'; Pattern = 'operation=vault_unlock\s+reason=ui_required' }
+)
+
+$failed = @()
+foreach ($c in $checks) {
+  if ($log -match $c.Pattern) {
+    Write-Host "PASS: $($c.Name)"
+  }
+  else {
+    Write-Host "FAIL: $($c.Name)"
+    $failed += $c.Name
+  }
+}
+
+if ($failed.Count -gt 0) {
+  Write-Error ("missing keys: " + ($failed -join ', '))
+  exit 1
+}
+
+Write-Host 'OK: abnormal sync log keys are present.'
+exit 0
+```
+
+注意:
+
+- `captured_logs.txt` はアプリのログ表示をコピーして保存したテキストを想定。
+- 未観測ケースがある運用では、`FAIL` が出るのは正常（要追加再現）である。

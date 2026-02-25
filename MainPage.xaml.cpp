@@ -780,7 +780,7 @@ namespace winrt::PasskeyManager::implementation
             co_await wil::resume_foreground(DispatcherQueue());
             if (auto self{ weakThis.get() })
             {
-                self->LogFailure(L"Failed to change 'Silent Operation'", hr);
+                self->LogFailure(L"summary result=failed operation=set_silent_operation", hr);
             }
         }
         co_return;
@@ -1010,7 +1010,7 @@ namespace winrt::PasskeyManager::implementation
         if (FAILED(hr))
         {
             syncStatusTextBlock().Text(L"Sync status: Save failed");
-            LogFailure(L"Failed to save sync settings", hr);
+            LogFailure(L"summary result=failed operation=save_settings", hr);
             co_return;
         }
 
@@ -1116,7 +1116,7 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::unregisterPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"Unregistering plugin...");
+        LogInProgress(L"summary state=running operation=unregister_plugin");
         auto weakThis = get_weak();
 
         if (m_cookie.has_value())
@@ -1138,7 +1138,7 @@ namespace winrt::PasskeyManager::implementation
         self->UpdatePluginEnableState();
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to Unregister plugin: ", hr);
+            self->LogFailure(L"summary result=failed operation=unregister_plugin", hr);
             co_return;
         }
 
@@ -1166,17 +1166,17 @@ namespace winrt::PasskeyManager::implementation
 
         if (removed)
         {
-            self->LogSuccess(L"Plugin unregistered");
+            self->LogSuccess(L"summary result=success operation=unregister_plugin");
         }
         else
         {
-            self->LogWarning(L"Plugin may still be visible in Windows Settings. Close/reopen Settings and click Refresh. If still listed, disable it in Settings and click Remove again.");
+            self->LogWarning(L"summary result=warning operation=unregister_plugin outcome=still_visible_in_settings");
         }
     }
 
     winrt::IAsyncAction MainPage::registerPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"Registering plugin...");
+        LogInProgress(L"summary state=running operation=register_plugin");
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().RegisterPlugin();
@@ -1192,17 +1192,17 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            self->LogFailure(L"WebAuthNPluginAddAuthenticator", hr);
+            self->LogFailure(L"summary result=failed operation=register_plugin", hr);
             co_return;
         }
-        self->LogSuccess(L"Plugin registered");
+        self->LogSuccess(L"summary result=success operation=register_plugin");
 
         m_cookie = RegisterWebAuthNStatusChangeCallback(static_cast<void*>(this));
     }
 
     winrt::IAsyncAction MainPage::updatePluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"Updating plugin...");
+        LogInProgress(L"summary state=running operation=update_plugin");
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().UpdatePlugin();
@@ -1219,10 +1219,10 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            self->LogFailure(L"WebAuthNPluginUpdateAuthenticatorDetails", hr);
+            self->LogFailure(L"summary result=failed operation=update_plugin", hr);
             co_return;
         }
-        self->LogSuccess(L"Plugin updated");
+        self->LogSuccess(L"summary result=success operation=update_plugin");
     }
 
     winrt::IAsyncAction MainPage::addAllPluginCredentials_Click(IInspectable const&, RoutedEventArgs const&)
@@ -1293,13 +1293,13 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::addSelectedCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Adding selected passkey metadata to system cache...");
+        LogInProgress(L"summary state=running operation=add_selected_credentials");
 
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(L"No credentials selected", E_NOT_SET);
+            LogWarning(L"summary result=rejected operation=add_selected_credentials reason=no_selection");
             co_return;
         }
 
@@ -1312,8 +1312,7 @@ namespace winrt::PasskeyManager::implementation
             credentialIdList.push_back(credentialIdToAdd);
         }
 
-        hstring statusText = L"Adding " + winrt::to_hstring(credentialIdList.size()) + L" selected credentials...";
-        UpdatePasskeyOperationStatusText(statusText);
+        LogInProgress(winrt::hstring{ L"summary state=selected operation=add_selected_credentials selected=" + std::to_wstring(credentialIdList.size()) });
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -1330,22 +1329,22 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
         {
-            self->LogInfo(L"Selected credentials are already present in system cache.");
+            self->LogInfo(L"summary result=success operation=add_selected_credentials outcome=already_cached_no_new");
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"Failed to add credentials to system cache. " + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=add_selected_credentials detail=" + detail }, hr);
             co_return;
         }
-        self->LogSuccess(L"Selected credentials are added to system cache");
+        self->LogSuccess(L"summary result=success operation=add_selected_credentials");
         co_return;
     }
 
     winrt::IAsyncAction MainPage::deleteAllPluginCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Deleting all credentials stored on this device...");
+        LogInProgress(L"summary state=running operation=delete_all_cached_credentials");
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -1372,28 +1371,28 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogInfo(L"No credentials are currently present in system cache.");
+            self->LogInfo(L"summary result=not_found operation=delete_all_cached_credentials");
             co_return;
         }
         if (FAILED(hr))
         {
-            self->LogFailure(L"Failed to delete credential from system cache", hr);
+            self->LogFailure(L"summary result=failed operation=delete_all_cached_credentials", hr);
             co_return;
         }
-        self->LogSuccess(L"All credentials deleted from system cache");
+        self->LogSuccess(L"summary result=success operation=delete_all_cached_credentials");
         co_return;
     }
 
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Deleting selected credentials...");
+        LogInProgress(L"summary state=running operation=delete_selected_cached_credentials");
 
         // find the list of creds with checkbox checked
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(L"No credentials selected", E_NOT_SET);
+            LogWarning(L"summary result=rejected operation=delete_selected_cached_credentials reason=no_selection");
             co_return;
         }
 
@@ -1407,8 +1406,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        hstring statusText = L"Deleting " + winrt::to_hstring(credentialIdList.size()) + L" selected credentials...";
-        UpdatePasskeyOperationStatusText(statusText);
+        LogInProgress(winrt::hstring{ L"summary state=selected operation=delete_selected_cached_credentials selected=" + std::to_wstring(credentialIdList.size()) });
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -1449,16 +1447,16 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogInfo(L"No selected credentials are currently present in system cache.");
+            self->LogInfo(L"summary result=not_found operation=delete_selected_cached_credentials");
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"Failed to delete credentials from system cache. " + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=delete_selected_cached_credentials detail=" + detail }, hr);
             co_return;
         }
-        self->LogSuccess(L"Selected credentials deleted from system cache");
+        self->LogSuccess(L"summary result=success operation=delete_selected_cached_credentials");
         co_return;
     }
 
@@ -1713,7 +1711,7 @@ namespace winrt::PasskeyManager::implementation
     {
         if (m_logEntries.empty())
         {
-            LogInfo(L"No logs to copy.");
+            LogInfo(L"summary result=rejected operation=copy_logs reason=no_logs");
             co_return;
         }
 
@@ -1742,18 +1740,18 @@ namespace winrt::PasskeyManager::implementation
 
         if (copiedLines > 1)
         {
-            LogSuccess(winrt::hstring{ L"Visible logs copied to clipboard (" + std::to_wstring(copiedLines) + L" lines)" });
+            LogSuccess(winrt::hstring{ L"summary result=success operation=copy_logs scope=visible lines=" + std::to_wstring(copiedLines) });
         }
         else
         {
-            LogSuccess(L"Visible log copied to clipboard");
+            LogSuccess(L"summary result=success operation=copy_logs scope=visible lines=1");
         }
         co_return;
     }
 
     winrt::IAsyncAction MainPage::deleteAllLocalCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Deleting all local credentials...");
+        LogInProgress(L"summary state=running operation=delete_all_local_credentials");
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -1771,16 +1769,16 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (!resetResult)
         {
-            self->LogFailure(L"Failed to delete all local credentials. Credential store update failed. Verify local storage access and retry.", HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
+            self->LogFailure(L"summary result=failed operation=delete_all_local_credentials detail=credential_store_update_failed", HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
             co_return;
         }
-        self->LogSuccess(L"All local credentials deleted");
+        self->LogSuccess(L"summary result=success operation=delete_all_local_credentials");
         co_return;
     }
 
     winrt::IAsyncAction MainPage::deleteAllCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        LogInProgress(L"Deleting all credentials stored on this device and cache...");
+        LogInProgress(L"summary state=running operation=delete_all_credentials");
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         auto& credManager = PluginCredentialManager::getInstance();
@@ -1797,17 +1795,17 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) && resetResult)
         {
-            self->LogInfo(L"System cache already had no credentials. All local credentials were deleted.");
+            self->LogInfo(L"summary result=success operation=delete_all_credentials outcome=cache_not_found_local_deleted");
             co_return;
         }
         if (FAILED(hr) || !resetResult)
         {
             HRESULT effectiveHr = FAILED(hr) ? hr : HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
             std::wstring detail = DescribeCredentialOperationFailure(effectiveHr);
-            self->LogFailure(winrt::hstring{ L"Failed to delete all credentials. " + detail }, effectiveHr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=delete_all_credentials detail=" + detail }, effectiveHr);
             co_return;
         }
-        self->LogSuccess(L"All credentials deleted");
+        self->LogSuccess(L"summary result=success operation=delete_all_credentials");
     }
 
     void MainPage::UpdatePluginStateTextBlock(AUTHENTICATOR_STATE state)
@@ -1857,16 +1855,16 @@ namespace winrt::PasskeyManager::implementation
     {
         // URI ms-settings:passkeys-advancedoptions to navigate to the page on Settings app where the users can enable the plugin
         auto weakThis = get_weak();
-        LogInProgress(L"Opening Windows Settings for plugin activation...");
+        LogInProgress(L"summary state=running operation=activate_plugin action=open_settings");
         auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
         bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
         if (!launched)
         {
-            LogWarning(L"Failed to open Windows Settings. Open Settings > Accounts > Passkeys > Advanced options manually.");
+            LogWarning(L"summary result=failed operation=activate_plugin action=open_settings reason=launch_failed");
             co_return;
         }
 
-        LogSuccess(L"Windows Settings opened. Waiting for plugin state update...");
+        LogSuccess(L"summary result=success operation=activate_plugin action=open_settings");
 
         for (int attempt = 0; attempt < 5; ++attempt)
         {
@@ -1881,7 +1879,7 @@ namespace winrt::PasskeyManager::implementation
                 self->UpdatePluginEnableState();
                 if (SUCCEEDED(hrState) && state == AuthenticatorState_Enabled)
                 {
-                    self->LogSuccess(L"Plugin state changed to Enabled.");
+                    self->LogSuccess(L"summary result=success operation=activate_plugin outcome=state_enabled");
                     co_return;
                 }
             }
@@ -1891,7 +1889,7 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        LogWarning(L"Plugin is still not Enabled. After enabling in Settings, click Refresh.");
+        LogWarning(L"summary result=warning operation=activate_plugin outcome=state_not_enabled_after_wait");
         co_return;
     }
 
@@ -1927,7 +1925,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            LogFailure(L"Failed to change 'Simulate Vault Unlock'", hr);
+            LogFailure(L"summary result=failed operation=set_vault_lock_state", hr);
         }
 
         UpdateVaultUnlockControlText(toggleSplitState);

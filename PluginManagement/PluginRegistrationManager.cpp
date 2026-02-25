@@ -874,8 +874,14 @@ namespace winrt::PasskeyManager::implementation {
         return S_OK;
     }
 
-    HRESULT PluginRegistrationManager::ManualResyncSelfHostedVault()
+    HRESULT PluginRegistrationManager::ManualResyncSelfHostedVault(std::wstring const& requestId)
     {
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = GetNowIsoLikeTimestamp() + L"-manual_resync";
+        }
+
         std::wstring syncUserId = GetUserEnvironmentRegistryValue(kSyncUserIdEnv);
         if (syncUserId.empty())
         {
@@ -889,7 +895,7 @@ namespace winrt::PasskeyManager::implementation {
         std::vector<BYTE> encryptedVaultData;
         RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData));
 
-        UpdatePasskeyOperationStatusText(L"INFO: sync state=start operation=manual_resyncℹ");
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=manual_resync request_id=" + localRequestId + L"ℹ" });
         auto hrSync = SyncEncryptedVaultWithRetry(
             encryptedVaultData,
             syncUserId,

@@ -297,6 +297,26 @@ namespace {
         return baseUrl;
     }
 
+    std::wstring BuildRequestId(std::wstring const& operation)
+    {
+        SYSTEMTIME st{};
+        GetSystemTime(&st);
+
+        wchar_t timestamp[40]{};
+        swprintf_s(
+            timestamp,
+            L"%04u%02u%02uT%02u%02u%02u%03uZ",
+            st.wYear,
+            st.wMonth,
+            st.wDay,
+            st.wHour,
+            st.wMinute,
+            st.wSecond,
+            st.wMilliseconds);
+
+        return std::wstring{ timestamp } + L"-" + operation;
+    }
+
     std::wstring ClassifySyncFailureKind(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
     {
         switch (status.StatusCode)
@@ -1145,11 +1165,12 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::manualSyncButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         auto weakThis = get_weak();
+        std::wstring requestId = BuildRequestId(L"manual_resync");
         manualSyncButton().IsEnabled(false);
-        LogInProgress(L"summary state=running operation=manual_resync");
+        LogInProgress(winrt::hstring{ L"summary state=running operation=manual_resync request_id=" + requestId });
 
         co_await winrt::resume_background();
-        HRESULT hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault();
+        HRESULT hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId);
 
         co_await wil::resume_foreground(DispatcherQueue());
         if (auto self = weakThis.get())
@@ -1157,7 +1178,8 @@ namespace winrt::PasskeyManager::implementation
             self->manualSyncButton().IsEnabled(true);
             if (FAILED(hr))
             {
-                self->syncStatusTextBlock().Text(L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure⚠");
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId });
             }
         }
         co_return;

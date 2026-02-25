@@ -37,3 +37,20 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 - 同名タイトルの open issue は作成スキップされます。
 - ラベルは作成失敗時に更新にフォールバックします。
 - 依存番号（`#1` 形式）はテンプレート値なので、起票後に必要なら更新してください。
+
+## Sync 異常系ログ検証
+
+異常系ログ（fixed-format: `key=value`）の再現/確認手順は次のドキュメントを参照してください。
+
+- `./docs/sync_client_abnormal_log_scenarios.md`
+
+ログ貼り付けテキスト（例: `captured_logs.txt`）からキーの有無を自動確認する場合:
+
+```cmd
+docs\check_sync_log_keys.cmd captured_logs.txt
+```
+
+期待値:
+
+- 全キー観測時: `PASS` 表示、終了コード `0`
+- キー不足時: `FAIL` 表示、終了コード `1`

@@ -37,25 +37,25 @@ namespace {
     {
         if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
         {
-            return L"Credential is already present in system cache.";
+            return L"credential_already_present_in_cache";
         }
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            return L"No credentials are available to sync. Click Refresh, then retry after credentials appear.";
+            return L"no_credentials_available_to_sync";
         }
         if (hr == E_NOT_VALID_STATE)
         {
-            return L"Vault is locked or requires interactive unlock. Complete the unlock UI flow, then retry.";
+            return L"vault_locked_or_ui_unlock_required";
         }
         if (hr == HRESULT_FROM_WIN32(ERROR_WRITE_FAULT))
         {
-            return L"Credential store update failed. Verify local storage access and retry.";
+            return L"credential_store_update_failed";
         }
         if (hr == E_INVALIDARG)
         {
-            return L"Invalid credential selection was supplied.";
+            return L"invalid_credential_selection";
         }
-        return L"Unexpected credential operation failure.";
+        return L"unexpected_credential_operation_failure";
     }
 
     std::wstring TrimCopy(std::wstring value)
@@ -1562,18 +1562,18 @@ namespace winrt::PasskeyManager::implementation
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
-            self->LogInfo(winrt::hstring{ L"summary result=not_found request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
+            self->LogInfo(winrt::hstring{ L"summary result=not_found operation=delete_selected_credentials_everywhere request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
             co_return;
         }
         if (FAILED(hr))
         {
             auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogWarning(winrt::hstring{ L"summary result=failed request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) + L" detail=" + detail }, hr);
+            self->LogWarning(winrt::hstring{ L"summary result=failed operation=delete_selected_credentials_everywhere request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) + L" detail=" + detail }, hr);
             co_return;
         }
         auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
-        self->LogSuccess(winrt::hstring{ L"summary result=success request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=delete_selected_credentials_everywhere request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
         co_return;
     }
 

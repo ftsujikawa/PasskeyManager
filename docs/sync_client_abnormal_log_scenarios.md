@@ -186,4 +186,10 @@ exit 0
 
 1. GitHub の `Actions` タブを開く
 2. `Sync Log Keys Check` を選択
-3. `Run workflow`（`workflow_dispatch`）で手動実行
+3. `Run workflow`（`workflow_dispatch`）で `scenario` を選んで実行
+
+`scenario` の選択肢:
+
+- `both` : PASS/FAIL サンプルを両方実行
+- `pass` : PASS サンプルのみ実行
+- `fail` : FAIL サンプルのみ実行

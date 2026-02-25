@@ -956,7 +956,7 @@ namespace winrt::PasskeyManager::implementation
         auto hr = tsupasswd::SyncHistoryStore::Append(entry);
         if (FAILED(hr))
         {
-            OutputDebugStringW((L"MainPage::PersistSyncHistoryEntry failed. hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
+            OutputDebugStringW((L"DEBUG: summary result=failed operation=persist_sync_history_entry hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
         }
     }
 

@@ -27,7 +27,7 @@ namespace winrt::PasskeyManager::implementation
         void LogVaultUnlockWarning(std::wstring const& message)
         {
             UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + message + L"⚠" });
-            std::wstring debug = L"PluginCredentialManager::UnlockCredentialVaultWithPasskey - " + message + L"\n";
+            std::wstring debug = L"DEBUG: summary result=warning operation=unlock_credential_vault_with_passkey detail=" + message + L"\n";
             OutputDebugStringW(debug.c_str());
         }
     }

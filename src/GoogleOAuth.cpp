@@ -781,20 +781,20 @@ namespace tsupasswd
                 break;
             }
 
-            std::wstring msg = L"Google OAuth token error: error='" + tokens.Error +
-                L"' description='" + tokens.ErrorDescription + L"'";
+            std::wstring msg = L"DEBUG: oauth result=failed operation=token_exchange code=" + tokens.Error +
+                L" description=" + tokens.ErrorDescription;
             OutputDebugStringW(msg.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo = msg;
 
-            std::wstring raw = L"Google OAuth token response received body_length=" + std::to_wstring(resp.size());
+            std::wstring raw = L"DEBUG: oauth result=observed operation=token_exchange response_body_length=" + std::to_wstring(resp.size());
             OutputDebugStringW(raw.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo += L" | " + raw;
 
             if (tokens.Error == L"internal_failure" && attempt == 0)
             {
-                OutputDebugStringW(L"Google OAuth token endpoint returned internal_failure. Retrying once...\n");
+                OutputDebugStringW(L"DEBUG: oauth result=retry operation=token_exchange reason=internal_failure attempt=2/2\n");
                 Sleep(300);
                 continue;
             }
@@ -819,7 +819,7 @@ namespace tsupasswd
             }
 
             // Initial provisioning still requires refresh_token.
-            std::wstring raw = L"Google OAuth token response missing refresh_token body_length=" + std::to_wstring(resp.size());
+            std::wstring raw = L"DEBUG: oauth result=failed operation=token_exchange reason=missing_refresh_token response_body_length=" + std::to_wstring(resp.size());
             OutputDebugStringW(raw.c_str());
             OutputDebugStringW(L"\n");
             if (!g_lastGoogleOAuthDebugInfo.empty())
@@ -833,7 +833,7 @@ namespace tsupasswd
         if (!TrySaveGoogleRefreshToken(tokens.RefreshToken))
         {
             std::wstring savePath = GetTokensFilePath();
-            std::wstring msg = L"Failed to save Google refresh_token to: " + savePath;
+            std::wstring msg = L"DEBUG: oauth result=failed operation=save_refresh_token path_length=" + std::to_wstring(savePath.size());
             OutputDebugStringW(msg.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo = msg;

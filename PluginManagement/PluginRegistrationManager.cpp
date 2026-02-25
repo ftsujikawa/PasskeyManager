@@ -333,7 +333,7 @@ namespace
                     L" elapsed_ms=" +
                     std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - syncStartTime).count()) +
-                    L"...ℹ" });
+                    L"ℹ" });
 
             std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
             backoffMs *= 2;

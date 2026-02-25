@@ -93,34 +93,37 @@ jobs:
 
       - name: Samples should not contain sensitive key-values
         id: sensitive_markers
-        shell: cmd
+        shell: pwsh
         run: |
-          setlocal EnableDelayedExpansion
-          set FOUND=0
-          for %%F in (docs\samples\abnormal_sync_logs_pass.txt docs\samples\abnormal_sync_logs_fail.txt) do (
-            findstr /i /r /c:"token=" /c:"bearer=" /c:"authorization=" /c:"access_token=" /c:"refresh_token=" /c:"client_secret=" "%%F" >nul
-            if !ERRORLEVEL! EQU 0 (
-              echo Sensitive marker detected in %%F
-              set FOUND=1
-            )
+          $files = @(
+            'docs/samples/abnormal_sync_logs_pass.txt',
+            'docs/samples/abnormal_sync_logs_fail.txt'
           )
+          $pattern = '(?i)(token=|bearer=|authorization=|access_token=|refresh_token=|client_secret=)'
+          $hitFiles = @()
 
-          if !FOUND! EQU 1 (
-            echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| status ^| failed_sensitive_marker_detected ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| files ^| docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo.>>"%GITHUB_STEP_SUMMARY%"
-            exit /b 1
-          )
+          foreach ($file in $files) {
+            if (Select-String -Path $file -Pattern $pattern -Quiet) {
+              Write-Host "Sensitive marker detected in $file"
+              $hitFiles += $file
+            }
+          }
 
-          echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| status ^| success_no_sensitive_markers ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| files ^| docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo.>>"%GITHUB_STEP_SUMMARY%"
+          "### Sensitive marker check" >> $env:GITHUB_STEP_SUMMARY
+          "| key | value |" >> $env:GITHUB_STEP_SUMMARY
+          "|---|---|" >> $env:GITHUB_STEP_SUMMARY
+
+          if ($hitFiles.Count -gt 0) {
+            "| status | failed_sensitive_marker_detected |" >> $env:GITHUB_STEP_SUMMARY
+            "| files | $($hitFiles -join ',') |" >> $env:GITHUB_STEP_SUMMARY
+            "" >> $env:GITHUB_STEP_SUMMARY
+            exit 1
+          }
+
+          "| status | success_no_sensitive_markers |" >> $env:GITHUB_STEP_SUMMARY
+          "| files | $($files -join ',') |" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          exit 0
 
       - name: Overall summary
         if: always()

@@ -86,6 +86,19 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail
 - `scenario=pass`: `PASS sample should pass` のみ実行され、workflow 全体は `success`
 - `scenario=fail`: `FAIL sample should fail` のみ実行され、checker の失敗を期待どおり確認して workflow 全体は `success`
 
+実運用ログの代表例（fixed-format, key=value）:
+
+```text
+SUCCESS: summary result=success request=1 run=1 attempts=1 elapsed_ms=75 hr=0 selected=3 cached=3 missing=0✅
+INFO: summary state=running operation=delete_selected_credentials_everywhere request=1 run=1⏳
+INFO: summary state=running operation=vault_recovery⏳
+WARNING: sync result=failed attempts=3/3 elapsed_ms=1523 hr=-2147012889 detail=sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response.
+INFO: sync result=retry_backoff attempt=3/3 backoff_ms=1000 elapsed_ms=517ℹ
+WARNING: sync result=failed operation=restore_snapshot hr=-2147012889 detail=sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.
+WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.⚠
+SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id✅
+```
+
 実行結果の確認例:
 
 ```powershell

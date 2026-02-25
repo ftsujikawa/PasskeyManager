@@ -52,6 +52,16 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
         shell: cmd
         run: |
+          if not exist docs\check_sync_log_keys.cmd (
+            echo Missing required checker script: docs\check_sync_log_keys.cmd
+            echo ### Checker script>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
           if exist docs\samples\abnormal_sync_logs_pass.txt exit /b 0
           echo Missing required sample file: docs\samples\abnormal_sync_logs_pass.txt
           echo ### PASS sample file>>"%GITHUB_STEP_SUMMARY%"
@@ -67,6 +77,16 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
+          if not exist docs\check_sync_log_keys.cmd (
+            echo Missing required checker script: docs\check_sync_log_keys.cmd
+            echo ### Checker script>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
           if exist docs\samples\abnormal_sync_logs_fail.txt exit /b 0
           echo Missing required sample file: docs\samples\abnormal_sync_logs_fail.txt
           echo ### FAIL sample file>>"%GITHUB_STEP_SUMMARY%"

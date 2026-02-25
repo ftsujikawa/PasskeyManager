@@ -29,6 +29,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($p in $sensitivePatterns) { if ($log -match [regex]::Escape($p)) { $sensitiveHits += $p } }" ^
   "if ($sensitiveHits.Count -eq 0) { Write-Host 'PASS: sensitive_markers_absent' }" ^
   "else { Write-Host ('FAIL: sensitive_markers_absent found=' + ($sensitiveHits -join '|')); $failed += 'sensitive_markers_absent' }" ^
+  "$lines = $log -split '\r?\n';" ^
+  "$operationMissing = @();" ^
+  "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '^(INFO|WARNING|SUCCESS|FAILED):\s+(summary|sync)\s' -and $line -notmatch '(^|\s)operation=') { $operationMissing += $line } }" ^
+  "if ($operationMissing.Count -eq 0) { Write-Host 'PASS: operation_key_present' }" ^
+  "else { Write-Host ('FAIL: operation_key_present count=' + $operationMissing.Count); $failed += 'operation_key_present' }" ^
+  "$messageCodeMissing = @();" ^
+  "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '(^|\s)message=' -and $line -notmatch '(^|\s)message_code=') { $messageCodeMissing += $line } }" ^
+  "if ($messageCodeMissing.Count -eq 0) { Write-Host 'PASS: message_code_with_message' }" ^
+  "else { Write-Host ('FAIL: message_code_with_message count=' + $messageCodeMissing.Count); $failed += 'message_code_with_message' }" ^
   "if ($failed.Count -gt 0) { Write-Error ('check failures: ' + ($failed -join ', ')); exit 1 }" ^
   "Write-Host 'OK: abnormal sync log checks passed.'; exit 0"
 

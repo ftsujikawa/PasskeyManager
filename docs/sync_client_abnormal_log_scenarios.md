@@ -178,6 +178,8 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 期待値:
 
 - 何もヒットしない（出力なし）
+- `INFO/WARNING/SUCCESS/FAILED` の `summary` / `sync` 行で `operation=` が付与されていること
+- `message=` を含む行では `message_code=` が併記されていること
 
 ---
 

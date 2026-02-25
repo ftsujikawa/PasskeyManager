@@ -284,19 +284,29 @@ namespace
         return detail;
     }
 
+    std::wstring ResolveRequestId(std::wstring const& fallbackRequestId, tsupasswd::SyncHttpStatus const& status)
+    {
+        if (!status.RequestId.empty())
+        {
+            return status.RequestId;
+        }
+        return fallbackRequestId;
+    }
+
     HRESULT SyncEncryptedVaultWithRetry(
         std::vector<BYTE> const& encryptedVaultData,
         std::wstring const& syncUserId,
         std::function<void(winrt::hstring const&)> const& statusSink)
     {
+        std::wstring localRequestId = GetNowIsoLikeTimestamp() + L"-put_vault";
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
-            statusSink(L"INFO: sync result=skipped operation=put_vault reason=base_url_missing hr=1ℹ");
+            statusSink(winrt::hstring{ L"INFO: sync result=skipped operation=put_vault reason=base_url_missing hr=1 request_id=" + localRequestId + L"ℹ" });
             return S_FALSE;
         }
 
-        statusSink(winrt::hstring{ L"INFO: sync state=start operation=put_vault user_id=" + syncUserId + L"ℹ" });
+        statusSink(winrt::hstring{ L"INFO: sync state=start operation=put_vault user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
@@ -346,6 +356,8 @@ namespace
                         std::to_wstring(elapsedMs) +
                         L" server_version=" +
                         std::to_wstring(syncStatus.ServerVersion) +
+                        L" request_id=" +
+                        ResolveRequestId(localRequestId, syncStatus) +
                         L"ℹ" });
                 continue;
             }
@@ -354,7 +366,7 @@ namespace
             {
                 auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - syncStartTime).count();
-                statusSink(winrt::hstring{ L"SUCCESS: sync result=success operation=put_vault attempts=" + std::to_wstring(attempt) + L"/" + std::to_wstring(kMaxAttempts) + L" elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=0✅" });
+                statusSink(winrt::hstring{ L"SUCCESS: sync result=success operation=put_vault attempts=" + std::to_wstring(attempt) + L"/" + std::to_wstring(kMaxAttempts) + L" elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=0 request_id=" + ResolveRequestId(localRequestId, syncStatus) + L"✅" });
                 return S_OK;
             }
 
@@ -381,6 +393,8 @@ namespace
                     L" elapsed_ms=" +
                     std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - syncStartTime).count()) +
+                    L" request_id=" +
+                    ResolveRequestId(localRequestId, syncStatus) +
                     L"ℹ" });
 
             std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
@@ -400,6 +414,10 @@ namespace
         if (syncStatus.StatusCode == 409)
         {
             syncWarning += L" recovery=manual_resync_now";
+        }
+        if (syncStatus.RequestId.empty())
+        {
+            syncWarning += L" request_id=" + localRequestId;
         }
         statusSink(winrt::hstring{ syncWarning });
         return hrSync;
@@ -885,10 +903,11 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::RestoreSelfHostedVaultSnapshot()
     {
+        std::wstring localRequestId = GetNowIsoLikeTimestamp() + L"-restore_snapshot";
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: sync result=skipped operation=restore_snapshot reason=base_url_missing hr=1⚠");
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=skipped operation=restore_snapshot reason=base_url_missing hr=1 request_id=" + localRequestId + L"⚠" });
             return S_FALSE;
         }
 
@@ -898,7 +917,7 @@ namespace winrt::PasskeyManager::implementation {
             syncUserId = kDefaultSyncUserId;
         }
 
-        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=restore_snapshot user_id=" + syncUserId + L"ℹ" });
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=restore_snapshot user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
@@ -919,6 +938,10 @@ namespace winrt::PasskeyManager::implementation {
                 {
                     warning += L" request_id=" + status.RequestId;
                 }
+                else
+                {
+                    warning += L" request_id=" + localRequestId;
+                }
                 warning += L"⚠";
                 UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
                 return hr;
@@ -928,6 +951,10 @@ namespace winrt::PasskeyManager::implementation {
                 L"WARNING: sync result=failed operation=restore_snapshot hr=" +
                 std::to_wstring(static_cast<int>(hr)) +
                 L" detail=" + BuildSyncFailureStatusMessage(hr, status);
+            if (status.RequestId.empty())
+            {
+                warning += L" request_id=" + localRequestId;
+            }
             UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
             return hr;
         }
@@ -959,6 +986,8 @@ namespace winrt::PasskeyManager::implementation {
             std::to_wstring(cipherBytes.size()) +
             L" server_version=" +
             std::to_wstring(record.VaultVersion) +
+            L" request_id=" +
+            ResolveRequestId(localRequestId, status) +
             L"✅";
         UpdatePasskeyOperationStatusText(winrt::hstring{ success });
         return S_OK;

@@ -54,3 +54,12 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 
 - 全キー観測時: `PASS` 表示、終了コード `0`
 - キー不足時: `FAIL` 表示、終了コード `1`
+
+GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
+
+```powershell
+gh workflow run sync-log-keys-check.yml -f scenario=both
+gh run watch
+```
+
+`scenario` は `both` / `pass` / `fail` を指定できます。

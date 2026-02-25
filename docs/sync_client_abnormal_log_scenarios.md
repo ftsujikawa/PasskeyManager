@@ -193,3 +193,10 @@ exit 0
 - `both` : PASS/FAIL サンプルを両方実行
 - `pass` : PASS サンプルのみ実行
 - `fail` : FAIL サンプルのみ実行
+
+GitHub CLI から実行する場合:
+
+```powershell
+gh workflow run sync-log-keys-check.yml -f scenario=both
+gh run watch
+```

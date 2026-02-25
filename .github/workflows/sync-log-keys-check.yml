@@ -41,6 +41,8 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| trigger ^| ${{ github.event_name }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| scenario ^| ${{ github.event.inputs.scenario || 'both' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_rule_count ^| 6 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: PASS sample should pass
@@ -135,4 +137,5 @@ jobs:
           echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample ^| ${{ steps.fail_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| enforced_rules ^| operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

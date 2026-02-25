@@ -172,7 +172,7 @@ exit 0
 機微情報マスキング漏れの簡易チェック（任意）:
 
 ```cmd
-findstr /i /r "token= authorization= bearer= access_token= refresh_token= client_secret=" captured_logs.txt
+findstr /i /r "token= authorization= authorization: bearer= access_token= refresh_token= client_secret=" captured_logs.txt
 ```
 
 期待値:
@@ -191,7 +191,7 @@ findstr /i /r "token= authorization= bearer= access_token= refresh_token= client
 
 - `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
-- サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
+- サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `authorization:` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
 
 実行方法:
 

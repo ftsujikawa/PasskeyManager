@@ -24,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  if ($log -match $c.Pattern) { Write-Host ('PASS: ' + $c.Name) }" ^
   "  else { Write-Host ('FAIL: ' + $c.Name); $failed += $c.Name }" ^
   "}" ^
-  "$sensitivePatterns = @('token=', 'bearer=', 'authorization=', 'access_token=', 'refresh_token=', 'client_secret=');" ^
+  "$sensitivePatterns = @('token=', 'bearer=', 'authorization=', 'authorization:', 'access_token=', 'refresh_token=', 'client_secret=');" ^
   "$sensitiveHits = @();" ^
   "foreach ($p in $sensitivePatterns) { if ($log -match [regex]::Escape($p)) { $sensitiveHits += $p } }" ^
   "if ($sensitiveHits.Count -eq 0) { Write-Host 'PASS: sensitive_markers_absent' }" ^

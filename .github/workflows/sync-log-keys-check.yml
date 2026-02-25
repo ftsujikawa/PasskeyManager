@@ -99,7 +99,7 @@ jobs:
             'docs/samples/abnormal_sync_logs_pass.txt',
             'docs/samples/abnormal_sync_logs_fail.txt'
           )
-          $pattern = '(?i)(token=|bearer=|authorization=|access_token=|refresh_token=|client_secret=)'
+          $pattern = '(?i)(token=|bearer=|authorization=|authorization:|access_token=|refresh_token=|client_secret=)'
           $hitFiles = @()
 
           foreach ($file in $files) {

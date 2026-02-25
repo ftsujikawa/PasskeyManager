@@ -52,23 +52,55 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
         shell: cmd
         run: |
-          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_pass.txt
-          if %ERRORLEVEL% NEQ 0 (
-            echo PASS sample failed unexpectedly. checker_exit_code=%ERRORLEVEL%
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_pass.txt > pass_sample_output.txt 2>&1
+          set "CHECKER_RC=%ERRORLEVEL%"
+          set "HAS_FAIL_PREFIX=0"
+          set "HAS_OPERATION_PASS=0"
+          set "HAS_MESSAGE_CODE_PASS=0"
+          findstr /c:"FAIL:" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_FAIL_PREFIX=1"
+          findstr /c:"PASS: operation_key_present" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_OPERATION_PASS=1"
+          findstr /c:"PASS: message_code_with_message" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_PASS=1"
+          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 (
             echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| status ^| failed_unexpectedly ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| checker_exit_code ^| %ERRORLEVEL% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_operation_key_present ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_message_code_with_message ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
-            exit /b 1
+            exit /b 0
           )
+          echo PASS sample did not satisfy expected pass conditions. checker_exit_code=%CHECKER_RC%
+          type pass_sample_output.txt
           echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_pass_condition ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          if %HAS_FAIL_PREFIX% EQU 1 (
+            echo ^| fail_prefix_detected ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_OPERATION_PASS% EQU 1 (
+            echo ^| pass_reason_operation_key_present ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_operation_key_present ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_MESSAGE_CODE_PASS% EQU 1 (
+            echo ^| pass_reason_message_code_with_message ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_message_code_with_message ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
           echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
 
       - name: FAIL sample should fail
         id: fail_sample

@@ -208,6 +208,16 @@ gh workflow run sync-log-keys-check.yml -f scenario=both
 gh run watch
 ```
 
+単体実行の例:
+
+```powershell
+# PASS サンプルのみ（workflow 全体は success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=pass
+
+# FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail
+```
+
 実行結果の確認例:
 
 ```powershell

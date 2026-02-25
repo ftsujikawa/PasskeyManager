@@ -446,7 +446,7 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                self->LogFailure(L"Failed to restore selected snapshot", hr);
+                self->LogFailure(L"summary result=failed operation=restore_selected_snapshot step=write_local_snapshot", hr);
             }
         }
         co_return;
@@ -588,7 +588,7 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Failed to switch Vault Unlock method to Passkey. Retry after Refresh.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogFailure(L"Failed to set Vault Unlock Method to Passkey", hrSetMethod);
+                self->LogFailure(L"summary result=failed operation=vault_recovery step=set_unlock_method_passkey", hrSetMethod);
                 co_return;
             }
 
@@ -652,7 +652,7 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->vaultRecoveryHintText().Text(L"Vault passkey registration failed. Check the latest FAILED/INFO log line for the HRESULT and retry.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogFailure(L"Vault recovery failed during passkey registration", hrCreatePasskey);
+                self->LogFailure(L"summary result=failed operation=vault_recovery step=create_vault_passkey", hrCreatePasskey);
             }
         }
         co_return;
@@ -688,7 +688,7 @@ namespace winrt::PasskeyManager::implementation
             SetVaultLockSwitchState(!toggleSwitchState);
             if (self)
             {
-                self->LogFailure(L"Failed to change 'Vault Unlock Control'", hr);
+                self->LogFailure(L"summary result=failed operation=set_vault_unlock_method", hr);
             }
         }
         else if (self)
@@ -1227,14 +1227,14 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::addAllPluginCredentials_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"Adding All credentials to windows...");
+        LogInProgress(L"summary state=running operation=add_all_credentials");
 
         auto& credentialManager = PluginCredentialManager::getInstance();
         com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
         HWND hwnd = curApp->GetNativeWindowHandle();
         if (credentialManager.GetVaultLock())
         {
-            LogInProgress(L"Vault is locked. Opening unlock UI before credential sync...");
+            LogInProgress(L"summary state=running operation=vault_unlock trigger=add_all");
             HRESULT hrUnlock = credentialManager.UnlockCredentialVaultWithPasskey(hwnd);
             if (FAILED(hrUnlock))
             {
@@ -1244,11 +1244,11 @@ namespace winrt::PasskeyManager::implementation
                 }
                 else
                 {
-                    LogFailure(L"Vault unlock failed before Add All", hrUnlock);
+                    LogFailure(L"summary result=failed operation=vault_unlock context=add_all", hrUnlock);
                 }
                 co_return;
             }
-            LogSuccess(L"Vault unlocked. Continuing Add All credential sync.");
+            LogSuccess(L"summary result=success operation=vault_unlock context=add_all");
         }
 
         auto weakThis = get_weak();
@@ -1261,7 +1261,7 @@ namespace winrt::PasskeyManager::implementation
             if (auto self = weakThis.get())
             {
                 self->UpdateCredentialList();
-                self->LogWarning(L"No local credentials to sync yet. Click 'Create Vault Passkey' (or import passkeys), then retry Add All.");
+                self->LogWarning(L"summary result=rejected operation=add_all_credentials reason=no_local_credentials");
             }
             co_return;
         }
@@ -1278,16 +1278,16 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
         {
-            self->LogInfo(L"Some credentials were already in system cache. Add All completed with no new items.");
+            self->LogInfo(L"summary result=success operation=add_all_credentials outcome=already_cached_no_new");
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"Failed to add credential to system cache. " + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=add_all_credentials detail=" + detail }, hr);
             co_return;
         }
-        self->LogSuccess(L"Credentials synced");
+        self->LogSuccess(L"summary result=success operation=add_all_credentials");
         co_return;
     }
 

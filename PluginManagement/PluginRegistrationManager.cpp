@@ -777,21 +777,21 @@ namespace winrt::PasskeyManager::implementation {
         if (!opt)
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_missing recovery=recreate_vault_passkey_and_register_again⚠");
-            OutputDebugStringW(L"PluginRegistrationManager::ReadEncryptedVaultData - no EncryptedVaultData in registry.\n");
+            OutputDebugStringW(L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_missing source=registry\n");
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
 
         if (opt->empty())
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_empty_or_corrupt recovery=recreate_vault_passkey_then_retry⚠");
-            OutputDebugStringW(L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is empty.\n");
+            OutputDebugStringW(L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_empty_or_corrupt\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
         if (opt->size() < kMinVaultCipherBlobBytes)
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_small_or_corrupt recovery=recreate_vault_passkey_then_retry⚠");
-            std::wstring msg = L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is too small. size=" + std::to_wstring(opt->size()) + L"\n";
+            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_small_or_corrupt size=" + std::to_wstring(opt->size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
         }
@@ -799,7 +799,7 @@ namespace winrt::PasskeyManager::implementation {
         if (opt->size() > kMaxVaultCipherBlobBytes)
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_large_or_unexpected recovery=recreate_vault_passkey_then_retry⚠");
-            std::wstring msg = L"PluginRegistrationManager::ReadEncryptedVaultData - EncryptedVaultData is too large. size=" + std::to_wstring(opt->size()) + L"\n";
+            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_large_or_unexpected size=" + std::to_wstring(opt->size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
         }

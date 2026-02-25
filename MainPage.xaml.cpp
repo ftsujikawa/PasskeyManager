@@ -1575,7 +1575,7 @@ namespace winrt::PasskeyManager::implementation
         auto hr = tsupasswd::SyncHistoryStore::Clear();
         if (FAILED(hr))
         {
-            OutputDebugStringW((L"MainPage::clearLogsButton_Click failed to clear history file. hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
+            OutputDebugStringW((L"DEBUG: summary result=failed operation=clear_logs step=clear_sync_history_file hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
         }
         RebuildLogView();
         syncStatusTextBlock().Text(L"Sync status: Logs cleared");

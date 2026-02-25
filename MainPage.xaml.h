@@ -121,29 +121,47 @@ namespace winrt::PasskeyManager::implementation
             }
         }
         void LogSuccess(const winrt::hstring& input) {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: " + input + L"\U00002705"});
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: " + input + L"✅"});
         }
         void LogFailure(const winrt::hstring& input, HRESULT hr) {
-            std::wstring result = L"FAILED: " + std::wstring(input.c_str()) + L": " + winrt::to_hstring(static_cast<int>(hr)).c_str() + L"\U0000274C";
+            std::wstring inputText = input.c_str();
+            std::wstring result = L"FAILED: " + inputText;
+            if (inputText.find(L" hr=") == std::wstring::npos)
+            {
+                result += L" hr=" + std::to_wstring(static_cast<int>(hr));
+            }
+            result += L"❌";
             UpdatePasskeyOperationStatusText(winrt::hstring{ result });
         }
         void LogInProgress(const winrt::hstring& input) {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ input + L"\U000023F3"});
+            UpdatePasskeyOperationStatusText(winrt::hstring{ input + L"⏳"});
         }
         void LogInfo(const winrt::hstring& input) {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: " + input + L"\U00002139"});
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: " + input + L"ℹ"});
         }
         void LogInfo(const winrt::hstring& input, HRESULT hr) {
-            std::wstring result = L"INFO: " + std::wstring(input.c_str()) + L": " + winrt::to_hstring(static_cast<int>(hr)).c_str() + L"\U00002139";
+            std::wstring inputText = input.c_str();
+            std::wstring result = L"INFO: " + inputText;
+            if (inputText.find(L" hr=") == std::wstring::npos)
+            {
+                result += L" hr=" + std::to_wstring(static_cast<int>(hr));
+            }
+            result += L"ℹ";
             UpdatePasskeyOperationStatusText(winrt::hstring{ result });
         }
         void LogWarning(const winrt::hstring& input, HRESULT hr = S_OK) {
             if (hr == S_OK)
             {
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: " + input + L"\U000026A0"});
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: " + input + L"⚠"});
                 return;
             }
-            std::wstring result = L"WARNING: " + std::wstring(input.c_str()) + L": " + winrt::to_hstring(static_cast<int>(hr)).c_str() + L"\U000026A0";
+            std::wstring inputText = input.c_str();
+            std::wstring result = L"WARNING: " + inputText;
+            if (inputText.find(L" hr=") == std::wstring::npos)
+            {
+                result += L" hr=" + std::to_wstring(static_cast<int>(hr));
+            }
+            result += L"⚠";
             UpdatePasskeyOperationStatusText(winrt::hstring{ result });
         }
         void UpdatePluginStateTextBlock(AUTHENTICATOR_STATE state);

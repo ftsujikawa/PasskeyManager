@@ -181,3 +181,9 @@ exit 0
 
 - `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
+
+実行方法:
+
+1. GitHub の `Actions` タブを開く
+2. `Sync Log Keys Check` を選択
+3. `Run workflow`（`workflow_dispatch`）で手動実行

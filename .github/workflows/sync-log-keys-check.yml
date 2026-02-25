@@ -1,6 +1,7 @@
 name: Sync Log Keys Check
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'docs/check_sync_log_keys.cmd'

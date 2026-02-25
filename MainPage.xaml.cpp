@@ -471,7 +471,7 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                self->syncStatusTextBlock().Text(L"Sync status: Snapshot restore ended with warning/failure");
+                self->syncStatusTextBlock().Text(L"WARNING: sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure⚠");
             }
         }
         co_return;
@@ -921,11 +921,11 @@ namespace winrt::PasskeyManager::implementation
         {
             snapshotCandidatesCombo().SelectedIndex(0);
             auto latest = m_syncSnapshotCandidates.back();
-            syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Snapshot candidates loaded (latest: " + BuildSnapshotCandidateLabel(latest) + L")" });
+            syncStatusTextBlock().Text(winrt::hstring{ L"INFO: sync state=ready operation=load_snapshot_candidates count=" + std::to_wstring(m_syncSnapshotCandidates.size()) + L" selected=latestℹ" });
         }
         else
         {
-            syncStatusTextBlock().Text(L"Sync status: No snapshot history");
+            syncStatusTextBlock().Text(L"INFO: sync state=ready operation=load_snapshot_candidates count=0 reason=no_snapshot_historyℹ");
         }
     }
 
@@ -970,7 +970,7 @@ namespace winrt::PasskeyManager::implementation
         syncBearerTokenBox().Password(token);
         syncUserIdTextBox().Text(userId);
 
-        syncStatusTextBlock().Text(L"Sync status: Settings loaded");
+        syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=load_settings source=process_registry✅");
         LogInfo(L"sync result=success operation=load_settings source=process_registry");
         co_return;
     }
@@ -985,13 +985,13 @@ namespace winrt::PasskeyManager::implementation
 
         if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
         {
-            syncStatusTextBlock().Text(L"Sync status: Save failed (invalid Base URL)");
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=invalid_base_url⚠");
             LogWarning(L"sync result=rejected operation=save_settings reason=invalid_base_url");
             co_return;
         }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {
-            syncStatusTextBlock().Text(L"Sync status: Save failed (invalid User ID)");
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=invalid_user_id⚠");
             LogWarning(L"sync result=rejected operation=save_settings reason=invalid_user_id");
             co_return;
         }
@@ -1009,12 +1009,12 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            syncStatusTextBlock().Text(L"Sync status: Save failed");
+            syncStatusTextBlock().Text(L"FAILED: summary result=failed operation=save_settings❌");
             LogFailure(L"summary result=failed operation=save_settings", hr);
             co_return;
         }
 
-        syncStatusTextBlock().Text(L"Sync status: Settings saved");
+        syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id✅");
         LogSuccess(L"sync result=success operation=save_settings fields=base_url,token,user_id");
         co_return;
     }
@@ -1029,26 +1029,26 @@ namespace winrt::PasskeyManager::implementation
 
         if (!IsValidSyncBaseUrl(baseUrl))
         {
-            syncStatusTextBlock().Text(L"Sync status: Test failed (invalid Base URL)");
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=invalid_base_url⚠");
             LogWarning(L"sync result=rejected operation=test_connection reason=invalid_base_url");
             co_return;
         }
         if (token.empty())
         {
-            syncStatusTextBlock().Text(L"Sync status: Test failed (token is empty)");
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=token_empty⚠");
             LogWarning(L"sync result=rejected operation=test_connection reason=token_empty");
             co_return;
         }
         if (!IsValidSyncUserId(userId))
         {
-            syncStatusTextBlock().Text(L"Sync status: Test failed (invalid User ID)");
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=invalid_user_id⚠");
             LogWarning(L"sync result=rejected operation=test_connection reason=invalid_user_id");
             co_return;
         }
 
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
-        syncStatusTextBlock().Text(L"Sync status: Testing connection...");
+        syncStatusTextBlock().Text(L"INFO: summary state=running operation=test_connection⏳");
         LogInProgress(L"summary state=running operation=test_connection");
 
         co_await winrt::resume_background();
@@ -1068,7 +1068,7 @@ namespace winrt::PasskeyManager::implementation
         self->testSyncConnectionButton().IsEnabled(true);
         if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->syncStatusTextBlock().Text(L"Sync status: Connection test passed");
+            self->syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=test_connection outcome=reachable_or_not_found✅");
             self->LogSuccess(L"sync result=success operation=test_connection outcome=reachable_or_not_found");
             co_return;
         }
@@ -1088,7 +1088,7 @@ namespace winrt::PasskeyManager::implementation
         {
             detail += L" message=" + status.ErrorMessage;
         }
-        self->syncStatusTextBlock().Text(L"Sync status: Connection test failed");
+        self->syncStatusTextBlock().Text(L"WARNING: sync result=failed operation=test_connection outcome=request_failed⚠");
         self->LogWarning(winrt::hstring{ detail });
         co_return;
     }
@@ -1108,7 +1108,7 @@ namespace winrt::PasskeyManager::implementation
             self->manualSyncButton().IsEnabled(true);
             if (FAILED(hr))
             {
-                self->syncStatusTextBlock().Text(L"Sync status: Manual self-hosted resync ended with warning/failure");
+                self->syncStatusTextBlock().Text(L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure⚠");
             }
         }
         co_return;
@@ -1578,7 +1578,7 @@ namespace winrt::PasskeyManager::implementation
             OutputDebugStringW((L"DEBUG: summary result=failed operation=clear_logs step=clear_sync_history_file hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
         }
         RebuildLogView();
-        syncStatusTextBlock().Text(L"Sync status: Logs cleared");
+        syncStatusTextBlock().Text(L"SUCCESS: summary result=success operation=clear_logs step=clear_sync_history_view✅");
         co_return;
     }
 

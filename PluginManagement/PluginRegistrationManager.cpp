@@ -230,6 +230,14 @@ namespace
         }
         if (!status.ErrorMessage.empty())
         {
+            if (!status.ErrorCode.empty())
+            {
+                detail += L" message_code=" + status.ErrorCode;
+            }
+            else
+            {
+                detail += L" message_code=remote_error_message_present";
+            }
             detail += L" message=" + status.ErrorMessage;
         }
 

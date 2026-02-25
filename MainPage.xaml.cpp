@@ -1086,6 +1086,14 @@ namespace winrt::PasskeyManager::implementation
         }
         if (!status.ErrorMessage.empty())
         {
+            if (!status.ErrorCode.empty())
+            {
+                detail += L" message_code=" + status.ErrorCode;
+            }
+            else
+            {
+                detail += L" message_code=remote_error_message_present";
+            }
             detail += L" message=" + status.ErrorMessage;
         }
         self->syncStatusTextBlock().Text(L"WARNING: sync result=failed operation=test_connection outcome=request_failed⚠");
@@ -1669,6 +1677,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring detail = detailLabel;
         auto statusCode = ExtractLogTokenValue(detailTarget, L"status=");
         auto code = ExtractLogTokenValue(detailTarget, L"code=");
+        auto messageCode = ExtractLogTokenValue(detailTarget, L"message_code=");
         auto message = ExtractLogTokenValue(detailTarget, L"message=");
         auto serverVersion = ExtractLogTokenValue(detailTarget, L"server_version=");
 
@@ -1679,6 +1688,10 @@ namespace winrt::PasskeyManager::implementation
         if (!code.empty())
         {
             detail += L" code=" + code;
+        }
+        if (!messageCode.empty())
+        {
+            detail += L" message_code=" + messageCode;
         }
         if (!message.empty())
         {

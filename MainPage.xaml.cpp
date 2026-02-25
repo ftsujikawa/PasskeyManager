@@ -1108,10 +1108,11 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
+        std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
         syncStatusTextBlock().Text(L"INFO: summary state=running operation=test_connection⏳");
-        LogInProgress(L"summary state=running operation=test_connection");
+        LogInProgress(winrt::hstring{ L"summary state=running operation=test_connection request_id=" + testConnectionRequestId });
 
         co_await winrt::resume_background();
         tsupasswd::SyncClient syncClient(baseUrl);
@@ -1131,7 +1132,7 @@ namespace winrt::PasskeyManager::implementation
         if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             self->syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=test_connection outcome=reachable_or_not_found✅");
-            self->LogSuccess(L"sync result=success operation=test_connection outcome=reachable_or_not_found");
+            self->LogSuccess(winrt::hstring{ L"sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + testConnectionRequestId });
             co_return;
         }
 
@@ -1147,10 +1148,7 @@ namespace winrt::PasskeyManager::implementation
         {
             detail += L" code=" + status.ErrorCode;
         }
-        if (!status.RequestId.empty())
-        {
-            detail += L" request_id=" + status.RequestId;
-        }
+        detail += L" request_id=" + (status.RequestId.empty() ? testConnectionRequestId : status.RequestId);
         if (!status.ErrorMessage.empty())
         {
             if (!status.ErrorCode.empty())
@@ -1556,7 +1554,7 @@ namespace winrt::PasskeyManager::implementation
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(winrt::hstring{ L"summary result=rejected reason=no_selection request=" + std::to_wstring(requestId) }, E_NOT_SET);
+            LogWarning(winrt::hstring{ L"summary result=rejected operation=delete_selected_credentials_everywhere reason=no_selection request=" + std::to_wstring(requestId) }, E_NOT_SET);
             co_return;
         }
 

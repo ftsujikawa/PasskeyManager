@@ -306,7 +306,7 @@ namespace
                         std::to_wstring(elapsedMs) +
                         L" server_version=" +
                         std::to_wstring(syncStatus.ServerVersion) +
-                        L"...ℹ" });
+                        L"ℹ" });
                 continue;
             }
 

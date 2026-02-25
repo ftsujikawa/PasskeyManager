@@ -32,45 +32,67 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Initialize step summary
+        shell: cmd
+        run: |
+          echo ## Sync Log Keys Check>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| item ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| trigger ^| ${{ github.event_name }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| scenario ^| ${{ github.event.inputs.scenario || 'both' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+
       - name: PASS sample should pass
+        id: pass_sample
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
         shell: cmd
         run: |
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_pass.txt
           if %ERRORLEVEL% NEQ 0 (
             echo PASS sample failed unexpectedly. checker_exit_code=%ERRORLEVEL%
-            echo ### PASS sample result>>"%GITHUB_STEP_SUMMARY%"
-            echo - status=failed_unexpectedly>>"%GITHUB_STEP_SUMMARY%"
-            echo - checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| failed_unexpectedly ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %ERRORLEVEL% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 1
           )
-          echo ### PASS sample result>>"%GITHUB_STEP_SUMMARY%"
-          echo - status=success_as_expected>>"%GITHUB_STEP_SUMMARY%"
-          echo - checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: FAIL sample should fail
+        id: fail_sample
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
           if %ERRORLEVEL% NEQ 0 (
             echo Expected failure confirmed.
-            echo ### FAIL sample result>>"%GITHUB_STEP_SUMMARY%"
-            echo - status=expected_failure_confirmed>>"%GITHUB_STEP_SUMMARY%"
-            echo - checker_exit_code=%ERRORLEVEL%>>"%GITHUB_STEP_SUMMARY%"
+            echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %ERRORLEVEL% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
           echo Expected failure, but checker returned success.
-          echo ### FAIL sample result>>"%GITHUB_STEP_SUMMARY%"
-          echo - status=unexpected_success>>"%GITHUB_STEP_SUMMARY%"
-          echo - checker_exit_code=0>>"%GITHUB_STEP_SUMMARY%"
+          echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_success ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
       - name: Samples should not contain sensitive key-values
+        id: sensitive_markers
         shell: cmd
         run: |
           setlocal EnableDelayedExpansion
@@ -85,13 +107,29 @@ jobs:
 
           if !FOUND! EQU 1 (
             echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
-            echo - status=failed_sensitive_marker_detected>>"%GITHUB_STEP_SUMMARY%"
-            echo - files=docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| failed_sensitive_marker_detected ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| files ^| docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 1
           )
 
           echo ### Sensitive marker check>>"%GITHUB_STEP_SUMMARY%"
-          echo - status=success_no_sensitive_markers>>"%GITHUB_STEP_SUMMARY%"
-          echo - files=docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| success_no_sensitive_markers ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| files ^| docs/samples/abnormal_sync_logs_pass.txt,docs/samples/abnormal_sync_logs_fail.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+
+      - name: Overall summary
+        if: always()
+        shell: cmd
+        run: |
+          echo ### Overall result>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| check ^| outcome ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_sample ^| ${{ steps.fail_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

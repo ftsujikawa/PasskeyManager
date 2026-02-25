@@ -47,6 +47,34 @@ jobs:
           echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
+      - name: Validate PASS sample file exists
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
+        shell: cmd
+        run: |
+          if exist docs\samples\abnormal_sync_logs_pass.txt exit /b 0
+          echo Missing required sample file: docs\samples\abnormal_sync_logs_pass.txt
+          echo ### PASS sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/samples/abnormal_sync_logs_pass.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate FAIL sample file exists
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        shell: cmd
+        run: |
+          if exist docs\samples\abnormal_sync_logs_fail.txt exit /b 0
+          echo Missing required sample file: docs\samples\abnormal_sync_logs_fail.txt
+          echo ### FAIL sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/samples/abnormal_sync_logs_fail.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: PASS sample should pass
         id: pass_sample
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}

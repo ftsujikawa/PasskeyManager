@@ -26,7 +26,7 @@ namespace winrt::PasskeyManager::implementation
 
         void LogVaultUnlockWarning(std::wstring const& message)
         {
-            UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + message });
+            UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + message + L"⚠" });
             std::wstring debug = L"PluginCredentialManager::UnlockCredentialVaultWithPasskey - " + message + L"\n";
             OutputDebugStringW(debug.c_str());
         }
@@ -809,7 +809,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (usePrf && pAssertion.get()->pHmacSecret == nullptr)
         {
-            LogVaultUnlockWarning(L"Selected authenticator does not provide PRF/HMAC secret. Recovery: use a PRF-capable passkey authenticator.");
+            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
             return NTE_NOT_SUPPORTED; // The chosen authenticator does not support PRF.
         }
 
@@ -826,7 +826,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText);
         if (FAILED(hrReadVaultData))
         {
-            LogVaultUnlockWarning(L"Vault unlock aborted due to invalid/missing encrypted vault data.");
+            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=encrypted_vault_data_invalid_or_missing");
             return hrReadVaultData;
         }
         DATA_BLOB cipherTextBlob = {
@@ -846,7 +846,7 @@ namespace winrt::PasskeyManager::implementation
             &decryptedData))
         {
             HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
-            LogVaultUnlockWarning(L"Failed to decrypt vault data. Recovery: run Vault recovery to re-create Vault Unlock passkey.");
+            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=decrypt_failed recovery=run_vault_recovery_and_recreate_passkey");
             return hr;
         }
 
@@ -860,7 +860,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (decryptedData.cbData != wcslen(c_dummySecretVault) * sizeof(wchar_t) || memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) != 0)
         {
-            LogVaultUnlockWarning(L"Vault data integrity check failed after decrypt. Recovery: re-create Vault Unlock passkey and retry.");
+            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=vault_integrity_check_failed recovery=recreate_vault_passkey_then_retry");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 

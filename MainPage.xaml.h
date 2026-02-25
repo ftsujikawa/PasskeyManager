@@ -83,33 +83,37 @@ namespace winrt::PasskeyManager::implementation
                 return buffer;
             };
 
-            if (status.find(L"SUCCESS: Self-hosted vault sync completed") != std::wstring::npos)
+            if (status.find(L"sync result=success") != std::wstring::npos)
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Success at " + nowLabel() });
             }
-            else if (status.find(L"WARNING: Self-hosted sync failed: version conflict (409)") != std::wstring::npos)
+            else if (status.find(L"sync result=failed") != std::wstring::npos &&
+                (status.find(L"status=409") != std::wstring::npos || status.find(L"recovery=manual_resync_now") != std::wstring::npos))
             {
                 syncStatusTextBlock().Text(
                     winrt::hstring{
                         L"Sync status: Conflict (409) at " + nowLabel() +
                         L". Click 'Resync Now' to refresh latest server version and retry." });
             }
-            else if (status.find(L"WARNING: Self-hosted sync failed") != std::wstring::npos)
+            else if (status.find(L"sync result=failed") != std::wstring::npos)
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Failed at " + nowLabel() + L" (see Logs)" });
             }
-            else if (status.find(L"Self-hosted sync skipped") != std::wstring::npos)
+            else if (status.find(L"sync result=skipped") != std::wstring::npos)
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Skipped at " + nowLabel() });
             }
 
-            if (status.find(L"Vault data is") != std::wstring::npos)
+            if (status.find(L"operation=read_encrypted_vault_data") != std::wstring::npos)
             {
                 vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
                 runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
             }
-            else if (status.find(L"Created passkey for Vault Unlock") != std::wstring::npos || status.find(L"Vault Unlock passkey already exists") != std::wstring::npos)
+            else if ((status.find(L"operation=vault_recovery") != std::wstring::npos && status.find(L"outcome=passkey_created") != std::wstring::npos) ||
+                (status.find(L"operation=vault_recovery") != std::wstring::npos && status.find(L"outcome=passkey_already_exists") != std::wstring::npos) ||
+                status.find(L"Created passkey for Vault Unlock") != std::wstring::npos ||
+                status.find(L"Vault Unlock passkey already exists") != std::wstring::npos)
             {
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 vaultRecoveryHintText().Text(L"");

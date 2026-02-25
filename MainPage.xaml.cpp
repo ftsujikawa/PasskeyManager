@@ -693,10 +693,11 @@ namespace winrt::PasskeyManager::implementation
         }
         else if (self)
         {
-            self->LogSuccess(L"Changed 'Vault Unlock Control Method'");
+            std::wstring methodValue = (unlockMethod == VaultUnlockMethod::Passkey) ? L"passkey" : L"consent";
+            self->LogSuccess(winrt::hstring{ L"summary result=success operation=set_vault_unlock_method method=" + methodValue });
             if (unlockMethod == VaultUnlockMethod::Passkey && FAILED(hrSetSilent))
             {
-                self->LogWarning(L"Failed to force plugin UI visibility (silent mode off). Passkey prompt may be cancelled unexpectedly.", hrSetSilent);
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=vault_recovery step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset" });
             }
         }
 
@@ -704,7 +705,7 @@ namespace winrt::PasskeyManager::implementation
         {
             if (self)
             {
-                self->LogInfo(L"Starting Create Vault Passkey from unlock method toggle...");
+                self->LogInfo(L"summary state=running operation=vault_recovery trigger=unlock_method_toggle step=create_vault_passkey_start");
             }
             // Let the log render before WebAuthN blocks the UI thread.
             co_await winrt::resume_after(std::chrono::milliseconds(50));
@@ -722,7 +723,7 @@ namespace winrt::PasskeyManager::implementation
             {
                 if (self)
                 {
-                    self->LogInfo(L"Create Vault Passkey was cancelled. Skipping immediate retry to avoid plugin busy race.", hr);
+                    self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled" });
                 }
             }
 
@@ -733,11 +734,11 @@ namespace winrt::PasskeyManager::implementation
                 {
                     if (hr == NTE_EXISTS)
                     {
-                        self->LogSuccess(L"Vault Unlock passkey already exists");
+                        self->LogSuccess(L"summary result=success operation=vault_recovery outcome=passkey_already_exists");
                     }
                     else
                     {
-                        self->LogSuccess(L"Created passkey for Vault Unlock");
+                        self->LogSuccess(L"summary result=success operation=vault_recovery outcome=passkey_created");
                     }
                 }
             }
@@ -748,16 +749,16 @@ namespace winrt::PasskeyManager::implementation
                 {
                     if (hr == NTE_USER_CANCELLED || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
                     {
-                        self->LogInfo(L"Passkey registration cancelled. Select tsupasswd_core in storage selection and retry.", hr);
+                        self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled" });
                     }
                     else
                     {
-                        self->LogFailure(L"Failed to register passkey", hr);
+                        self->LogFailure(L"summary result=failed operation=vault_recovery step=create_vault_passkey", hr);
                     }
 
                     if (hr == NTE_NOT_SUPPORTED)
                     {
-                        self->LogWarning(L"Likely the authenticator chosen does not suppport PRF. This means the passkey was created in the authenticator, but not registered in Contoso. Delete it to try again.");
+                        self->LogWarning(L"summary result=failed operation=vault_recovery reason=authenticator_not_supported_prf_hmac");
                     }
                 }
             }
@@ -812,7 +813,7 @@ namespace winrt::PasskeyManager::implementation
                     co_await wil::resume_foreground(self->DispatcherQueue());
                     if (shouldLogWarning)
                     {
-                        self->LogWarning(L"Vault unlock requires UI", E_NOT_VALID_STATE);
+                        self->LogWarning(winrt::hstring{ L"summary result=rejected operation=vault_unlock reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L"" });
                     }
                     self->UpdatePluginEnableState();
                 }
@@ -1239,7 +1240,7 @@ namespace winrt::PasskeyManager::implementation
             {
                 if (hrUnlock == E_NOT_VALID_STATE)
                 {
-                    LogWarning(L"Vault unlock requires UI. Complete passkey prompt, then retry Add All.", hrUnlock);
+                    LogWarning(winrt::hstring{ L"summary result=rejected operation=vault_unlock reason=ui_required hr=" + std::to_wstring(static_cast<int>(hrUnlock)) + L" context=add_all" });
                 }
                 else
                 {

@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace tsupasswd
 {
@@ -51,14 +50,6 @@ namespace tsupasswd
         bool ShowDevCommands{ false };
     };
 
-    struct ConfigGoogle
-    {
-        std::wstring ClientId{};
-        std::wstring ClientSecret{};
-        std::vector<std::wstring> Scopes{};
-        int32_t LoopbackRedirectPort{ 0 };
-    };
-
     struct AppConfig
     {
         int32_t SchemaVersion{ 1 };
@@ -67,7 +58,6 @@ namespace tsupasswd
         ConfigWebAuthnBehavior WebAuthnBehavior{};
         ConfigStorage Storage{};
         ConfigUi Ui{};
-        ConfigGoogle Google{};
     };
 
     // 読み込み: 失敗しても既定値を返す（例外は投げない方針）

@@ -179,36 +179,6 @@ namespace tsupasswd
         return true;
     }
 
-    static bool TryGetStringArray(winrt::Windows::Data::Json::JsonObject const& obj, wchar_t const* key, std::vector<std::wstring>& out)
-    {
-        if (!obj.HasKey(key))
-        {
-            return false;
-        }
-
-        auto value = obj.GetNamedValue(key, nullptr);
-        if (!value || value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Array)
-        {
-            return false;
-        }
-
-        auto arr = value.GetArray();
-        std::vector<std::wstring> tmp;
-        tmp.reserve(arr.Size());
-        for (uint32_t i = 0; i < arr.Size(); ++i)
-        {
-            auto item = arr.GetAt(i);
-            if (!item || item.ValueType() != winrt::Windows::Data::Json::JsonValueType::String)
-            {
-                continue;
-            }
-            tmp.emplace_back(item.GetString());
-        }
-
-        out = std::move(tmp);
-        return true;
-    }
-
     static void ParseConfigJsonObject(winrt::Windows::Data::Json::JsonObject const& root, AppConfig& cfg)
     {
         (void)TryGetInt32(root, L"schemaVersion", cfg.SchemaVersion);
@@ -279,25 +249,6 @@ namespace tsupasswd
             }
 
             (void)TryGetBool(ui, L"showDevCommands", cfg.Ui.ShowDevCommands);
-        }
-
-        winrt::Windows::Data::Json::JsonObject google;
-        if (TryGetObject(root, L"google", google))
-        {
-            std::wstring clientId;
-            if (TryGetString(google, L"client_id", clientId))
-            {
-                cfg.Google.ClientId = clientId;
-            }
-
-            std::wstring clientSecret;
-            if (TryGetString(google, L"client_secret", clientSecret))
-            {
-                cfg.Google.ClientSecret = clientSecret;
-            }
-
-            (void)TryGetStringArray(google, L"scopes", cfg.Google.Scopes);
-            (void)TryGetInt32(google, L"loopback_redirect_port", cfg.Google.LoopbackRedirectPort);
         }
     }
 
@@ -374,11 +325,7 @@ namespace tsupasswd
         std::wstring appSettings = GetAppSettingsJsonPath();
         if (!appSettings.empty())
         {
-            AppConfig cfg = LoadConfigFromAppSettingsJson(appSettings);
-            if (!cfg.Google.ClientId.empty() || cfg.SchemaVersion != AppConfig{}.SchemaVersion)
-            {
-                return cfg;
-            }
+            return LoadConfigFromAppSettingsJson(appSettings);
         }
 
         return LoadConfigFromLocalAppData();

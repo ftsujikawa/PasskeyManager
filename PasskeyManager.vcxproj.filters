@@ -399,9 +399,6 @@
     <None Include="docs\plugin_state_transition_test.md">
       <Filter>docs</Filter>
     </None>
-    <None Include="docs\release_notes_google_oauth.md">
-      <Filter>docs</Filter>
-    </None>
     <None Include="docs\sync_mvp_api_issue_templates.md">
       <Filter>docs</Filter>
     </None>

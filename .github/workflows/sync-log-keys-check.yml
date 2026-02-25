@@ -48,6 +48,7 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: Validate PASS sample file exists
+        id: pass_sample_file
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
         shell: cmd
         run: |
@@ -62,6 +63,7 @@ jobs:
           exit /b 1
 
       - name: Validate FAIL sample file exists
+        id: fail_sample_file
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
@@ -307,8 +309,10 @@ jobs:
           echo ### Overall result>>"%GITHUB_STEP_SUMMARY%"
           echo ^| check ^| outcome ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| pass_sample_file ^| ${{ steps.pass_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample ^| ${{ steps.fail_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| enforced_rules ^| operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| enforced_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

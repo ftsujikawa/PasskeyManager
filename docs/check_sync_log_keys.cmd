@@ -38,7 +38,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '(^|\s)message=' -and $line -notmatch '(^|\s)message_code=') { $messageCodeMissing += $line } }" ^
   "if ($messageCodeMissing.Count -eq 0) { Write-Host 'PASS: message_code_with_message' }" ^
   "else { Write-Host ('FAIL: message_code_with_message count=' + $messageCodeMissing.Count); $failed += 'message_code_with_message' }" ^
-  "if ($failed.Count -gt 0) { Write-Error ('check failures: ' + ($failed -join ', ')); exit 1 }" ^
+  "if ($failed.Count -gt 0) { Write-Host ('FAIL: check_failures=' + ($failed -join ',')); exit 1 }" ^
   "Write-Host 'OK: abnormal sync log checks passed.'; exit 0"
 
 set "RC=%ERRORLEVEL%"

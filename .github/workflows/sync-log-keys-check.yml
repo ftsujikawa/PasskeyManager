@@ -75,23 +75,30 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
-          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
-          if %ERRORLEVEL% NEQ 0 (
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt > fail_sample_output.txt 2>&1
+          set "CHECKER_RC=%ERRORLEVEL%"
+          findstr /c:"message_code_with_message" fail_sample_output.txt >nul
+          set "HAS_MESSAGE_CODE_FAILURE=0"
+          if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_FAILURE=1"
+          if %CHECKER_RC% NEQ 0 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 (
             echo Expected failure confirmed.
             echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| checker_exit_code ^| %ERRORLEVEL% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_reason_message_code_with_message ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
-          echo Expected failure, but checker returned success.
+          echo Expected failure with message_code_with_message, but condition was not met.
+          type fail_sample_output.txt
           echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| status ^| unexpected_success ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_reason_message_code_with_message ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 

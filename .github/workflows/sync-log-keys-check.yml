@@ -61,19 +61,19 @@ jobs:
           set "HAS_SENSITIVE_MARKERS_ABSENT_PASS=0"
           set "HAS_OPERATION_PASS=0"
           set "HAS_MESSAGE_CODE_PASS=0"
-          findstr /c:"FAIL:" pass_sample_output.txt >nul
+          findstr /b /c:"FAIL:" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAIL_PREFIX=1"
-          findstr /c:"PASS: 409_recovery" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: 409_recovery" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_409_PASS=1"
-          findstr /c:"PASS: read_encrypted_vault_data" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: read_encrypted_vault_data" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_READ_ENCRYPTED_VAULT_DATA_PASS=1"
-          findstr /c:"PASS: vault_unlock_ui_required" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: vault_unlock_ui_required" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_VAULT_UNLOCK_UI_REQUIRED_PASS=1"
-          findstr /c:"PASS: sensitive_markers_absent" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: sensitive_markers_absent" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_SENSITIVE_MARKERS_ABSENT_PASS=1"
-          findstr /c:"PASS: operation_key_present" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: operation_key_present" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_OPERATION_PASS=1"
-          findstr /c:"PASS: message_code_with_message" pass_sample_output.txt >nul
+          findstr /b /c:"PASS: message_code_with_message" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_PASS=1"
           set "PASS_PREFIX_COUNT=0"
           for /f %%A in ('findstr /b /c:"PASS:" pass_sample_output.txt ^| find /c ":"') do set "PASS_PREFIX_COUNT=%%A"
@@ -154,14 +154,14 @@ jobs:
           set "HAS_409_RECOVERY_FAILURE=0"
           set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=0"
           set "HAS_CHECK_FAILURES_SUMMARY=0"
-          findstr /c:"FAIL: message_code_with_message" fail_sample_output.txt >nul
+          findstr /b /c:"FAIL: message_code_with_message" fail_sample_output.txt >nul
           set "HAS_MESSAGE_CODE_FAILURE=0"
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_FAILURE=1"
-          findstr /c:"FAIL: 409_recovery" fail_sample_output.txt >nul
+          findstr /b /c:"FAIL: 409_recovery" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_409_RECOVERY_FAILURE=1"
-          findstr /c:"FAIL: read_encrypted_vault_data" fail_sample_output.txt >nul
+          findstr /b /c:"FAIL: read_encrypted_vault_data" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=1"
-          findstr /c:"FAIL: check_failures=409_recovery,read_encrypted_vault_data,message_code_with_message" fail_sample_output.txt >nul
+          findstr /b /c:"FAIL: check_failures=409_recovery,read_encrypted_vault_data,message_code_with_message" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
           set "STATUS_409_RECOVERY=not_observed"
           if %HAS_409_RECOVERY_FAILURE% EQU 1 set "STATUS_409_RECOVERY=observed"

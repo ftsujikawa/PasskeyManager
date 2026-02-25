@@ -248,7 +248,7 @@ namespace
             return S_FALSE;
         }
 
-        statusSink(winrt::hstring{ L"INFO: sync state=start user_id=" + syncUserId + L"ℹ" });
+        statusSink(winrt::hstring{ L"INFO: sync state=start operation=put_vault user_id=" + syncUserId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
@@ -290,7 +290,7 @@ namespace
                 putRequest.NewVersion = syncStatus.ServerVersion + 1;
                 statusSink(
                     winrt::hstring{
-                        L"INFO: sync result=retry_conflict attempt=" +
+                        L"INFO: sync result=retry_conflict operation=put_vault attempt=" +
                         std::to_wstring(attempt) +
                         L"/" +
                         std::to_wstring(kMaxAttempts) +
@@ -306,7 +306,7 @@ namespace
             {
                 auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - syncStartTime).count();
-                statusSink(winrt::hstring{ L"SUCCESS: sync result=success attempts=" + std::to_wstring(attempt) + L"/" + std::to_wstring(kMaxAttempts) + L" elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=0✅" });
+                statusSink(winrt::hstring{ L"SUCCESS: sync result=success operation=put_vault attempts=" + std::to_wstring(attempt) + L"/" + std::to_wstring(kMaxAttempts) + L" elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=0✅" });
                 return S_OK;
             }
 
@@ -324,7 +324,7 @@ namespace
 
             statusSink(
                 winrt::hstring{
-                    L"INFO: sync result=retry_backoff attempt=" +
+                    L"INFO: sync result=retry_backoff operation=put_vault attempt=" +
                     std::to_wstring(attempt + 1) +
                     L"/" +
                     std::to_wstring(kMaxAttempts) +
@@ -340,7 +340,7 @@ namespace
         }
 
         std::wstring syncWarning =
-            L"WARNING: sync result=failed attempts=" +
+            L"WARNING: sync result=failed operation=put_vault attempts=" +
             std::to_wstring(attemptsUsed) +
             L"/" +
             std::to_wstring(kMaxAttempts) +

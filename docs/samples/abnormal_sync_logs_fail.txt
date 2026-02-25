@@ -1,2 +1,3 @@
 WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1520 hr=-2147012889 status=409 detail=conflict
 WARNING: summary result=rejected operation=vault_unlock reason=ui_required hr=-2147019873
+WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1510 hr=-2147012889 code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response.

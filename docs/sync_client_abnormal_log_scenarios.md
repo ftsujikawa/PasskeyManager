@@ -168,3 +168,16 @@ exit 0
 
 - `captured_logs.txt` はアプリのログ表示をコピーして保存したテキストを想定。
 - 未観測ケースがある運用では、`FAIL` が出るのは正常（要追加再現）である。
+
+---
+
+## 7. CI での自動検証
+
+リポジトリには、ログキー検証を自動実行するワークフローを追加している。
+
+- `./.github/workflows/sync-log-keys-check.yml`
+
+このワークフローは次を検証する。
+
+- `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
+- `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること

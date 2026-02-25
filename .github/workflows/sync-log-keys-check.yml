@@ -1,0 +1,36 @@
+name: Sync Log Keys Check
+
+on:
+  push:
+    paths:
+      - 'docs/check_sync_log_keys.cmd'
+      - 'docs/sync_client_abnormal_log_scenarios.md'
+      - 'docs/samples/abnormal_sync_logs_*.txt'
+      - '.github/workflows/sync-log-keys-check.yml'
+  pull_request:
+    paths:
+      - 'docs/check_sync_log_keys.cmd'
+      - 'docs/sync_client_abnormal_log_scenarios.md'
+      - 'docs/samples/abnormal_sync_logs_*.txt'
+      - '.github/workflows/sync-log-keys-check.yml'
+
+jobs:
+  verify-sync-log-keys:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: PASS sample should pass
+        shell: cmd
+        run: docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_pass.txt
+
+      - name: FAIL sample should fail
+        shell: cmd
+        run: |
+          docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
+          if %ERRORLEVEL% EQU 0 (
+            echo Expected failure, but checker returned success.
+            exit /b 1
+          )
+          echo Expected failure confirmed.

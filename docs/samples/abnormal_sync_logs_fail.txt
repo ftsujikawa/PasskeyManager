@@ -1,0 +1,2 @@
+WARNING: sync result=failed attempts=3/3 elapsed_ms=1520 hr=-2147012889 status=409 detail=conflict
+WARNING: summary result=rejected operation=vault_unlock reason=ui_required hr=-2147019873

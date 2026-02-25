@@ -55,15 +55,27 @@ jobs:
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_pass.txt > pass_sample_output.txt 2>&1
           set "CHECKER_RC=%ERRORLEVEL%"
           set "HAS_FAIL_PREFIX=0"
+          set "HAS_409_PASS=0"
+          set "HAS_READ_ENCRYPTED_VAULT_DATA_PASS=0"
+          set "HAS_VAULT_UNLOCK_UI_REQUIRED_PASS=0"
+          set "HAS_SENSITIVE_MARKERS_ABSENT_PASS=0"
           set "HAS_OPERATION_PASS=0"
           set "HAS_MESSAGE_CODE_PASS=0"
           findstr /c:"FAIL:" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAIL_PREFIX=1"
+          findstr /c:"PASS: 409_recovery" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_409_PASS=1"
+          findstr /c:"PASS: read_encrypted_vault_data" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_READ_ENCRYPTED_VAULT_DATA_PASS=1"
+          findstr /c:"PASS: vault_unlock_ui_required" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_VAULT_UNLOCK_UI_REQUIRED_PASS=1"
+          findstr /c:"PASS: sensitive_markers_absent" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_SENSITIVE_MARKERS_ABSENT_PASS=1"
           findstr /c:"PASS: operation_key_present" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_OPERATION_PASS=1"
           findstr /c:"PASS: message_code_with_message" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_PASS=1"
-          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 (
+          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_409_PASS% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 (
             echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
@@ -71,6 +83,10 @@ jobs:
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_409_recovery ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_read_encrypted_vault_data ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_vault_unlock_ui_required ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_sensitive_markers_absent ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_operation_key_present ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_message_code_with_message ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
@@ -88,6 +104,26 @@ jobs:
             echo ^| fail_prefix_detected ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
           ) else (
             echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_409_PASS% EQU 1 (
+            echo ^| pass_reason_409_recovery ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_409_recovery ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 (
+            echo ^| pass_reason_read_encrypted_vault_data ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_read_encrypted_vault_data ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 (
+            echo ^| pass_reason_vault_unlock_ui_required ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_vault_unlock_ui_required ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 (
+            echo ^| pass_reason_sensitive_markers_absent ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_sensitive_markers_absent ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
           )
           if %HAS_OPERATION_PASS% EQU 1 (
             echo ^| pass_reason_operation_key_present ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"

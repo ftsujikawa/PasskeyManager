@@ -147,6 +147,7 @@ jobs:
           set "CHECKER_RC=%ERRORLEVEL%"
           set "HAS_409_RECOVERY_FAILURE=0"
           set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=0"
+          set "HAS_CHECK_FAILURES_SUMMARY=0"
           findstr /c:"FAIL: message_code_with_message" fail_sample_output.txt >nul
           set "HAS_MESSAGE_CODE_FAILURE=0"
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_FAILURE=1"
@@ -154,13 +155,17 @@ jobs:
           if %ERRORLEVEL% EQU 0 set "HAS_409_RECOVERY_FAILURE=1"
           findstr /c:"FAIL: read_encrypted_vault_data" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=1"
+          findstr /c:"FAIL: check_failures=409_recovery,read_encrypted_vault_data,message_code_with_message" fail_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
           set "STATUS_409_RECOVERY=not_observed"
           if %HAS_409_RECOVERY_FAILURE% EQU 1 set "STATUS_409_RECOVERY=observed"
           set "STATUS_READ_ENCRYPTED_VAULT_DATA=not_observed"
           if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 set "STATUS_READ_ENCRYPTED_VAULT_DATA=observed"
           set "STATUS_MESSAGE_CODE_WITH_MESSAGE=not_observed"
           if %HAS_MESSAGE_CODE_FAILURE% EQU 1 set "STATUS_MESSAGE_CODE_WITH_MESSAGE=observed"
-          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 (
+          set "STATUS_CHECK_FAILURES_SUMMARY=not_observed"
+          if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 set "STATUS_CHECK_FAILURES_SUMMARY=observed"
+          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 (
             echo Expected failure confirmed.
             echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -171,10 +176,11 @@ jobs:
             echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_reason_check_failures_summary ^| %STATUS_CHECK_FAILURES_SUMMARY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
-          echo Expected failure with 409_recovery, read_encrypted_vault_data, and message_code_with_message, but condition was not met.
+          echo Expected failure with 409_recovery, read_encrypted_vault_data, message_code_with_message, and check_failures summary, but condition was not met.
           type fail_sample_output.txt
           echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -185,6 +191,7 @@ jobs:
           echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_reason_check_failures_summary ^| %STATUS_CHECK_FAILURES_SUMMARY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 

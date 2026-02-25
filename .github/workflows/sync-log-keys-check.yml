@@ -47,21 +47,25 @@ jobs:
           echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
+      - name: Validate checker script exists
+        id: checker_script
+        shell: cmd
+        run: |
+          if exist docs\check_sync_log_keys.cmd exit /b 0
+          echo Missing required checker script: docs\check_sync_log_keys.cmd
+          echo ### Checker script>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Validate PASS sample file exists
         id: pass_sample_file
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
         shell: cmd
         run: |
-          if not exist docs\check_sync_log_keys.cmd (
-            echo Missing required checker script: docs\check_sync_log_keys.cmd
-            echo ### Checker script>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo.>>"%GITHUB_STEP_SUMMARY%"
-            exit /b 1
-          )
           if exist docs\samples\abnormal_sync_logs_pass.txt exit /b 0
           echo Missing required sample file: docs\samples\abnormal_sync_logs_pass.txt
           echo ### PASS sample file>>"%GITHUB_STEP_SUMMARY%"
@@ -77,16 +81,6 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
-          if not exist docs\check_sync_log_keys.cmd (
-            echo Missing required checker script: docs\check_sync_log_keys.cmd
-            echo ### Checker script>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo.>>"%GITHUB_STEP_SUMMARY%"
-            exit /b 1
-          )
           if exist docs\samples\abnormal_sync_logs_fail.txt exit /b 0
           echo Missing required sample file: docs\samples\abnormal_sync_logs_fail.txt
           echo ### FAIL sample file>>"%GITHUB_STEP_SUMMARY%"
@@ -338,6 +332,7 @@ jobs:
           echo ### Overall result>>"%GITHUB_STEP_SUMMARY%"
           echo ^| check ^| outcome ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_script ^| ${{ steps.checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample_file ^| ${{ steps.pass_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"

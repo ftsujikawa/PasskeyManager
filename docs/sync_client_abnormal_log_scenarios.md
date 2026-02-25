@@ -196,7 +196,21 @@ exit 0
 
 GitHub CLI から実行する場合:
 
+初回のみ（未ログイン時）:
+
+```powershell
+gh auth login
+gh repo set-default <ORG_OR_USER>/<REPO>
+```
+
 ```powershell
 gh workflow run sync-log-keys-check.yml -f scenario=both
 gh run watch
+```
+
+実行結果の確認例:
+
+```powershell
+gh run list --workflow sync-log-keys-check.yml --limit 5
+gh run view --log
 ```

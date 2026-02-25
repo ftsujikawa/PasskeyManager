@@ -57,9 +57,23 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 
+初回のみ（未ログイン時）:
+
+```powershell
+gh auth login
+gh repo set-default <ORG_OR_USER>/<REPO>
+```
+
 ```powershell
 gh workflow run sync-log-keys-check.yml -f scenario=both
 gh run watch
 ```
 
 `scenario` は `both` / `pass` / `fail` を指定できます。
+
+実行結果の確認例:
+
+```powershell
+gh run list --workflow sync-log-keys-check.yml --limit 5
+gh run view --log
+```

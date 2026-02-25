@@ -41,7 +41,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
         shell: cmd
         run: |
-          docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
           if %ERRORLEVEL% EQU 0 (
             echo Expected failure, but checker returned success.
             exit /b 1

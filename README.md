@@ -44,7 +44,7 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 
 - `./docs/sync_client_abnormal_log_scenarios.md`
 
-ログ貼り付けテキスト（例: `captured_logs.txt`）からキーの有無を自動確認する場合:
+ログ貼り付けテキスト（例: `captured_logs.txt`）から必須キーと機微情報マーカーを自動確認する場合:
 
 ```cmd
 docs\check_sync_log_keys.cmd captured_logs.txt
@@ -52,8 +52,8 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 
 期待値:
 
-- 全キー観測時: `PASS` 表示、終了コード `0`
-- キー不足時: `FAIL` 表示、終了コード `1`
+- 必須キーを観測し、機微情報マーカーが無い場合: `PASS` 表示、終了コード `0`
+- キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 

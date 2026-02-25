@@ -79,12 +79,12 @@ jobs:
           set "CHECKER_RC=%ERRORLEVEL%"
           set "HAS_409_RECOVERY_FAILURE=0"
           set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=0"
-          findstr /c:"message_code_with_message" fail_sample_output.txt >nul
+          findstr /c:"FAIL: message_code_with_message" fail_sample_output.txt >nul
           set "HAS_MESSAGE_CODE_FAILURE=0"
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_FAILURE=1"
-          findstr /c:"409_recovery" fail_sample_output.txt >nul
+          findstr /c:"FAIL: 409_recovery" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_409_RECOVERY_FAILURE=1"
-          findstr /c:"read_encrypted_vault_data" fail_sample_output.txt >nul
+          findstr /c:"FAIL: read_encrypted_vault_data" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE=1"
           set "STATUS_409_RECOVERY=not_observed"
           if %HAS_409_RECOVERY_FAILURE% EQU 1 set "STATUS_409_RECOVERY=observed"

@@ -42,8 +42,9 @@ jobs:
         shell: cmd
         run: |
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail.txt
-          if %ERRORLEVEL% EQU 0 (
-            echo Expected failure, but checker returned success.
-            exit /b 1
+          if %ERRORLEVEL% NEQ 0 (
+            echo Expected failure confirmed.
+            exit /b 0
           )
-          echo Expected failure confirmed.
+          echo Expected failure, but checker returned success.
+          exit /b 1

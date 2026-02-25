@@ -75,7 +75,9 @@ jobs:
           if %ERRORLEVEL% EQU 0 set "HAS_OPERATION_PASS=1"
           findstr /c:"PASS: message_code_with_message" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_MESSAGE_CODE_PASS=1"
-          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_409_PASS% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 (
+          set "PASS_PREFIX_COUNT=0"
+          for /f %%A in ('findstr /b /c:"PASS:" pass_sample_output.txt ^| find /c ":"') do set "PASS_PREFIX_COUNT=%%A"
+          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_409_PASS% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 if %PASS_PREFIX_COUNT% EQU 6 (
             echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
@@ -83,6 +85,8 @@ jobs:
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_prefix_count ^| %PASS_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_pass_prefix_count ^| 6 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_409_recovery ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_read_encrypted_vault_data ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_vault_unlock_ui_required ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -100,6 +104,8 @@ jobs:
           echo ^| status ^| unexpected_pass_condition ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| pass_prefix_count ^| %PASS_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_pass_prefix_count ^| 6 ^|>>"%GITHUB_STEP_SUMMARY%"
           if %HAS_FAIL_PREFIX% EQU 1 (
             echo ^| fail_prefix_detected ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
           ) else (
@@ -165,7 +171,9 @@ jobs:
           if %HAS_MESSAGE_CODE_FAILURE% EQU 1 set "STATUS_MESSAGE_CODE_WITH_MESSAGE=observed"
           set "STATUS_CHECK_FAILURES_SUMMARY=not_observed"
           if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 set "STATUS_CHECK_FAILURES_SUMMARY=observed"
-          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 (
+          set "FAIL_PREFIX_COUNT=0"
+          for /f %%A in ('findstr /b /c:"FAIL:" fail_sample_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
+          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %FAIL_PREFIX_COUNT% EQU 4 (
             echo Expected failure confirmed.
             echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -173,6 +181,8 @@ jobs:
             echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_prefix_count ^| %FAIL_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -188,6 +198,8 @@ jobs:
           echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_prefix_count ^| %FAIL_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"

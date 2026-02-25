@@ -62,7 +62,7 @@ namespace winrt::PasskeyManager::implementation
             return m_pluginState;
         }
 
-        HRESULT CreateVaultPasskey(HWND hwnd);
+        HRESULT CreateVaultPasskey(HWND hwnd, std::wstring const& requestId = L"");
         HRESULT SetHMACSecret(std::vector<BYTE> hmacSecret);
         std::vector<BYTE> GetHMACSecret() const
         {

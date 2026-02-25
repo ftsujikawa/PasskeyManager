@@ -624,7 +624,7 @@ namespace winrt::PasskeyManager::implementation
         if (SUCCEEDED(hrSetMethod))
         {
             co_await winrt::resume_background();
-            hrCreatePasskey = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd);
+            hrCreatePasskey = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd, requestId);
             co_await wil::resume_foreground(DispatcherQueue());
         }
         if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
@@ -780,7 +780,7 @@ namespace winrt::PasskeyManager::implementation
             SetForegroundWindow(hwnd);
             SetActiveWindow(hwnd);
 
-            hr = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd);
+            hr = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd, vaultRecoveryRequestId);
             if (hr == NTE_USER_CANCELLED || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
             {
                 if (self)

@@ -616,9 +616,14 @@ namespace winrt::PasskeyManager::implementation {
         return S_OK;
     }
 
-    HRESULT PluginRegistrationManager::CreateVaultPasskey(HWND hWnd)
+    HRESULT PluginRegistrationManager::CreateVaultPasskey(HWND hWnd, std::wstring const& requestId)
     {
         HRESULT hr = S_OK;
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = GetNowIsoLikeTimestamp() + L"-vault_recovery";
+        }
 
         // populate the input structures
         WEBAUTHN_RP_ENTITY_INFORMATION rpEntity = {};
@@ -688,7 +693,7 @@ namespace winrt::PasskeyManager::implementation {
         webAuthNCredentialOptions.bEnablePrf = false;
         webAuthNCredentialOptions.pPRFGlobalEval = nullptr;
 
-        UpdatePasskeyOperationStatusText(L"INFO: summary state=running operation=vault_recovery step=open_passkey_promptℹ");
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=running operation=vault_recovery step=open_passkey_prompt request_id=" + localRequestId + L"ℹ" });
 
         unique_webauthn_credential_attestation pCredentialAttestation = nullptr;
         hr = WebAuthNAuthenticatorMakeCredential(
@@ -700,7 +705,7 @@ namespace winrt::PasskeyManager::implementation {
             &webAuthNCredentialOptions,
             &pCredentialAttestation);
 
-        std::wstring makeCredentialResult = L"INFO: summary state=observed operation=vault_recovery step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
+        std::wstring makeCredentialResult = L"INFO: summary state=observed operation=vault_recovery step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + localRequestId + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ makeCredentialResult });
 
         auto pluginLastStatus = wil::reg::try_get_value_dword(
@@ -712,12 +717,14 @@ namespace winrt::PasskeyManager::implementation {
             std::wstring pluginStatusResult =
                 L"INFO: summary state=observed operation=vault_recovery step=plugin_last_make_credential_status hr=" +
                 std::to_wstring(static_cast<int>(static_cast<HRESULT>(pluginLastStatus.value()))) +
+                L" request_id=" +
+                localRequestId +
                 L"ℹ";
             UpdatePasskeyOperationStatusText(winrt::hstring{ pluginStatusResult });
         }
         else
         {
-            UpdatePasskeyOperationStatusText(L"INFO: summary state=observed operation=vault_recovery step=plugin_last_make_credential_status status=not_writtenℹ");
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=observed operation=vault_recovery step=plugin_last_make_credential_status status=not_written request_id=" + localRequestId + L"ℹ" });
         }
 
         if (SUCCEEDED(hr))
@@ -730,7 +737,7 @@ namespace winrt::PasskeyManager::implementation {
                     pCredentialAttestation.get()->pHmacSecret->pbFirst,
                     pCredentialAttestation.get()->pHmacSecret->pbFirst + pCredentialAttestation.get()->pHmacSecret->cbFirst);
                 RETURN_IF_FAILED(SetHMACSecret(hmacSecretInput));
-                UpdatePasskeyOperationStatusText(L"SUCCESS: summary result=success operation=vault_recovery step=prf_hmac_secret_stored✅");
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=vault_recovery step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
                 entropy.cbData = pCredentialAttestation.get()->pHmacSecret->cbFirst;
                 entropy.pbData = pCredentialAttestation.get()->pHmacSecret->pbFirst;
                 pEntropy = &entropy;
@@ -739,7 +746,7 @@ namespace winrt::PasskeyManager::implementation {
             {
                 // PRF未対応時は、認証成功そのものをVault解除のゲートとして扱うフォールバックに切替える。
                 RETURN_IF_FAILED(SetHMACSecret({}));
-                UpdatePasskeyOperationStatusText(L"INFO: summary state=observed operation=vault_recovery step=prf_hmac_secret_missing fallback=non_prfℹ");
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=observed operation=vault_recovery step=prf_hmac_secret_missing fallback=non_prf request_id=" + localRequestId + L"ℹ" });
             }
 
             DATA_BLOB vaultData = {
@@ -777,7 +784,7 @@ namespace winrt::PasskeyManager::implementation {
             auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
             if (FAILED(hrSnapshot))
             {
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=vault_recovery_snapshot_history_append hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=vault_recovery_snapshot_history_append hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L" request_id=" + localRequestId + L"ℹ" });
             }
 
             // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.
@@ -790,7 +797,7 @@ namespace winrt::PasskeyManager::implementation {
                 });
         }
 
-        std::wstring finalResult = L"INFO: summary state=done operation=vault_recovery step=create_vault_passkey_final hr=" + std::to_wstring(static_cast<int>(hr)) + L"ℹ";
+        std::wstring finalResult = L"INFO: summary state=done operation=vault_recovery step=create_vault_passkey_final hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + localRequestId + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ finalResult });
 
         return hr;

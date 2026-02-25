@@ -134,7 +134,7 @@ namespace winrt::PasskeyManager::implementation
             UpdatePasskeyOperationStatusText(winrt::hstring{ result });
         }
         void LogInProgress(const winrt::hstring& input) {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ input + L"⏳"});
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: " + input + L"⏳"});
         }
         void LogInfo(const winrt::hstring& input) {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: " + input + L"ℹ"});

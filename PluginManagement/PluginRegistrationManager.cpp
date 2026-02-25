@@ -200,37 +200,37 @@ namespace
         switch (status.StatusCode)
         {
         case 401:
-            detail = L"Self-hosted sync failed: unauthorized (401). Check Authorization header format and token setting.";
+            detail = L"sync_failure=unauthorized recovery=check_authorization_header_and_token";
             break;
         case 403:
-            detail = L"Self-hosted sync failed: forbidden (403). Verify TSUPASSWD_SYNC_BEARER_TOKEN matches server token.";
+            detail = L"sync_failure=forbidden recovery=verify_sync_bearer_token";
             break;
         case 409:
-            detail = L"Self-hosted sync failed: version conflict (409). Try sync again after refreshing latest state.";
+            detail = L"sync_failure=version_conflict recovery=refresh_latest_state_and_retry";
             if (status.ServerVersion >= 0)
             {
                 detail += L" server_version=" + std::to_wstring(status.ServerVersion);
             }
             break;
         case 429:
-            detail = L"Self-hosted sync failed: rate limited (429). Wait about 1 minute, then retry.";
+            detail = L"sync_failure=rate_limited recovery=wait_and_retry";
             break;
         default:
-            detail = L"Self-hosted sync failed (local save is kept).";
+            detail = L"sync_failure=unexpected_or_server_error local_save=kept";
             if (status.StatusCode > 0)
             {
-                detail += L" status=" + std::to_wstring(status.StatusCode) + L".";
+                detail += L" status=" + std::to_wstring(status.StatusCode);
             }
             break;
         }
 
         if (!status.ErrorCode.empty())
         {
-            detail += L" code=" + status.ErrorCode + L".";
+            detail += L" code=" + status.ErrorCode;
         }
         if (!status.ErrorMessage.empty())
         {
-            detail += L" message=" + status.ErrorMessage + L".";
+            detail += L" message=" + status.ErrorMessage;
         }
 
         return detail;

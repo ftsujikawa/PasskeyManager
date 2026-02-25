@@ -1489,7 +1489,7 @@ namespace winrt::PasskeyManager::implementation
         auto runStartTime = std::chrono::steady_clock::now();
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(winrt::hstring{
-            L"summary state=running request=" +
+            L"summary state=running operation=delete_selected_credentials_everywhere request=" +
             std::to_wstring(requestId) +
             L" run=" +
             std::to_wstring(runId) });
@@ -1506,7 +1506,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        hstring statusText = winrt::hstring{ L"summary state=selected request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" selected=" + std::to_wstring(credentialIdList.size()) };
+        hstring statusText = winrt::hstring{ L"INFO: summary state=selected operation=delete_selected_credentials_everywhere request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" selected=" + std::to_wstring(credentialIdList.size()) + L"ℹ" };
         UpdatePasskeyOperationStatusText(statusText);
 
         co_await winrt::resume_background();

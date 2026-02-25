@@ -14,12 +14,14 @@ on:
           - fail
   push:
     paths:
+      - 'README.md'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'
       - '.github/workflows/sync-log-keys-check.yml'
   pull_request:
     paths:
+      - 'README.md'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'

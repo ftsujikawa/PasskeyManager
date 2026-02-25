@@ -169,6 +169,16 @@ exit 0
 - `captured_logs.txt` はアプリのログ表示をコピーして保存したテキストを想定。
 - 未観測ケースがある運用では、`FAIL` が出るのは正常（要追加再現）である。
 
+機微情報マスキング漏れの簡易チェック（任意）:
+
+```cmd
+findstr /i /r "token= authorization= bearer= access_token= refresh_token= client_secret=" captured_logs.txt
+```
+
+期待値:
+
+- 何もヒットしない（出力なし）
+
 ---
 
 ## 7. CI での自動検証

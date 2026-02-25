@@ -10,7 +10,10 @@
 #include "Converter/BitwiseFlagToVisibilityConverter.h"
 #include <wil\filesystem.h>
 #include <atomic>
+#include <algorithm>
 #include <ctime>
+#include <cwctype>
+#include <cwchar>
 #include <vector>
 
 namespace winrt {
@@ -63,16 +66,68 @@ namespace winrt::PasskeyManager::implementation
 
         winrt::IAsyncAction OnNavigatedTo(Microsoft::UI::Xaml::Navigation::NavigationEventArgs);
 
+        static std::wstring MaskSensitiveLogText(std::wstring text)
+        {
+            auto applyMaskForKeyValue = [&](std::wstring const& marker)
+            {
+                std::wstring lowered = text;
+                std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+
+                std::wstring loweredMarker = marker;
+                std::transform(loweredMarker.begin(), loweredMarker.end(), loweredMarker.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+
+                size_t pos = 0;
+                while ((pos = lowered.find(loweredMarker, pos)) != std::wstring::npos)
+                {
+                    size_t valueStart = pos + marker.size();
+                    size_t valueEnd = valueStart;
+                    while (valueEnd < text.size() &&
+                        !std::iswspace(text[valueEnd]) &&
+                        text[valueEnd] != L',' &&
+                        text[valueEnd] != L';' &&
+                        text[valueEnd] != L'&')
+                    {
+                        ++valueEnd;
+                    }
+
+                    if (valueEnd > valueStart)
+                    {
+                        constexpr wchar_t kRedacted[] = L"[REDACTED]";
+                        text.replace(valueStart, valueEnd - valueStart, kRedacted);
+                        lowered.replace(valueStart, valueEnd - valueStart, L"[redacted]");
+                        pos = valueStart + wcslen(kRedacted);
+                    }
+                    else
+                    {
+                        pos = valueStart;
+                    }
+                }
+            };
+
+            applyMaskForKeyValue(L"token=");
+            applyMaskForKeyValue(L"bearer=");
+            applyMaskForKeyValue(L"authorization=");
+            applyMaskForKeyValue(L"authorization:");
+            applyMaskForKeyValue(L"access_token=");
+            applyMaskForKeyValue(L"refresh_token=");
+            applyMaskForKeyValue(L"client_secret=");
+
+            return text;
+        }
+
         void UpdatePasskeyOperationStatusText(hstring const& statusText)
         {
-            m_logEntries.push_back(statusText);
+            std::wstring maskedText = MaskSensitiveLogText(statusText.c_str());
+            winrt::hstring maskedStatusText{ maskedText };
+
+            m_logEntries.push_back(maskedStatusText);
             if (!m_isRestoringLogHistory)
             {
-                PersistSyncHistoryEntry(statusText);
+                PersistSyncHistoryEntry(maskedStatusText);
             }
             RebuildLogView();
 
-            std::wstring status = statusText.c_str();
+            std::wstring status = maskedText;
             auto nowLabel = []() -> std::wstring
             {
                 std::time_t raw = std::time(nullptr);

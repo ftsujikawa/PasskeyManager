@@ -787,7 +787,7 @@ namespace tsupasswd
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo = msg;
 
-            std::wstring raw = std::wstring(L"Google OAuth token response: ") + winrt::to_hstring(resp).c_str();
+            std::wstring raw = L"Google OAuth token response received body_length=" + std::to_wstring(resp.size());
             OutputDebugStringW(raw.c_str());
             OutputDebugStringW(L"\n");
             g_lastGoogleOAuthDebugInfo += L" | " + raw;
@@ -819,7 +819,7 @@ namespace tsupasswd
             }
 
             // Initial provisioning still requires refresh_token.
-            std::wstring raw = std::wstring(L"Google OAuth token response (no refresh_token): ") + winrt::to_hstring(resp).c_str();
+            std::wstring raw = L"Google OAuth token response missing refresh_token body_length=" + std::to_wstring(resp.size());
             OutputDebugStringW(raw.c_str());
             OutputDebugStringW(L"\n");
             if (!g_lastGoogleOAuthDebugInfo.empty())

@@ -262,10 +262,19 @@ jobs:
         id: sensitive_markers
         shell: pwsh
         run: |
-          $files = @(
-            'docs/samples/abnormal_sync_logs_pass.txt',
-            'docs/samples/abnormal_sync_logs_fail.txt'
-          )
+          $scenario = '${{ github.event.inputs.scenario || ''both'' }}'
+          if ('${{ github.event_name }}' -ne 'workflow_dispatch' -or $scenario -eq 'both') {
+            $files = @(
+              'docs/samples/abnormal_sync_logs_pass.txt',
+              'docs/samples/abnormal_sync_logs_fail.txt'
+            )
+          }
+          elseif ($scenario -eq 'pass') {
+            $files = @('docs/samples/abnormal_sync_logs_pass.txt')
+          }
+          else {
+            $files = @('docs/samples/abnormal_sync_logs_fail.txt')
+          }
           $pattern = '(?i)(token=|bearer=|authorization=|authorization:|access_token=|refresh_token=|client_secret=)'
           $hitFiles = @()
 

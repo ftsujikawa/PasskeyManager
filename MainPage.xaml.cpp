@@ -514,11 +514,12 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::restoreSyncSnapshotButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         auto weakThis = get_weak();
+        std::wstring requestId = BuildRequestId(L"restore_snapshot");
         restoreSyncSnapshotButton().IsEnabled(false);
-        LogInProgress(L"summary state=running operation=restore_snapshot");
+        LogInProgress(winrt::hstring{ L"summary state=running operation=restore_snapshot request_id=" + requestId });
 
         co_await winrt::resume_background();
-        HRESULT hr = PluginRegistrationManager::getInstance().RestoreSelfHostedVaultSnapshot();
+        HRESULT hr = PluginRegistrationManager::getInstance().RestoreSelfHostedVaultSnapshot(requestId);
 
         co_await wil::resume_foreground(DispatcherQueue());
         if (auto self = weakThis.get())

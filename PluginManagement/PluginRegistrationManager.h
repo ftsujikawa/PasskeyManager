@@ -72,7 +72,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT WriteEncryptedVaultData(std::vector<BYTE> cipherText);
         HRESULT ReadEncryptedVaultData(std::vector<BYTE>& cipherText);
         HRESULT ManualResyncSelfHostedVault(std::wstring const& requestId = L"");
-        HRESULT RestoreSelfHostedVaultSnapshot();
+        HRESULT RestoreSelfHostedVaultSnapshot(std::wstring const& requestId = L"");
 
         void ReloadRegistryValues()
         {

@@ -914,9 +914,13 @@ namespace winrt::PasskeyManager::implementation {
         return hrSync;
     }
 
-    HRESULT PluginRegistrationManager::RestoreSelfHostedVaultSnapshot()
+    HRESULT PluginRegistrationManager::RestoreSelfHostedVaultSnapshot(std::wstring const& requestId)
     {
-        std::wstring localRequestId = GetNowIsoLikeTimestamp() + L"-restore_snapshot";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = GetNowIsoLikeTimestamp() + L"-restore_snapshot";
+        }
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {

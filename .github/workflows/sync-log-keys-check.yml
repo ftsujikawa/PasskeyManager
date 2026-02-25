@@ -92,13 +92,14 @@ jobs:
           if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 set "STATUS_READ_ENCRYPTED_VAULT_DATA=observed"
           set "STATUS_MESSAGE_CODE_WITH_MESSAGE=not_observed"
           if %HAS_MESSAGE_CODE_FAILURE% EQU 1 set "STATUS_MESSAGE_CODE_WITH_MESSAGE=observed"
-          if %CHECKER_RC% NEQ 0 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 (
+          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 (
             echo Expected failure confirmed.
             echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -112,6 +113,7 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"

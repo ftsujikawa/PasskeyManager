@@ -63,6 +63,7 @@ namespace tsupasswd
         int64_t ServerVersion{ -1 };
         std::wstring ErrorCode{};
         std::wstring ErrorMessage{};
+        std::wstring RequestId{};
     };
 
     // 自前同期 API クライアントの最小雛形。

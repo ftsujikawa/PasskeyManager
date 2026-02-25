@@ -297,6 +297,42 @@ namespace {
         return baseUrl;
     }
 
+    std::wstring ClassifySyncFailureKind(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
+    {
+        switch (status.StatusCode)
+        {
+        case 401:
+        case 403:
+            return L"authorization";
+        case 404:
+            return L"not_found";
+        case 409:
+            return L"version_conflict";
+        case 429:
+            return L"rate_limited";
+        default:
+            break;
+        }
+
+        if (status.StatusCode >= 500)
+        {
+            return L"server_error";
+        }
+        if (status.StatusCode > 0)
+        {
+            return L"http_error";
+        }
+        if (status.ErrorCode == L"CLIENT_ERROR")
+        {
+            return L"client_error";
+        }
+        if (FAILED(hr))
+        {
+            return L"transport_or_unknown";
+        }
+        return L"none";
+    }
+
     std::wstring ExtractLogTokenValue(std::wstring const& line, std::wstring const& token)
     {
         auto start = line.find(token);
@@ -1076,6 +1112,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring detail =
             L"sync result=failed operation=test_connection attempts=1 hr=" +
             std::to_wstring(static_cast<int>(hr));
+        detail += L" failure_kind=" + ClassifySyncFailureKind(hr, status);
         if (status.StatusCode > 0)
         {
             detail += L" status=" + std::to_wstring(status.StatusCode);
@@ -1083,6 +1120,10 @@ namespace winrt::PasskeyManager::implementation
         if (!status.ErrorCode.empty())
         {
             detail += L" code=" + status.ErrorCode;
+        }
+        if (!status.RequestId.empty())
+        {
+            detail += L" request_id=" + status.RequestId;
         }
         if (!status.ErrorMessage.empty())
         {

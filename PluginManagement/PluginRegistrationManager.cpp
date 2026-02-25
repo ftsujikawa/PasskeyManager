@@ -194,29 +194,65 @@ namespace
         return !outBytes.empty();
     }
 
-    std::wstring BuildSyncFailureStatusMessage(HRESULT, tsupasswd::SyncHttpStatus const& status)
+    std::wstring ClassifySyncFailureKind(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
     {
-        std::wstring detail;
         switch (status.StatusCode)
         {
         case 401:
-            detail = L"sync_failure=unauthorized recovery=check_authorization_header_and_token";
+        case 403:
+            return L"authorization";
+        case 404:
+            return L"not_found";
+        case 409:
+            return L"version_conflict";
+        case 429:
+            return L"rate_limited";
+        default:
+            break;
+        }
+
+        if (status.StatusCode >= 500)
+        {
+            return L"server_error";
+        }
+        if (status.StatusCode > 0)
+        {
+            return L"http_error";
+        }
+        if (status.ErrorCode == L"CLIENT_ERROR")
+        {
+            return L"client_error";
+        }
+        if (FAILED(hr))
+        {
+            return L"transport_or_unknown";
+        }
+        return L"none";
+    }
+
+    std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
+    {
+        std::wstring detail = L"failure_kind=" + ClassifySyncFailureKind(hr, status) + L" ";
+        switch (status.StatusCode)
+        {
+        case 401:
+            detail += L"sync_failure=unauthorized recovery=check_authorization_header_and_token";
             break;
         case 403:
-            detail = L"sync_failure=forbidden recovery=verify_sync_bearer_token";
+            detail += L"sync_failure=forbidden recovery=verify_sync_bearer_token";
             break;
         case 409:
-            detail = L"sync_failure=version_conflict recovery=refresh_latest_state_and_retry";
+            detail += L"sync_failure=version_conflict recovery=refresh_latest_state_and_retry";
             if (status.ServerVersion >= 0)
             {
                 detail += L" server_version=" + std::to_wstring(status.ServerVersion);
             }
             break;
         case 429:
-            detail = L"sync_failure=rate_limited recovery=wait_and_retry";
+            detail += L"sync_failure=rate_limited recovery=wait_and_retry";
             break;
         default:
-            detail = L"sync_failure=unexpected_or_server_error local_save=kept";
+            detail += L"sync_failure=unexpected_or_server_error local_save=kept";
             if (status.StatusCode > 0)
             {
                 detail += L" status=" + std::to_wstring(status.StatusCode);
@@ -227,6 +263,10 @@ namespace
         if (!status.ErrorCode.empty())
         {
             detail += L" code=" + status.ErrorCode;
+        }
+        if (!status.RequestId.empty())
+        {
+            detail += L" request_id=" + status.RequestId;
         }
         if (!status.ErrorMessage.empty())
         {
@@ -874,7 +914,13 @@ namespace winrt::PasskeyManager::implementation {
         {
             if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || status.StatusCode == 404)
             {
-                UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=restore_snapshot hr=-2147023728 status=404 reason=snapshot_not_found⚠");
+                std::wstring warning = L"WARNING: sync result=failed operation=restore_snapshot hr=-2147023728 status=404 reason=snapshot_not_found failure_kind=not_found";
+                if (!status.RequestId.empty())
+                {
+                    warning += L" request_id=" + status.RequestId;
+                }
+                warning += L"⚠";
+                UpdatePasskeyOperationStatusText(winrt::hstring{ warning });
                 return hr;
             }
 

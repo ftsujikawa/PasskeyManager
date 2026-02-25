@@ -196,6 +196,63 @@ namespace tsupasswd
             return static_cast<int32_t>(statusCode);
         }
 
+        std::wstring QueryHeaderString(HINTERNET hRequest, wchar_t const* headerName)
+        {
+            DWORD size = 0;
+            if (!WinHttpQueryHeaders(
+                hRequest,
+                WINHTTP_QUERY_CUSTOM,
+                headerName,
+                WINHTTP_NO_OUTPUT_BUFFER,
+                &size,
+                WINHTTP_NO_HEADER_INDEX))
+            {
+                if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+                {
+                    return L"";
+                }
+            }
+
+            if (size == 0)
+            {
+                return L"";
+            }
+
+            std::wstring value;
+            value.resize(size / sizeof(wchar_t));
+            if (!WinHttpQueryHeaders(
+                hRequest,
+                WINHTTP_QUERY_CUSTOM,
+                headerName,
+                value.data(),
+                &size,
+                WINHTTP_NO_HEADER_INDEX))
+            {
+                return L"";
+            }
+
+            while (!value.empty() && value.back() == L'\0')
+            {
+                value.pop_back();
+            }
+            return value;
+        }
+
+        std::wstring QueryRequestId(HINTERNET hRequest)
+        {
+            std::wstring requestId = QueryHeaderString(hRequest, L"x-request-id");
+            if (!requestId.empty())
+            {
+                return requestId;
+            }
+            requestId = QueryHeaderString(hRequest, L"request-id");
+            if (!requestId.empty())
+            {
+                return requestId;
+            }
+            return QueryHeaderString(hRequest, L"x-ms-request-id");
+        }
+
         std::wstring TryGetJsonString(winrt::Windows::Data::Json::JsonObject const& obj, wchar_t const* name)
         {
             if (!obj.HasKey(name))
@@ -241,6 +298,10 @@ namespace tsupasswd
                 outStatus->ErrorCode = TryGetJsonString(root, L"code");
                 outStatus->ErrorMessage = TryGetJsonString(root, L"message");
                 outStatus->ServerVersion = TryGetJsonInt64(root, L"server_version", -1);
+                if (outStatus->RequestId.empty())
+                {
+                    outStatus->RequestId = TryGetJsonString(root, L"request_id");
+                }
             }
             catch (...)
             {
@@ -412,6 +473,7 @@ namespace tsupasswd
             if (outStatus)
             {
                 outStatus->StatusCode = statusCode;
+                outStatus->RequestId = QueryRequestId(requestHandle.get());
             }
 
             HRESULT hrStatus = MapHttpStatusToHr(statusCode);
@@ -492,6 +554,7 @@ namespace tsupasswd
             if (outStatus)
             {
                 outStatus->StatusCode = statusCode;
+                outStatus->RequestId = QueryRequestId(requestHandle.get());
             }
 
             HRESULT hrStatus = MapHttpStatusToHr(statusCode);

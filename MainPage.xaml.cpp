@@ -1695,6 +1695,10 @@ namespace winrt::PasskeyManager::implementation
         }
         if (!message.empty())
         {
+            if (messageCode.empty())
+            {
+                detail += L" message_code=remote_error_message_present";
+            }
             detail += L" message=" + message;
         }
         if (!serverVersion.empty())

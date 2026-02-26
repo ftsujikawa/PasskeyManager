@@ -56,6 +56,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "else { Write-Host ('FAIL: request_id_format_with_sync_start count=' + $startRequestIdInvalid.Count); $failed += 'request_id_format_with_sync_start' }" ^
   "$failureKindMissing = @();" ^
   "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)failure_kind=') { $failureKindMissing += $line } }" ^
+  "$nameNotResolvedHostMissing = @();" ^
+  "foreach ($line in $syncFailureLines) { if ($line -match '(^|\s)sync_failure=name_not_resolved(\s|$)' -and $line -notmatch '(^|\s)host=') { $nameNotResolvedHostMissing += $line } }" ^
+  "if ($nameNotResolvedHostMissing.Count -gt 0) { $failureKindMissing += $nameNotResolvedHostMissing }" ^
   "if ($failureKindMissing.Count -eq 0) { Write-Host 'PASS: failure_kind_with_sync_failure' }" ^
   "else { Write-Host ('FAIL: failure_kind_with_sync_failure count=' + $failureKindMissing.Count); $failed += 'failure_kind_with_sync_failure' }" ^
   "$allowedFailureKinds = @('authorization','not_found','version_conflict','rate_limited','server_error','http_error','client_error','transport_or_unknown','none');" ^

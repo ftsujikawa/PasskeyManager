@@ -6,6 +6,8 @@
 
 - `sync_client_abnormal_log_scenarios.md`  
   異常系シナリオ、サンプル、GitHub Actions 実行手順
+- `check_sync_runtime_log_keys.cmd`  
+  実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）
 - `PR_TEMPLATE_SNIPPETS.md`  
   PR 説明文のひな形（超短文版 / 短縮版 / フル版）
 

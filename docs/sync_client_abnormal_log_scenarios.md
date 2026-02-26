@@ -218,6 +218,22 @@ docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
 docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 ```
 
+実運用ログ（抜粋ログ）を簡易検証する場合:
+
+```cmd
+docs\check_sync_runtime_log_keys.cmd <captured_runtime_logs.txt>
+```
+
+`check_sync_runtime_log_keys.cmd` は、次を重視する軽量チェック。
+
+- 機微情報マーカー不在（`token=` / `bearer=` / `authorization=` など）
+- `summary` / `sync` ログの `operation=` 存在
+- `message=` がある行の `message_code=` 併記
+- `sync state=start` / `sync result=failed|warning` 系での `request_id=` 整合
+- `name_not_resolved` 系での `host=` 必須
+
+注: 異常系シナリオ（`409_recovery` / `vault_unlock_ui_required` など）の「必須出現」は要求しない。
+
 現在の checker で強制しているルール（12個）:
 
 1. `409_recovery`

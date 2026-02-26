@@ -281,6 +281,30 @@ sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault
 sudo journalctl -u sync-mvp-api --since "-10 min" --no-pager | grep "audit.vault_op" | grep "request_id="
 ```
 
+### 4) 本番トークンローテーション
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/rotate_sync_mvp_api_token.sh`
+
+実行例:
+
+```bash
+chmod +x sync-mvp-api/scripts/rotate_sync_mvp_api_token.sh
+sudo ./sync-mvp-api/scripts/rotate_sync_mvp_api_token.sh
+```
+
+このスクリプトは以下を実行する:
+
+- `/opt/sync-mvp-api/.env` をバックアップ
+- `TSUPASSWD_SYNC_BEARER_TOKEN` を強ランダム値へ更新
+- `sync-mvp-api` サービスを再起動
+- `healthz` で起動後確認
+
+注意:
+
+- 実行後は PasskeyManager クライアント側の Bearer Token も新値へ更新すること
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

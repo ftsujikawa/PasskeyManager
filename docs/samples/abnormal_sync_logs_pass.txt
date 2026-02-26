@@ -4,3 +4,4 @@ WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_dat
 WARNING: summary result=rejected operation=vault_unlock reason=ui_required hr=-2147019873
 WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1510 hr=-2147012889 failure_kind=client_error code=CLIENT_ERROR request_id=2026-02-25T16:24:16Z-put_vault message_code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response.
 WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 failure_kind=client_error sync_failure=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts code=CLIENT_ERROR request_id=20260225T162416789Z-test_connection message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.
+WARNING: sync result=rejected operation=save_settings reason=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts

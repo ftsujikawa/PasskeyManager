@@ -563,7 +563,7 @@ jobs:
           set "HAS_TARGET_FAILURE=0"
           set "HAS_CHECK_FAILURES_SUMMARY=0"
           set "FAIL_PREFIX_COUNT=0"
-          findstr /b /c:"FAIL: name_not_resolved_host_with_sync_failure" fail_name_resolution_host_output.txt >nul
+          findstr /b /c:"FAIL: name_not_resolved_host_with_sync_failure count=2" fail_name_resolution_host_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_TARGET_FAILURE=1"
           findstr /b /c:"FAIL: check_failures=name_not_resolved_host_with_sync_failure" fail_name_resolution_host_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
@@ -576,11 +576,12 @@ jobs:
             echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_reason_name_not_resolved_host_with_sync_failure_count ^| 2 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| fail_reason_name_not_resolved_host_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
-          echo Expected name_not_resolved_host_with_sync_failure failure, but condition was not met.
+          echo Expected name_not_resolved_host_with_sync_failure count=2 failure, but condition was not met.
           type fail_name_resolution_host_output.txt
           echo ### FAIL name_resolution host sample>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -588,6 +589,7 @@ jobs:
           echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_reason_name_not_resolved_host_with_sync_failure_count ^| expected_2 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_reason_name_not_resolved_host_with_sync_failure ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1

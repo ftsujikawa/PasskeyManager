@@ -20,9 +20,10 @@ if /i "%SCENARIO%"=="pass" goto :run_pass
 if /i "%SCENARIO%"=="fail" goto :run_fail
 if /i "%SCENARIO%"=="fail_request_id_format" goto :run_fail_request_id_format
 if /i "%SCENARIO%"=="fail_failure_kind_value" goto :run_fail_failure_kind_value
+if /i "%SCENARIO%"=="fail_name_resolution_host" goto :run_fail_name_resolution_host
 
 echo ERROR: unsupported scenario: %SCENARIO%
-echo Usage: %~nx0 [both^|batch^|pass^|fail^|fail_request_id_format^|fail_failure_kind_value]
+echo Usage: %~nx0 [both^|batch^|pass^|fail^|fail_request_id_format^|fail_failure_kind_value^|fail_name_resolution_host]
 exit /b 2
 
 :run_both
@@ -30,6 +31,7 @@ call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_pass.txt" 0
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_request_id_format.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_name_resolution_host.txt" 1
 goto :finish
 
 :run_pass
@@ -40,6 +42,7 @@ goto :finish
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_request_id_format.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_name_resolution_host.txt" 1
 goto :finish
 
 :run_fail_request_id_format
@@ -48,6 +51,10 @@ goto :finish
 
 :run_fail_failure_kind_value
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+goto :finish
+
+:run_fail_name_resolution_host
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_name_resolution_host.txt" 1
 goto :finish
 
 :finish

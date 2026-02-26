@@ -15,6 +15,7 @@ on:
           - fail
           - fail_request_id_format
           - fail_failure_kind_value
+          - fail_name_resolution_host
   push:
     paths:
       - 'README.md'
@@ -149,6 +150,21 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| file ^| docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate FAIL name_resolution host sample file exists
+        id: fail_name_resolution_host_sample_file
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_name_resolution_host' }}
+        shell: cmd
+        run: |
+          if exist docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt exit /b 0
+          echo Missing required sample file: docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt
+          echo ### FAIL name_resolution host sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
@@ -521,6 +537,45 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
+      - name: FAIL name_resolution host sample should fail
+        id: fail_name_resolution_host_sample
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_name_resolution_host' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt > fail_name_resolution_host_output.txt 2>&1
+          set "CHECKER_RC=%ERRORLEVEL%"
+          set "HAS_TARGET_FAILURE=0"
+          set "HAS_CHECK_FAILURES_SUMMARY=0"
+          set "FAIL_PREFIX_COUNT=0"
+          findstr /b /c:"FAIL: failure_kind_with_sync_failure" fail_name_resolution_host_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_TARGET_FAILURE=1"
+          findstr /b /c:"FAIL: check_failures=failure_kind_with_sync_failure" fail_name_resolution_host_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
+          for /f %%A in ('findstr /b /c:"FAIL:" fail_name_resolution_host_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
+          if %CHECKER_RC% EQU 1 if %HAS_TARGET_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %FAIL_PREFIX_COUNT% EQU 2 (
+            echo Expected name_resolution host failure confirmed.
+            echo ### FAIL name_resolution host sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_reason_failure_kind_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Expected failure_kind_with_sync_failure failure, but condition was not met.
+          type fail_name_resolution_host_output.txt
+          echo ### FAIL name_resolution host sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_reason_failure_kind_with_sync_failure ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Samples should not contain sensitive key-values
         id: sensitive_markers
         shell: pwsh
@@ -531,7 +586,8 @@ jobs:
               'docs/samples/abnormal_sync_logs_pass.txt',
               'docs/samples/abnormal_sync_logs_fail.txt',
               'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
-              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt',
+              'docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt'
             )
           }
           elseif ($scenario -eq 'batch') {
@@ -539,7 +595,8 @@ jobs:
               'docs/samples/abnormal_sync_logs_pass.txt',
               'docs/samples/abnormal_sync_logs_fail.txt',
               'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
-              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt',
+              'docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt'
             )
           }
           elseif ($scenario -eq 'pass') {
@@ -551,11 +608,15 @@ jobs:
           elseif ($scenario -eq 'fail_failure_kind_value') {
             $files = @('docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt')
           }
+          elseif ($scenario -eq 'fail_name_resolution_host') {
+            $files = @('docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt')
+          }
           else {
             $files = @(
               'docs/samples/abnormal_sync_logs_fail.txt',
               'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
-              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt',
+              'docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt'
             )
           }
           $pattern = '(?i)(token=|bearer=|authorization=|authorization:|access_token=|refresh_token=|client_secret=)'
@@ -596,6 +657,7 @@ jobs:
             fail_sample_output.txt
             fail_request_id_format_output.txt
             fail_failure_kind_value_output.txt
+            fail_name_resolution_host_output.txt
 
       - name: Overall summary
         if: always()
@@ -611,10 +673,12 @@ jobs:
           echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_request_id_format_sample_file ^| ${{ steps.fail_request_id_format_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_failure_kind_value_sample_file ^| ${{ steps.fail_failure_kind_value_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_name_resolution_host_sample_file ^| ${{ steps.fail_name_resolution_host_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample ^| ${{ steps.fail_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_request_id_format_sample ^| ${{ steps.fail_request_id_format_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_failure_kind_value_sample ^| ${{ steps.fail_failure_kind_value_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_name_resolution_host_sample ^| ${{ steps.fail_name_resolution_host_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| enforced_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

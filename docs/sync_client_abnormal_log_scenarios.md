@@ -214,6 +214,7 @@ docs\check_sync_log_keys_samples.cmd fail
 docs\check_sync_log_keys_samples.cmd batch
 docs\check_sync_log_keys_samples.cmd fail_request_id_format
 docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
+docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 ```
 
 現在の checker で強制しているルール（11個）:
@@ -244,6 +245,7 @@ docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
 - `fail` : FAIL サンプルのみ実行
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
 - `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
+- `fail_name_resolution_host` : `sync_failure=name_not_resolved` で `host=` 欠落サンプルのみ実行
 
 GitHub CLI から実行する場合:
 
@@ -276,6 +278,9 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_request_id_format
 
 # failure_kind 許容値違反サンプルのみ（expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_failure_kind_value
+
+# name_not_resolved の host 欠落サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_name_resolution_host
 ```
 
 単体実行の確認済み結果:

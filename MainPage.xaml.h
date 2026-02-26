@@ -159,7 +159,14 @@ namespace winrt::PasskeyManager::implementation
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Skipped at " + nowLabel() });
             }
 
-            if (status.find(L"operation=read_encrypted_vault_data") != std::wstring::npos)
+            bool shouldShowRecoveryHint =
+                status.find(L"operation=read_encrypted_vault_data") != std::wstring::npos ||
+                (status.find(L"operation=vault_unlock") != std::wstring::npos &&
+                    (status.find(L"reason=encrypted_vault_data_invalid_or_missing") != std::wstring::npos ||
+                        status.find(L"reason=decrypt_failed") != std::wstring::npos ||
+                        status.find(L"reason=vault_integrity_check_failed") != std::wstring::npos));
+
+            if (shouldShowRecoveryHint)
             {
                 vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);

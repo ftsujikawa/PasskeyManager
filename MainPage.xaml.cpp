@@ -32,6 +32,7 @@ namespace {
     constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
+    constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
 
     std::wstring DescribeCredentialOperationFailure(HRESULT hr)
     {
@@ -269,6 +270,39 @@ namespace {
         return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0;
     }
 
+    bool IsHttpsSyncBaseUrl(std::wstring const& baseUrl)
+    {
+        if (baseUrl.empty())
+        {
+            return false;
+        }
+
+        auto lower = winrt::to_string(winrt::hstring(baseUrl));
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return lower.rfind("https://", 0) == 0;
+    }
+
+    bool IsTruthySetting(std::wstring value)
+    {
+        if (value.empty())
+        {
+            return false;
+        }
+
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c)
+        {
+            return static_cast<wchar_t>(std::towlower(c));
+        });
+        return value == L"1" || value == L"true" || value == L"yes" || value == L"on";
+    }
+
+    bool IsAllowInsecureHttpEnabled()
+    {
+        return IsTruthySetting(ReadSyncSettingValue(kSyncAllowInsecureHttpEnv));
+    }
+
     bool IsValidSyncUserId(std::wstring const& userId)
     {
         if (userId.empty())
@@ -343,6 +377,10 @@ namespace {
             return L"http_error";
         }
         if (status.ErrorCode == L"CLIENT_ERROR")
+        {
+            return L"client_error";
+        }
+        if (status.ErrorCode == L"INSECURE_HTTP_BLOCKED")
         {
             return L"client_error";
         }
@@ -1067,6 +1105,12 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(L"sync result=rejected operation=save_settings reason=invalid_base_url");
             co_return;
         }
+        if (!baseUrl.empty() && !IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
+        {
+            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=https_required⚠");
+            LogWarning(L"sync result=rejected operation=save_settings reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only");
+            co_return;
+        }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {
             syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=invalid_user_id⚠");
@@ -1112,10 +1156,16 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=invalid_base_url request_id=" + testConnectionRequestId });
             co_return;
         }
+        if (!IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
+        {
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=https_required request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + testConnectionRequestId });
+            co_return;
+        }
         if (token.empty())
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=token_empty request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=token_empty request_id=" + testConnectionRequestId });
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=token_missing request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=token_missing request_id=" + testConnectionRequestId });
             co_return;
         }
         if (!IsValidSyncUserId(userId))
@@ -1132,6 +1182,7 @@ namespace winrt::PasskeyManager::implementation
 
         co_await winrt::resume_background();
         tsupasswd::SyncClient syncClient(baseUrl);
+        syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         syncClient.SetBearerToken(token);
         tsupasswd::VaultRecord record{};
         tsupasswd::SyncHttpStatus status{};

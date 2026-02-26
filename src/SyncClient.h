@@ -75,6 +75,7 @@ namespace tsupasswd
 
         void SetBearerToken(std::wstring bearerToken);
         void SetTimeoutMs(int32_t timeoutMs);
+        void SetAllowInsecureHttp(bool allowInsecureHttp);
 
         HRESULT GetVault(
             std::wstring const& userId,
@@ -91,5 +92,6 @@ namespace tsupasswd
         std::wstring m_baseUrl;
         std::wstring m_bearerToken;
         int32_t m_timeoutMs{ 15000 };
+        bool m_allowInsecureHttp{ false };
     };
 }

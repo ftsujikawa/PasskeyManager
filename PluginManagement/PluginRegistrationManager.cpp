@@ -20,6 +20,7 @@ namespace
     constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
+    constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
 
     enum class VaultBlobParseResult
@@ -194,6 +195,25 @@ namespace
         // Fallback for GUI/app-model launch paths where process env does not inherit
         // latest shell variables. setx writes to HKCU\Environment.
         return GetUserEnvironmentRegistryValue(name);
+    }
+
+    bool IsTruthySetting(std::wstring value)
+    {
+        if (value.empty())
+        {
+            return false;
+        }
+
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c)
+        {
+            return static_cast<wchar_t>(std::towlower(c));
+        });
+        return value == L"1" || value == L"true" || value == L"yes" || value == L"on";
+    }
+
+    bool IsAllowInsecureHttpEnabled()
+    {
+        return IsTruthySetting(GetEnvironmentVariableValue(kSyncAllowInsecureHttpEnv));
     }
 
     std::wstring GetNowIsoLikeTimestamp()
@@ -416,6 +436,10 @@ namespace
         {
             return L"client_error";
         }
+        if (status.ErrorCode == L"INSECURE_HTTP_BLOCKED")
+        {
+            return L"client_error";
+        }
         if (FAILED(hr))
         {
             return L"transport_or_unknown";
@@ -450,7 +474,11 @@ namespace
             detail += L"sync_failure=rate_limited recovery=wait_and_retry";
             break;
         default:
-            if (IsNameResolutionFailure(hr))
+            if (status.ErrorCode == L"INSECURE_HTTP_BLOCKED")
+            {
+                detail += L"sync_failure=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only local_save=kept";
+            }
+            else if (IsNameResolutionFailure(hr))
             {
                 detail += L"sync_failure=name_not_resolved recovery=check_sync_base_url_dns_or_hosts local_save=kept";
             }
@@ -514,6 +542,7 @@ namespace
         statusSink(winrt::hstring{ L"INFO: sync state=start operation=put_vault user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
+        syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
         if (!bearerToken.empty())
         {
@@ -1213,6 +1242,7 @@ namespace winrt::PasskeyManager::implementation {
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=restore_snapshot user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
+        syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
         if (!bearerToken.empty())
         {

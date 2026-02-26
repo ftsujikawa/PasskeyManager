@@ -330,6 +330,25 @@ namespace tsupasswd
             return E_FAIL;
         }
 
+        HRESULT EnsureTransportPolicy(
+            ParsedBaseUrl const& parsed,
+            bool allowInsecureHttp,
+            SyncHttpStatus* outStatus,
+            wchar_t const* operation)
+        {
+            if (parsed.Secure || allowInsecureHttp)
+            {
+                return S_OK;
+            }
+
+            if (outStatus)
+            {
+                outStatus->ErrorCode = L"INSECURE_HTTP_BLOCKED";
+                outStatus->ErrorMessage = std::wstring(L"SyncClient::") + operation + L" blocked insecure HTTP URL. Set TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP=1 only for development.";
+            }
+            return HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY);
+        }
+
         void FillVaultRecordFromJson(winrt::Windows::Data::Json::JsonObject const& root, VaultRecord& outRecord)
         {
             outRecord = {};
@@ -431,6 +450,11 @@ namespace tsupasswd
         }
     }
 
+    void SyncClient::SetAllowInsecureHttp(bool allowInsecureHttp)
+    {
+        m_allowInsecureHttp = allowInsecureHttp;
+    }
+
     HRESULT SyncClient::GetVault(
         std::wstring const& userId,
         VaultRecord& outRecord,
@@ -445,6 +469,7 @@ namespace tsupasswd
         try
         {
             auto parsed = ParseBaseUrl(m_baseUrl);
+            RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"GetVault"));
             std::wstring path = BuildRequestPath(parsed.BasePath, L"v1/vaults/" + userId);
 
             WinHttpHandle hSession(WinHttpOpen(L"tsupasswd_core/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
@@ -513,6 +538,7 @@ namespace tsupasswd
         try
         {
             auto parsed = ParseBaseUrl(m_baseUrl);
+            RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"PutVault"));
             std::wstring path = BuildRequestPath(parsed.BasePath, L"v1/vaults/" + userId);
             std::wstring requestJson = BuildPutVaultJson(request);
             std::string requestUtf8 = WideToUtf8(requestJson);

@@ -2,6 +2,11 @@
 
 PasskeyManager は、Windows 向けのパスキー管理/検証用アプリケーションです。
 
+## Security Design
+
+- `./docs/tsupasswd_core_threat_model.md`（A-01: STRIDE 脅威モデル初版）
+- `./docs/adr/0001-key-hierarchy-and-secret-storage.md`（A-02: 鍵階層と秘密保存方針）
+
 ## Roadmap Issue 一括起票
 
 ロードマップ用のラベル作成と Issue 一括起票は、以下のスクリプトで実行できます。
@@ -64,6 +69,7 @@ docs\check_sync_log_keys_samples.cmd fail
 docs\check_sync_log_keys_samples.cmd batch
 docs\check_sync_log_keys_samples.cmd fail_request_id_format
 docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
+docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 ```
 
 GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または push/pull_request）ではこの一括検証を実行します。
@@ -78,7 +84,7 @@ GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または pu
 - `INFO: sync state=start operation=(put_vault|restore_snapshot|manual_resync)` 行で `request_id=` が付与されていること
 - キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
 
-現在の checker で強制しているルール（11個）:
+現在の checker で強制しているルール（12個）:
 
 1. `409_recovery`
 2. `read_encrypted_vault_data`
@@ -90,7 +96,8 @@ GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または pu
 8. `request_id_with_sync_start`
 9. `request_id_format_with_sync_start`
 10. `failure_kind_with_sync_failure`
-11. `failure_kind_allowed_values`
+11. `name_not_resolved_host_with_sync_failure`
+12. `failure_kind_allowed_values`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 
@@ -100,6 +107,8 @@ GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
   - `request_id_format_with_sync_start` のみを狙って失敗させる
 - `docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt`
   - `failure_kind_allowed_values` のみを狙って失敗させる
+- `docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt`
+  - `name_not_resolved_host_with_sync_failure` のみを狙って失敗させる
 
 初回のみ（未ログイン時）:
 
@@ -113,7 +122,7 @@ gh workflow run sync-log-keys-check.yml -f scenario=both
 gh run watch
 ```
 
-`scenario` は `both` / `batch` / `pass` / `fail` / `fail_request_id_format` / `fail_failure_kind_value` を指定できます。
+`scenario` は `both` / `batch` / `pass` / `fail` / `fail_request_id_format` / `fail_failure_kind_value` / `fail_name_resolution_host` を指定できます。
 
 単体実行の例:
 
@@ -132,6 +141,9 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_request_id_format
 
 # failure_kind 許容値違反サンプルのみ（expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_failure_kind_value
+
+# name_not_resolved の host 欠落サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_name_resolution_host
 ```
 
 単体実行の確認済み結果:

@@ -305,6 +305,27 @@ sudo ./sync-mvp-api/scripts/rotate_sync_mvp_api_token.sh
 
 - 実行後は PasskeyManager クライアント側の Bearer Token も新値へ更新すること
 
+### 5) デプロイ前 preflight チェック
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/preflight_sync_mvp_api.sh`
+
+実行例:
+
+```bash
+chmod +x sync-mvp-api/scripts/preflight_sync_mvp_api.sh
+sudo ./sync-mvp-api/scripts/preflight_sync_mvp_api.sh
+```
+
+チェック内容:
+
+- `.env` / `systemd` / `nginx` 設定ファイルの存在
+- `.env` 必須キー（`TSUPASSWD_SYNC_BEARER_TOKEN`, `TSUPASSWD_SYNC_DB_PATH`）
+- `.env` 権限（`root:root`, `600`）
+- `systemd-analyze verify` と `nginx -t`
+- `sync-mvp-api` の active 状態と `healthz`
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

@@ -432,6 +432,30 @@ sudo systemctl list-timers --all | grep sync-mvp-api-maintenance
 1. `prune_sync_mvp_api_backups.sh`（古いバックアップ整理）
 2. `report_sync_mvp_api_status.sh`（状態レポート取得）
 
+### 11) 初期セットアップ一括化（bootstrap）
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/bootstrap_sync_mvp_api_host.sh`
+
+実行例:
+
+```bash
+chmod +x sync-mvp-api/scripts/bootstrap_sync_mvp_api_host.sh
+sudo ./sync-mvp-api/scripts/bootstrap_sync_mvp_api_host.sh
+```
+
+このスクリプトは以下を実行する:
+
+- `/opt/sync-mvp-api` 配下の基本ディレクトリ作成
+- `.env` / `systemd` / `nginx` テンプレート配置
+- 運用スクリプト群を `/opt/sync-mvp-api/scripts` へ配置
+- `sync-mvp-api-maintenance.timer` を有効化
+
+注意:
+
+- 実行後、必ず `/opt/sync-mvp-api/.env` の `TSUPASSWD_SYNC_BEARER_TOKEN` を本番値へ更新する
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

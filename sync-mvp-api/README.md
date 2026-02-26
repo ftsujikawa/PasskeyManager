@@ -233,6 +233,23 @@ curl -sS http://127.0.0.1:8088/healthz
 - `.env` の `TSUPASSWD_SYNC_BEARER_TOKEN` は必ず本番用の強ランダム値へ変更する
 - `ASPNETCORE_URLS` はリバースプロキシ構成に合わせて調整する
 
+### 2.2) nginx リバースプロキシテンプレート
+
+同梱テンプレート:
+
+- `sync-mvp-api/scripts/nginx-sync-mvp-api.conf.example`
+
+適用例:
+
+```bash
+sudo cp sync-mvp-api/scripts/nginx-sync-mvp-api.conf.example /etc/nginx/sites-available/sync-mvp-api
+sudo ln -sf /etc/nginx/sites-available/sync-mvp-api /etc/nginx/sites-enabled/sync-mvp-api
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+`server_name example.com;` は必ず実ドメインへ変更する。
+
 ### 3) 監査ログ確認（request_id 追跡）
 
 監査ログは `audit.vault_op` プレフィックスで出力され、`request_id` と `path` を含みます。

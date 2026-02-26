@@ -55,7 +55,20 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 - 必須キーを観測し、機微情報マーカーが無い場合: `PASS` 表示、終了コード `0`
 - `INFO/WARNING/SUCCESS/FAILED` の `summary` / `sync` 行で `operation=` が付与されていること
 - `message=` を含む行では `message_code=` が併記されていること
+- `sync result=failed operation=(put_vault|restore_snapshot|test_connection)` 行で `request_id=` が付与されていること
+- 同行で `failure_kind=` が付与されていること
 - キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
+
+現在の checker で強制しているルール（8個）:
+
+1. `409_recovery`
+2. `read_encrypted_vault_data`
+3. `vault_unlock_ui_required`
+4. `sensitive_markers_absent`
+5. `operation_key_present`
+6. `message_code_with_message`
+7. `request_id_with_sync_failure`
+8. `failure_kind_with_sync_failure`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 
@@ -91,13 +104,13 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail
 実運用ログの代表例（fixed-format, key=value）:
 
 ```text
-SUCCESS: summary result=success request=1 run=1 attempts=1 elapsed_ms=75 hr=0 selected=3 cached=3 missing=0✅
+SUCCESS: summary result=success operation=delete_selected_credentials_everywhere request=1 run=1 attempts=1 elapsed_ms=75 hr=0 selected=3 cached=3 missing=0✅
 INFO: summary state=running operation=delete_selected_credentials_everywhere request=1 run=1⏳
-INFO: summary state=running operation=vault_recovery⏳
-WARNING: sync result=failed attempts=3/3 elapsed_ms=1523 hr=-2147012889 detail=sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response.
-INFO: sync result=retry_backoff attempt=3/3 backoff_ms=1000 elapsed_ms=517ℹ
-WARNING: sync result=failed operation=restore_snapshot hr=-2147012889 detail=sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.
-WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.⚠
+INFO: summary state=running operation=vault_recovery request_id=20260225T162435905Z-vault_recovery⏳
+WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1523 hr=-2147012889 detail=failure_kind=client_error sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response. request_id=2026-02-25T16:24:40Z-put_vault
+INFO: sync result=retry_backoff operation=put_vault attempt=3/3 backoff_ms=1000 elapsed_ms=517 request_id=2026-02-25T16:24:40Z-put_vaultℹ
+WARNING: sync result=failed operation=restore_snapshot hr=-2147012889 detail=failure_kind=client_error sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response. request_id=20260225T162404950Z-restore_snapshot
+WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 failure_kind=client_error code=CLIENT_ERROR request_id=20260225T162400808Z-test_connection message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.⚠
 SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id✅
 ```
 

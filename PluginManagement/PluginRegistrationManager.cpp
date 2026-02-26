@@ -636,6 +636,7 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::CreateVaultPasskey(HWND hWnd, std::wstring const& requestId)
     {
+        HRESULT hr = S_OK;
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {

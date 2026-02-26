@@ -410,6 +410,28 @@ sudo ./sync-mvp-api/scripts/report_sync_mvp_api_status.sh
 - 最新バックアップ一覧（最大5件）
 - `audit.vault_op` の直近ログ
 
+### 10) 定期メンテナンス自動化（systemd timer）
+
+同梱テンプレート:
+
+- `sync-mvp-api/scripts/sync-mvp-api-maintenance.service.example`
+- `sync-mvp-api/scripts/sync-mvp-api-maintenance.timer.example`
+
+適用例:
+
+```bash
+sudo cp sync-mvp-api/scripts/sync-mvp-api-maintenance.service.example /etc/systemd/system/sync-mvp-api-maintenance.service
+sudo cp sync-mvp-api/scripts/sync-mvp-api-maintenance.timer.example /etc/systemd/system/sync-mvp-api-maintenance.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now sync-mvp-api-maintenance.timer
+sudo systemctl list-timers --all | grep sync-mvp-api-maintenance
+```
+
+この timer は既定で毎日 03:30 頃に以下を実行する:
+
+1. `prune_sync_mvp_api_backups.sh`（古いバックアップ整理）
+2. `report_sync_mvp_api_status.sh`（状態レポート取得）
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

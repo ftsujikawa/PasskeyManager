@@ -1,0 +1,13 @@
+[Unit]
+Description=Sync MVP API maintenance task
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=APP_ROOT=/opt/sync-mvp-api
+Environment=BACKUP_DIR=/opt/sync-mvp-api/backups
+Environment=KEEP_COUNT=10
+ExecStart=/bin/bash -lc '/opt/sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh'
+ExecStart=/bin/bash -lc '/opt/sync-mvp-api/scripts/report_sync_mvp_api_status.sh'

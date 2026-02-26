@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Sync MVP API maintenance daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=sync-mvp-api-maintenance.service
+
+[Install]
+WantedBy=timers.target

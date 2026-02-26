@@ -108,6 +108,11 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 - `operation=read_encrypted_vault_data reason=...`（欠損/破損）
 - `operation=vault_unlock reason=ui_required`（UI要求）
 
+加えて、sync失敗ログ（`put_vault` / `restore_snapshot` / `test_connection`）では次を必須とする。
+
+- `request_id=`（相関キー）
+- `failure_kind=`（失敗分類）
+
 ---
 
 ## 5. 参照実装
@@ -121,7 +126,7 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 
 ## 6. ログキー自動チェック（PowerShell）
 
-採取したログをテキスト保存し、以下で3キーの有無と機微情報マーカー検出を自動判定できる。
+採取したログをテキスト保存し、以下で主要キーの有無と機微情報マーカー検出を自動判定できる。
 
 ### 推奨: 同梱 cmd スクリプトを使う
 
@@ -131,7 +136,7 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 
 期待値:
 
-- 3キーが揃い、機微情報マーカー（`token=` など）が無ければ `PASS` が並び、終了コード `0`
+- 必須キーが揃い、機微情報マーカー（`token=` など）が無ければ `PASS` が並び、終了コード `0`
 - キー不足または機微情報マーカー検出時は `FAIL` が出て、終了コード `1`
 
 ### 参考: PowerShell ワンライナー
@@ -180,6 +185,8 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 - 何もヒットしない（出力なし）
 - `INFO/WARNING/SUCCESS/FAILED` の `summary` / `sync` 行で `operation=` が付与されていること
 - `message=` を含む行では `message_code=` が併記されていること
+- `sync result=failed operation=(put_vault|restore_snapshot|test_connection)` 行で `request_id=` が付与されていること
+- 同行で `failure_kind=` が付与されていること
 
 ---
 
@@ -194,6 +201,17 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 - `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
 - サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `authorization:` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
+
+現在の checker で強制しているルール（8個）:
+
+1. `409_recovery`
+2. `read_encrypted_vault_data`
+3. `vault_unlock_ui_required`
+4. `sensitive_markers_absent`
+5. `operation_key_present`
+6. `message_code_with_message`
+7. `request_id_with_sync_failure`
+8. `failure_kind_with_sync_failure`
 
 実行方法:
 

@@ -1090,29 +1090,29 @@ namespace winrt::PasskeyManager::implementation
         std::wstring baseUrl = NormalizeSyncBaseUrl(syncBaseUrlTextBox().Text().c_str());
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+        std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
 
         syncBaseUrlTextBox().Text(baseUrl);
 
         if (!IsValidSyncBaseUrl(baseUrl))
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=invalid_base_url⚠");
-            LogWarning(L"sync result=rejected operation=test_connection reason=invalid_base_url");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=invalid_base_url request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=invalid_base_url request_id=" + testConnectionRequestId });
             co_return;
         }
         if (token.empty())
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=token_empty⚠");
-            LogWarning(L"sync result=rejected operation=test_connection reason=token_empty");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=token_empty request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=token_empty request_id=" + testConnectionRequestId });
             co_return;
         }
         if (!IsValidSyncUserId(userId))
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=test_connection reason=invalid_user_id⚠");
-            LogWarning(L"sync result=rejected operation=test_connection reason=invalid_user_id");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=invalid_user_id request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=invalid_user_id request_id=" + testConnectionRequestId });
             co_return;
         }
 
-        std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
         syncStatusTextBlock().Text(winrt::hstring{ L"INFO: summary state=running operation=test_connection request_id=" + testConnectionRequestId + L"⏳" });

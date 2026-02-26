@@ -326,6 +326,26 @@ sudo ./sync-mvp-api/scripts/preflight_sync_mvp_api.sh
 - `systemd-analyze verify` と `nginx -t`
 - `sync-mvp-api` の active 状態と `healthz`
 
+### 6) デプロイ後の統合検証（preflight + smoke）
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/post_deploy_verify_sync_mvp_api.sh`
+
+実行例:
+
+```bash
+chmod +x sync-mvp-api/scripts/preflight_sync_mvp_api.sh
+chmod +x sync-mvp-api/scripts/smoke_sync_mvp_api.sh
+chmod +x sync-mvp-api/scripts/post_deploy_verify_sync_mvp_api.sh
+sudo BASE_URL="https://example.com" ENV_FILE="/opt/sync-mvp-api/.env" ./sync-mvp-api/scripts/post_deploy_verify_sync_mvp_api.sh
+```
+
+このスクリプトは次を順に実行する:
+
+1. `preflight_sync_mvp_api.sh`
+2. `smoke_sync_mvp_api.sh`
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

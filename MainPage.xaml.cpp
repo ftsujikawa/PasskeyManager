@@ -1115,7 +1115,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
-        syncStatusTextBlock().Text(L"INFO: summary state=running operation=test_connection⏳");
+        syncStatusTextBlock().Text(winrt::hstring{ L"INFO: summary state=running operation=test_connection request_id=" + testConnectionRequestId + L"⏳" });
         LogInProgress(winrt::hstring{ L"summary state=running operation=test_connection request_id=" + testConnectionRequestId });
 
         co_await winrt::resume_background();
@@ -1124,6 +1124,7 @@ namespace winrt::PasskeyManager::implementation
         tsupasswd::VaultRecord record{};
         tsupasswd::SyncHttpStatus status{};
         HRESULT hr = syncClient.GetVault(userId, record, &status);
+        std::wstring resolvedRequestId = status.RequestId.empty() ? testConnectionRequestId : status.RequestId;
 
         co_await wil::resume_foreground(DispatcherQueue());
         auto self = weakThis.get();
@@ -1135,8 +1136,8 @@ namespace winrt::PasskeyManager::implementation
         self->testSyncConnectionButton().IsEnabled(true);
         if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=test_connection outcome=reachable_or_not_found✅");
-            self->LogSuccess(winrt::hstring{ L"sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + testConnectionRequestId });
+            self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + resolvedRequestId + L"✅" });
+            self->LogSuccess(winrt::hstring{ L"sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + resolvedRequestId });
             co_return;
         }
 
@@ -1152,7 +1153,7 @@ namespace winrt::PasskeyManager::implementation
         {
             detail += L" code=" + status.ErrorCode;
         }
-        detail += L" request_id=" + (status.RequestId.empty() ? testConnectionRequestId : status.RequestId);
+        detail += L" request_id=" + resolvedRequestId;
         if (!status.ErrorMessage.empty())
         {
             if (!status.ErrorCode.empty())
@@ -1165,7 +1166,7 @@ namespace winrt::PasskeyManager::implementation
             }
             detail += L" message=" + status.ErrorMessage;
         }
-        self->syncStatusTextBlock().Text(L"WARNING: sync result=failed operation=test_connection outcome=request_failed⚠");
+        self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=test_connection outcome=request_failed request_id=" + resolvedRequestId + L"⚠" });
         self->LogWarning(winrt::hstring{ detail });
         co_return;
     }

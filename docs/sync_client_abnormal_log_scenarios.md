@@ -217,7 +217,7 @@ docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
 docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 ```
 
-現在の checker で強制しているルール（11個）:
+現在の checker で強制しているルール（12個）:
 
 1. `409_recovery`
 2. `read_encrypted_vault_data`
@@ -229,7 +229,8 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 8. `request_id_with_sync_start`
 9. `request_id_format_with_sync_start`
 10. `failure_kind_with_sync_failure`
-11. `failure_kind_allowed_values`
+11. `name_not_resolved_host_with_sync_failure`
+12. `failure_kind_allowed_values`
 
 実行方法:
 

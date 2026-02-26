@@ -63,8 +63,8 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| trigger ^| ${{ github.event_name }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| scenario ^| ${{ github.event.inputs.scenario || 'both' }} ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| checker_rule_count ^| 11 ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_rule_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,name_not_resolved_host_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: Validate checker script exists
@@ -216,6 +216,7 @@ jobs:
           set "HAS_REQUEST_ID_WITH_SYNC_START_PASS=0"
           set "HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS=0"
           set "HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS=0"
+          set "HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS=0"
           set "HAS_FAILURE_KIND_ALLOWED_VALUES_PASS=0"
           findstr /b /c:"FAIL:" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAIL_PREFIX=1"
@@ -239,11 +240,13 @@ jobs:
           if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS=1"
           findstr /b /c:"PASS: failure_kind_with_sync_failure" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS=1"
+          findstr /b /c:"PASS: name_not_resolved_host_with_sync_failure" pass_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS=1"
           findstr /b /c:"PASS: failure_kind_allowed_values" pass_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAILURE_KIND_ALLOWED_VALUES_PASS=1"
           set "PASS_PREFIX_COUNT=0"
           for /f %%A in ('findstr /b /c:"PASS:" pass_sample_output.txt ^| find /c ":"') do set "PASS_PREFIX_COUNT=%%A"
-          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_409_PASS% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_START_PASS% EQU 1 if %HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS% EQU 1 if %HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 if %PASS_PREFIX_COUNT% EQU 11 (
+          if %CHECKER_RC% EQU 0 if %HAS_FAIL_PREFIX% EQU 0 if %HAS_409_PASS% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_PASS% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_PASS% EQU 1 if %HAS_MESSAGE_CODE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_START_PASS% EQU 1 if %HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS% EQU 1 if %HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 if %PASS_PREFIX_COUNT% EQU 12 (
             echo ### PASS sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
@@ -252,7 +255,7 @@ jobs:
             echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| fail_prefix_detected ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_prefix_count ^| %PASS_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| expected_pass_prefix_count ^| 11 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_pass_prefix_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_409_recovery ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_read_encrypted_vault_data ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_vault_unlock_ui_required ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -263,6 +266,7 @@ jobs:
             echo ^| pass_reason_request_id_with_sync_start ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_request_id_format_with_sync_start ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_failure_kind_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| pass_reason_name_not_resolved_host_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| pass_reason_failure_kind_allowed_values ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
@@ -276,7 +280,7 @@ jobs:
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_prefix_count ^| %PASS_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| expected_pass_prefix_count ^| 11 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_pass_prefix_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
           if %HAS_FAIL_PREFIX% EQU 1 (
             echo ^| fail_prefix_detected ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
           ) else (
@@ -332,6 +336,11 @@ jobs:
           ) else (
             echo ^| pass_reason_failure_kind_with_sync_failure ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
           )
+          if %HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS% EQU 1 (
+            echo ^| pass_reason_name_not_resolved_host_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| pass_reason_name_not_resolved_host_with_sync_failure ^| not_observed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
           if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 (
             echo ^| pass_reason_failure_kind_allowed_values ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
           ) else (
@@ -357,6 +366,7 @@ jobs:
           set "HAS_REQUEST_ID_WITH_SYNC_START_PASS=0"
           set "HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS=0"
           set "HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS=0"
+          set "HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS=0"
           set "HAS_FAILURE_KIND_ALLOWED_VALUES_PASS=0"
           findstr /b /c:"FAIL: message_code_with_message" fail_sample_output.txt >nul
           set "HAS_MESSAGE_CODE_FAILURE=0"
@@ -381,6 +391,8 @@ jobs:
           if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS=1"
           findstr /b /c:"PASS: failure_kind_with_sync_failure" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS=1"
+          findstr /b /c:"PASS: name_not_resolved_host_with_sync_failure" fail_sample_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS=1"
           findstr /b /c:"PASS: failure_kind_allowed_values" fail_sample_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_FAILURE_KIND_ALLOWED_VALUES_PASS=1"
           set "STATUS_409_RECOVERY=not_observed"
@@ -405,11 +417,13 @@ jobs:
           if %HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS% EQU 1 set "STATUS_REQUEST_ID_FORMAT_WITH_SYNC_START=observed"
           set "STATUS_FAILURE_KIND_WITH_SYNC_FAILURE=not_observed"
           if %HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS% EQU 1 set "STATUS_FAILURE_KIND_WITH_SYNC_FAILURE=observed"
+          set "STATUS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE=not_observed"
+          if %HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS% EQU 1 set "STATUS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE=observed"
           set "STATUS_FAILURE_KIND_ALLOWED_VALUES=not_observed"
           if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 set "STATUS_FAILURE_KIND_ALLOWED_VALUES=observed"
           set "FAIL_PREFIX_COUNT=0"
           for /f %%A in ('findstr /b /c:"FAIL:" fail_sample_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
-          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_KEY_PRESENT_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_START_PASS% EQU 1 if %HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS% EQU 1 if %HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 if %FAIL_PREFIX_COUNT% EQU 4 (
+          if %CHECKER_RC% EQU 1 if %HAS_409_RECOVERY_FAILURE% EQU 1 if %HAS_READ_ENCRYPTED_VAULT_DATA_FAILURE% EQU 1 if %HAS_MESSAGE_CODE_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %HAS_VAULT_UNLOCK_UI_REQUIRED_PASS% EQU 1 if %HAS_SENSITIVE_MARKERS_ABSENT_PASS% EQU 1 if %HAS_OPERATION_KEY_PRESENT_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_REQUEST_ID_WITH_SYNC_START_PASS% EQU 1 if %HAS_REQUEST_ID_FORMAT_WITH_SYNC_START_PASS% EQU 1 if %HAS_FAILURE_KIND_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE_PASS% EQU 1 if %HAS_FAILURE_KIND_ALLOWED_VALUES_PASS% EQU 1 if %FAIL_PREFIX_COUNT% EQU 4 (
             echo Expected failure confirmed.
             echo ### FAIL sample>>"%GITHUB_STEP_SUMMARY%"
             echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -430,6 +444,7 @@ jobs:
             echo ^| expected_pass_reason_request_id_with_sync_start ^| %STATUS_REQUEST_ID_WITH_SYNC_START% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_pass_reason_request_id_format_with_sync_start ^| %STATUS_REQUEST_ID_FORMAT_WITH_SYNC_START% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_pass_reason_failure_kind_with_sync_failure ^| %STATUS_FAILURE_KIND_WITH_SYNC_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_pass_reason_name_not_resolved_host_with_sync_failure ^| %STATUS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_pass_reason_failure_kind_allowed_values ^| %STATUS_FAILURE_KIND_ALLOWED_VALUES% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
@@ -455,6 +470,7 @@ jobs:
           echo ^| expected_pass_reason_request_id_with_sync_start ^| %STATUS_REQUEST_ID_WITH_SYNC_START% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_pass_reason_request_id_format_with_sync_start ^| %STATUS_REQUEST_ID_FORMAT_WITH_SYNC_START% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_pass_reason_failure_kind_with_sync_failure ^| %STATUS_FAILURE_KIND_WITH_SYNC_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_pass_reason_name_not_resolved_host_with_sync_failure ^| %STATUS_NAME_NOT_RESOLVED_HOST_WITH_SYNC_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_pass_reason_failure_kind_allowed_values ^| %STATUS_FAILURE_KIND_ALLOWED_VALUES% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
@@ -547,9 +563,9 @@ jobs:
           set "HAS_TARGET_FAILURE=0"
           set "HAS_CHECK_FAILURES_SUMMARY=0"
           set "FAIL_PREFIX_COUNT=0"
-          findstr /b /c:"FAIL: failure_kind_with_sync_failure" fail_name_resolution_host_output.txt >nul
+          findstr /b /c:"FAIL: name_not_resolved_host_with_sync_failure" fail_name_resolution_host_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_TARGET_FAILURE=1"
-          findstr /b /c:"FAIL: check_failures=failure_kind_with_sync_failure" fail_name_resolution_host_output.txt >nul
+          findstr /b /c:"FAIL: check_failures=name_not_resolved_host_with_sync_failure" fail_name_resolution_host_output.txt >nul
           if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
           for /f %%A in ('findstr /b /c:"FAIL:" fail_name_resolution_host_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
           if %CHECKER_RC% EQU 1 if %HAS_TARGET_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %FAIL_PREFIX_COUNT% EQU 2 (
@@ -560,11 +576,11 @@ jobs:
             echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
-            echo ^| fail_reason_failure_kind_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_reason_name_not_resolved_host_with_sync_failure ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 0
           )
-          echo Expected failure_kind_with_sync_failure failure, but condition was not met.
+          echo Expected name_not_resolved_host_with_sync_failure failure, but condition was not met.
           type fail_name_resolution_host_output.txt
           echo ### FAIL name_resolution host sample>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -572,7 +588,7 @@ jobs:
           echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| fail_reason_failure_kind_with_sync_failure ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_reason_name_not_resolved_host_with_sync_failure ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
@@ -680,5 +696,5 @@ jobs:
           echo ^| fail_failure_kind_value_sample ^| ${{ steps.fail_failure_kind_value_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_name_resolution_host_sample ^| ${{ steps.fail_name_resolution_host_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| enforced_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| enforced_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,name_not_resolved_host_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

@@ -205,8 +205,18 @@ sudo ./scripts/deploy_sync_mvp_api_publish.sh /tmp/sync-mvp-api-publish.tar.gz
 
 ```bash
 sudo install -d -m 755 /opt/sync-mvp-api
+sudo install -d -m 750 -o www-data -g www-data /opt/sync-mvp-api/data
 sudo cp sync-mvp-api/.env.example /opt/sync-mvp-api/.env
 sudo cp sync-mvp-api/scripts/sync-mvp-api.service.example /etc/systemd/system/sync-mvp-api.service
+```
+
+本番トークンを生成して `.env` に設定する（例）:
+
+```bash
+TOKEN="$(openssl rand -base64 48 | tr -d '\n')"
+sudo sed -i "s#^TSUPASSWD_SYNC_BEARER_TOKEN=.*#TSUPASSWD_SYNC_BEARER_TOKEN=${TOKEN}#" /opt/sync-mvp-api/.env
+sudo chown root:root /opt/sync-mvp-api/.env
+sudo chmod 600 /opt/sync-mvp-api/.env
 ```
 
 反映:
@@ -215,6 +225,7 @@ sudo cp sync-mvp-api/scripts/sync-mvp-api.service.example /etc/systemd/system/sy
 sudo systemctl daemon-reload
 sudo systemctl enable --now sync-mvp-api
 sudo systemctl status sync-mvp-api --no-pager
+curl -sS http://127.0.0.1:8088/healthz
 ```
 
 注意:

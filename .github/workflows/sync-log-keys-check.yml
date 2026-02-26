@@ -158,13 +158,38 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_name_resolution_host' }}
         shell: cmd
         run: |
-          if exist docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt exit /b 0
-          echo Missing required sample file: docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt
+          if not exist docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt (
+            echo Missing required sample file: docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt
+            echo ### FAIL name_resolution host sample file>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+          set "HAS_REASON_NAME_NOT_RESOLVED_WITHOUT_HOST=0"
+          set "HAS_SYNC_FAILURE_NAME_NOT_RESOLVED_WITHOUT_HOST=0"
+          findstr /i /c:"reason=name_not_resolved" docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt | findstr /i /v /c:"host=" >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_REASON_NAME_NOT_RESOLVED_WITHOUT_HOST=1"
+          findstr /i /c:"sync_failure=name_not_resolved" docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt | findstr /i /v /c:"host=" >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_SYNC_FAILURE_NAME_NOT_RESOLVED_WITHOUT_HOST=1"
+          if %HAS_REASON_NAME_NOT_RESOLVED_WITHOUT_HOST% EQU 1 if %HAS_SYNC_FAILURE_NAME_NOT_RESOLVED_WITHOUT_HOST% EQU 1 exit /b 0
+          echo FAIL name_resolution host sample must contain both reason=name_not_resolved and sync_failure=name_not_resolved lines without host=
           echo ### FAIL name_resolution host sample file>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| file ^| docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| invalid_sample_content ^|>>"%GITHUB_STEP_SUMMARY%"
+          if %HAS_REASON_NAME_NOT_RESOLVED_WITHOUT_HOST% EQU 1 (
+            echo ^| has_reason_name_not_resolved_without_host ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_reason_name_not_resolved_without_host ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_SYNC_FAILURE_NAME_NOT_RESOLVED_WITHOUT_HOST% EQU 1 (
+            echo ^| has_sync_failure_name_not_resolved_without_host ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_sync_failure_name_not_resolved_without_host ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 

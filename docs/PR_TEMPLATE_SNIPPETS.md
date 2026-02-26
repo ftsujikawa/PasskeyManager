@@ -1,5 +1,11 @@
 # PR Template Snippets
 
+## name_not_resolved host 必須化（超短文版）
+
+```md
+`name_not_resolved` のログ診断性向上のため、`sync_failure` / `reason` 両経路で `host=` 必須化を実装し、checker・CI・サンプル・ドキュメントを更新しました。`docs\check_sync_log_keys_samples.cmd both/pass/fail_name_resolution_host` でPASS/期待失敗を確認済みです。
+```
+
 ## name_not_resolved host 必須化（短縮版）
 
 ```md

@@ -56,6 +56,8 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 docs\check_sync_log_keys_samples.cmd
 ```
 
+GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または push/pull_request）ではこの一括検証を実行します。
+
 期待値:
 
 - 必須キーを観測し、機微情報マーカーが無い場合: `PASS` 表示、終了コード `0`

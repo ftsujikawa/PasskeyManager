@@ -18,6 +18,7 @@ on:
     paths:
       - 'README.md'
       - 'docs/check_sync_log_keys.cmd'
+      - 'docs/check_sync_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'
       - '.github/workflows/sync-log-keys-check.yml'
@@ -25,6 +26,7 @@ on:
     paths:
       - 'README.md'
       - 'docs/check_sync_log_keys.cmd'
+      - 'docs/check_sync_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'
       - '.github/workflows/sync-log-keys-check.yml'
@@ -60,6 +62,48 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate batch checker script exists
+        id: batch_checker_script
+        shell: cmd
+        run: |
+          if exist docs\check_sync_log_keys_samples.cmd exit /b 0
+          echo Missing required checker script: docs\check_sync_log_keys_samples.cmd
+          echo ### Batch checker script>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/check_sync_log_keys_samples.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Batch sample checker should pass
+        id: batch_samples
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_log_keys_samples.cmd > batch_samples_output.txt 2>&1
+          set "BATCH_RC=%ERRORLEVEL%"
+          if %BATCH_RC% EQU 0 (
+            echo ### Batch sample checker>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Batch sample checker failed. checker_exit_code=%BATCH_RC%
+          type batch_samples_output.txt
+          echo ### Batch sample checker>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
@@ -524,6 +568,7 @@ jobs:
           name: sync-log-keys-checker-outputs
           if-no-files-found: ignore
           path: |
+            batch_samples_output.txt
             pass_sample_output.txt
             fail_sample_output.txt
             fail_request_id_format_output.txt
@@ -537,6 +582,8 @@ jobs:
           echo ^| check ^| outcome ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_script ^| ${{ steps.checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| batch_checker_script ^| ${{ steps.batch_checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| batch_samples ^| ${{ steps.batch_samples.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample_file ^| ${{ steps.pass_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_request_id_format_sample_file ^| ${{ steps.fail_request_id_format_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"

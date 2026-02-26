@@ -67,6 +67,12 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 docs\check_sync_runtime_log_keys.cmd captured_runtime_logs.txt
 ```
 
+runtime checker 自体のサンプルを一括検証する場合:
+
+```cmd
+docs\check_sync_runtime_log_keys_samples.cmd
+```
+
 全サンプルを一括で検証する場合:
 
 ```cmd

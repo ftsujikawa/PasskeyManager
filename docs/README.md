@@ -8,6 +8,8 @@
   異常系シナリオ、サンプル、GitHub Actions 実行手順
 - `check_sync_runtime_log_keys.cmd`  
   実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）
+- `check_sync_runtime_log_keys_samples.cmd`  
+  runtime checker の PASS/FAIL サンプル一括検証
 - `PR_TEMPLATE_SNIPPETS.md`  
   PR 説明文のひな形（超短文版 / 短縮版 / フル版）
 

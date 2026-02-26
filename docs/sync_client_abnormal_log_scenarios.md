@@ -224,6 +224,12 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 docs\check_sync_runtime_log_keys.cmd <captured_runtime_logs.txt>
 ```
 
+runtime checker の PASS/FAIL サンプルを一括検証する場合:
+
+```cmd
+docs\check_sync_runtime_log_keys_samples.cmd both
+```
+
 `check_sync_runtime_log_keys.cmd` は、次を重視する軽量チェック。
 
 - 機微情報マーカー不在（`token=` / `bearer=` / `authorization=` など）

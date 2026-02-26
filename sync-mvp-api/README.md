@@ -370,6 +370,25 @@ sudo ./sync-mvp-api/scripts/rollback_sync_mvp_api.sh /opt/sync-mvp-api/backups/p
 - `deploy_sync_mvp_api_publish.sh` 実行時に `publish-*` バックアップが作成される
 - rollback 後は service 再起動と `healthz` 確認まで自動実行される
 
+### 8) バックアップ世代管理（古い backup の整理）
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh`
+
+実行例（最新10件を残す）:
+
+```bash
+chmod +x sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh
+sudo KEEP_COUNT=10 ./sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh
+```
+
+ドライラン（削除せず確認）:
+
+```bash
+sudo KEEP_COUNT=10 DRY_RUN=1 ./sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh
+```
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

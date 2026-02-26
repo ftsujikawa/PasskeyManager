@@ -74,8 +74,8 @@ GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または pu
 - `INFO/WARNING/SUCCESS/FAILED` の `summary` / `sync` 行で `operation=` が付与されていること
 - `message=` を含む行では `message_code=` が併記されていること
 - `sync result=failed operation=(put_vault|restore_snapshot|test_connection)` 行で `request_id=` が付与されていること
+- `sync result=failed operation=(put_vault|restore_snapshot|test_connection)` 行で `failure_kind=` が付与されていること
 - `INFO: sync state=start operation=(put_vault|restore_snapshot|manual_resync)` 行で `request_id=` が付与されていること
-- 同行で `failure_kind=` が付与されていること
 - キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
 
 現在の checker で強制しているルール（11個）:

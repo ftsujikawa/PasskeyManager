@@ -235,6 +235,8 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 
 実行方法:
 
+- PR説明文のひな形は `docs/PR_TEMPLATE_SNIPPETS.md`（超短文版/短縮版/フル版）を利用できる
+
 1. GitHub の `Actions` タブを開く
 2. `Sync Log Keys Check` を選択
 3. `Run workflow`（`workflow_dispatch`）で `scenario` を選んで実行

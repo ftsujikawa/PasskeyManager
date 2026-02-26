@@ -1213,8 +1213,8 @@ namespace winrt::PasskeyManager::implementation
             std::wstring host;
             if (!TryGetSyncBaseUrlHost(baseUrl, host) || !IsHostNameResolvable(host))
             {
-                syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=name_not_resolved⚠");
                 std::wstring hostValue = host.empty() ? L"unparsed" : host;
+                syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=save_settings reason=name_not_resolved host=" + hostValue + L"⚠" });
                 LogWarning(winrt::hstring{ L"sync result=rejected operation=save_settings reason=name_not_resolved host=" + hostValue + L" recovery=check_sync_base_url_dns_or_hosts" });
                 co_return;
             }

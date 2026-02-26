@@ -246,7 +246,7 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 - `fail` : FAIL サンプルのみ実行
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
 - `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
-- `fail_name_resolution_host` : `sync_failure=name_not_resolved` で `host=` 欠落サンプルのみ実行
+- `fail_name_resolution_host` : `sync_failure=name_not_resolved` または `reason=name_not_resolved` で `host=` 欠落サンプルのみ実行
 
 GitHub CLI から実行する場合:
 

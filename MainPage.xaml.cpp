@@ -15,7 +15,10 @@
 #include <coroutine>
 #include <thread>
 #include <chrono>
+#pragma warning(push)
+#pragma warning(disable : 4459) // ws2tcpip.h system header defines local 'Error' and triggers noisy hide warning with WinRT headers.
 #include <ws2tcpip.h>
+#pragma warning(pop)
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>

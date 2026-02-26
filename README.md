@@ -56,6 +56,16 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 docs\check_sync_log_keys_samples.cmd
 ```
 
+特定シナリオのみローカル検証する場合:
+
+```cmd
+docs\check_sync_log_keys_samples.cmd pass
+docs\check_sync_log_keys_samples.cmd fail
+docs\check_sync_log_keys_samples.cmd batch
+docs\check_sync_log_keys_samples.cmd fail_request_id_format
+docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
+```
+
 GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または push/pull_request）ではこの一括検証を実行します。
 
 期待値:

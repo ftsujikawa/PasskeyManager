@@ -3,25 +3,61 @@ setlocal
 
 set "SCRIPT_DIR=%~dp0"
 set "CHECKER=%SCRIPT_DIR%check_sync_log_keys.cmd"
+set "SCENARIO=%~1"
 
 if not exist "%CHECKER%" (
   echo ERROR: checker script not found: %CHECKER%
   exit /b 2
 )
 
+if "%SCENARIO%"=="" set "SCENARIO=both"
+
 set "HAS_ERROR=0"
 
+if /i "%SCENARIO%"=="both" goto :run_both
+if /i "%SCENARIO%"=="batch" goto :run_both
+if /i "%SCENARIO%"=="pass" goto :run_pass
+if /i "%SCENARIO%"=="fail" goto :run_fail
+if /i "%SCENARIO%"=="fail_request_id_format" goto :run_fail_request_id_format
+if /i "%SCENARIO%"=="fail_failure_kind_value" goto :run_fail_failure_kind_value
+
+echo ERROR: unsupported scenario: %SCENARIO%
+echo Usage: %~nx0 [both^|batch^|pass^|fail^|fail_request_id_format^|fail_failure_kind_value]
+exit /b 2
+
+:run_both
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_pass.txt" 0
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_request_id_format.txt" 1
 call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+goto :finish
+
+:run_pass
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_pass.txt" 0
+goto :finish
+
+:run_fail
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail.txt" 1
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_request_id_format.txt" 1
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+goto :finish
+
+:run_fail_request_id_format
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_request_id_format.txt" 1
+goto :finish
+
+:run_fail_failure_kind_value
+call :run_case "%SCRIPT_DIR%samples\abnormal_sync_logs_fail_failure_kind_value.txt" 1
+goto :finish
+
+:finish
 
 if "%HAS_ERROR%"=="0" (
-  echo OK: all sync log sample checks completed as expected.
+  echo OK: sync log sample checks completed as expected. scenario=%SCENARIO%
   exit /b 0
 )
 
-echo ERROR: one or more sample checks did not match expected exit codes.
+echo ERROR: one or more sample checks did not match expected exit codes. scenario=%SCENARIO%
 exit /b 1
 
 :run_case

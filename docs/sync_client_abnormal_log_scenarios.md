@@ -205,6 +205,17 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 - `docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt` は `failure_kind_allowed_values` で失敗（exit `1`）すること
 - サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `authorization:` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
 
+ローカルで同等のシナリオ検証を行う場合:
+
+```cmd
+docs\check_sync_log_keys_samples.cmd both
+docs\check_sync_log_keys_samples.cmd pass
+docs\check_sync_log_keys_samples.cmd fail
+docs\check_sync_log_keys_samples.cmd batch
+docs\check_sync_log_keys_samples.cmd fail_request_id_format
+docs\check_sync_log_keys_samples.cmd fail_failure_kind_value
+```
+
 現在の checker で強制しているルール（11個）:
 
 1. `409_recovery`

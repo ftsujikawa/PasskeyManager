@@ -50,6 +50,12 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 docs\check_sync_log_keys.cmd captured_logs.txt
 ```
 
+全サンプルを一括で検証する場合:
+
+```cmd
+docs\check_sync_log_keys_samples.cmd
+```
+
 期待値:
 
 - 必須キーを観測し、機微情報マーカーが無い場合: `PASS` 表示、終了コード `0`

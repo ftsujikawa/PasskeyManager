@@ -1,0 +1,17 @@
+要約,課題タイプ,優先度,元の見積り,ラベル,説明,スプリント
+"A-01 脅威モデル（STRIDE）作成",ストーリー,最重要,10h,"epic-security,security,stride","資産・攻撃面・脅威を整理しHigh脅威に緩和策を付与。DoD: 資産・攻撃面・脅威一覧完成、High脅威に緩和策/責任者/期限付与。AT: レビュー会でHigh脅威の未対策ゼロ",W1-W2
+"A-02 鍵階層ADR（master/item/sync）確定",ストーリー,最重要,10h,"epic-security,security,crypto","KDF/AEAD/nonce/鍵ローテーションをADRとして確定。DoD: ADR承認済み、鍵ライフサイクル定義済み。AT: 擬似データ暗号化→復号整合テスト通過",W1-W2
+"A-03 Recoveryフロー設計（紛失/再登録）",ストーリー,高,6h,"epic-security,recovery","正規復旧と不正復旧を分離した復旧設計。DoD: 復旧フロー図と拒否条件を文書化。AT: 正規/期限切れ/改ざんの3シナリオ検証",W1-W2
+"B-01 Vaultスキーマv1固定",ストーリー,最重要,10h,"epic-core,core,schema","password/passkey/note/cardを含むスキーマ確定。DoD: schemaとmigration方針確定。AT: 旧データ→新スキーマ変換テスト通過",W3-W4
+"B-02 Vault CRUD API本実装",ストーリー,最重要,15h,"epic-core,api,crud","Create/Get/Update/Delete/Listの本実装。DoD: API実装完了、エラーcode/message_code統一、単体テスト整備。AT: API自動試験50ケース以上通過",W3-W4
+"B-03 競合制御（expected_version/409）完成",ストーリー,最重要,10h,"epic-sync,sync,conflict","409競合時の復旧導線と再試行整備。DoD: 競合処理とmanual_resync導線完成。AT: 同時更新シナリオで整合性を維持",W5-W6
+"B-04 restore_snapshot異常系強化",ストーリー,高,6h,"epic-sync,restore,logging","破損データ時の安全失敗とログキー完全化。DoD: request_id/failure_kind/message_code欠落ゼロ。AT: 異常系ログchecker全PASS",W5-W6
+"C-01 一覧/検索UX改善",ストーリー,中,10h,"epic-client,ux,search","フィルタ/ソート/検索応答改善。DoD: 主要UI操作の体感遅延改善。AT: 1000件データで許容遅延内",W7-W8
+"C-02 自動保存/更新提案UI実装",ストーリー,中,10h,"epic-client,ux,autofill","新規保存提案と更新提案の実装。DoD: 主要導線で提案UIが機能。AT: 主要3パターンで提案表示正しい",W7-W8
+"C-03 エラー表示統一（request_id可視化）",ストーリー,高,6h,"epic-client,logging,traceability","主要失敗UIにrequest_idを明示。DoD: 失敗画面でrequest_id表示統一。AT: 画面表示と内部ログrequest_id一致",W7-W8
+"D-01 E2E回帰スイート整備",ストーリー,高,15h,"epic-quality,e2e,ci","create/update/sync/restore/deleteを自動化。DoD: E2E自動化とnightly組み込み完了。AT: nightly5日連続で成功率95%以上",W9-W10
+"D-02 ログ検証CI拡張",ストーリー,中,6h,"epic-quality,logging,ci","checker回帰ケース追加とworkflow統合。DoD: pass/failサンプル整備完了。AT: 意図したFAILのみ発生",W9-W10
+"D-03 負荷・耐障害テスト",ストーリー,中,10h,"epic-quality,load,resilience","burst/steady/rollback後の試験。DoD: 負荷試験レポート完成。AT: 目標P95/エラー率達成",W9-W10
+"E-01 デプロイ導線統合確認",ストーリー,高,10h,"epic-ops,deploy,runbook","deploy/preflight/post-verify/rollback連携確立。DoD: 新規環境手順再現可。AT: 新規VMで復旧再現成功",W11-W12
+"E-02 バックアップ運用確立",ストーリー,中,6h,"epic-ops,backup,maintenance","prune/timer/restoreの運用定着。DoD: 週次運用手順確定。AT: 週次ロールバック演習成功",W11-W12
+"E-03 インシデントRunbook整備",ストーリー,高,6h,"epic-ops,incident,response","DB不可/トークン不一致/TLS期限の初動整備。DoD: 障害別runbook完成。AT: 模擬障害3件でMTTR記録",W11-W12

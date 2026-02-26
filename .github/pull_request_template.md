@@ -3,6 +3,8 @@
 - 
 - 
 
+_Snippet reference: `docs/PR_TEMPLATE_SNIPPETS.md` (ultra-short / short / full)_
+
 ## Background
 - Why now:
 - Problem:

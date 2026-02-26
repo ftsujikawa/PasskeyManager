@@ -38,6 +38,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '(^|\s)message=' -and $line -notmatch '(^|\s)message_code=') { $messageCodeMissing += $line } }" ^
   "if ($messageCodeMissing.Count -eq 0) { Write-Host 'PASS: message_code_with_message' }" ^
   "else { Write-Host ('FAIL: message_code_with_message count=' + $messageCodeMissing.Count); $failed += 'message_code_with_message' }" ^
+  "$syncFailureLines = @();" ^
+  "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '^(WARNING|FAILED):\s+sync\s+result=failed\s+operation=(put_vault|restore_snapshot|test_connection)\b') { $syncFailureLines += $line } }" ^
+  "$requestIdMissing = @();" ^
+  "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)request_id=') { $requestIdMissing += $line } }" ^
+  "if ($requestIdMissing.Count -eq 0) { Write-Host 'PASS: request_id_with_sync_failure' }" ^
+  "else { Write-Host ('FAIL: request_id_with_sync_failure count=' + $requestIdMissing.Count); $failed += 'request_id_with_sync_failure' }" ^
+  "$failureKindMissing = @();" ^
+  "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)failure_kind=') { $failureKindMissing += $line } }" ^
+  "if ($failureKindMissing.Count -eq 0) { Write-Host 'PASS: failure_kind_with_sync_failure' }" ^
+  "else { Write-Host ('FAIL: failure_kind_with_sync_failure count=' + $failureKindMissing.Count); $failed += 'failure_kind_with_sync_failure' }" ^
   "if ($failed.Count -gt 0) { Write-Host ('FAIL: check_failures=' + ($failed -join ',')); exit 1 }" ^
   "Write-Host 'OK: abnormal sync log checks passed.'; exit 0"
 

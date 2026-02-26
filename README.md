@@ -108,7 +108,7 @@ GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 - `docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt`
   - `failure_kind_allowed_values` のみを狙って失敗させる
 - `docs/samples/abnormal_sync_logs_fail_name_resolution_host.txt`
-  - `name_not_resolved_host_with_sync_failure` のみを狙って失敗させる
+  - `sync_failure=name_not_resolved` または `reason=name_not_resolved` で `host=` 欠落のみを狙って失敗させる
 
 初回のみ（未ログイン時）:
 
@@ -142,7 +142,7 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_request_id_format
 # failure_kind 許容値違反サンプルのみ（expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_failure_kind_value
 
-# name_not_resolved の host 欠落サンプルのみ（expected failure として success が期待値）
+# name_not_resolved の host 欠落サンプルのみ（`sync_failure` / `reason` 両経路、expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_name_resolution_host
 ```
 

@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - both
+          - batch
           - pass
           - fail
           - fail_request_id_format
@@ -81,7 +82,7 @@ jobs:
 
       - name: Batch sample checker should pass
         id: batch_samples
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' }}
         shell: cmd
         run: |
           call docs\check_sync_log_keys_samples.cmd > batch_samples_output.txt 2>&1
@@ -512,6 +513,14 @@ jobs:
         run: |
           $scenario = "${{ github.event.inputs.scenario || 'both' }}"
           if ('${{ github.event_name }}' -ne 'workflow_dispatch' -or $scenario -eq 'both') {
+            $files = @(
+              'docs/samples/abnormal_sync_logs_pass.txt',
+              'docs/samples/abnormal_sync_logs_fail.txt',
+              'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
+            )
+          }
+          elseif ($scenario -eq 'batch') {
             $files = @(
               'docs/samples/abnormal_sync_logs_pass.txt',
               'docs/samples/abnormal_sync_logs_fail.txt',

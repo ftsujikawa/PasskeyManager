@@ -159,8 +159,9 @@ INFO: summary state=running operation=delete_selected_credentials_everywhere req
 INFO: summary state=running operation=vault_recovery request_id=20260225T162435905Z-vault_recovery⏳
 WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1523 hr=-2147012889 detail=failure_kind=client_error sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response. request_id=2026-02-25T16:24:40Z-put_vault
 INFO: sync result=retry_backoff operation=put_vault attempt=3/3 backoff_ms=1000 elapsed_ms=517 request_id=2026-02-25T16:24:40Z-put_vaultℹ
-WARNING: sync result=failed operation=restore_snapshot hr=-2147012889 detail=failure_kind=client_error sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response. request_id=20260225T162404950Z-restore_snapshot
-WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 failure_kind=client_error code=CLIENT_ERROR request_id=20260225T162400808Z-test_connection message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.⚠
+WARNING: sync result=failed operation=restore_snapshot hr=-2147012889 detail=failure_kind=client_error sync_failure=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response. request_id=20260225T162404950Z-restore_snapshot
+WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 failure_kind=client_error sync_failure=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts code=CLIENT_ERROR request_id=20260225T162400808Z-test_connection message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.⚠
+WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure reason=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts request_id=20260225T162401808Z-manual_resync⚠
 SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id✅
 ```
 

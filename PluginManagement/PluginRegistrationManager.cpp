@@ -212,6 +212,78 @@ namespace
         return !outBytes.empty();
     }
 
+    bool ProtectSecretForLocalUser(std::vector<BYTE> const& plainSecret, std::vector<BYTE>& outProtectedBlob)
+    {
+        outProtectedBlob.clear();
+        if (plainSecret.empty())
+        {
+            return false;
+        }
+
+        DATA_BLOB plainBlob = {
+            .cbData = static_cast<DWORD>(plainSecret.size()),
+            .pbData = const_cast<PBYTE>(plainSecret.data())
+        };
+        DATA_BLOB protectedBlob{};
+        if (!CryptProtectData(
+            &plainBlob,
+            L"tsupasswd_core_hmac_secret",
+            nullptr,
+            nullptr,
+            nullptr,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &protectedBlob))
+        {
+            return false;
+        }
+
+        auto cleanup = wil::scope_exit([&]() {
+            if (protectedBlob.pbData)
+            {
+                LocalFree(protectedBlob.pbData);
+            }
+        });
+
+        outProtectedBlob.assign(protectedBlob.pbData, protectedBlob.pbData + protectedBlob.cbData);
+        return !outProtectedBlob.empty();
+    }
+
+    bool UnprotectSecretForLocalUser(std::vector<BYTE> const& protectedBlobBytes, std::vector<BYTE>& outPlainSecret)
+    {
+        outPlainSecret.clear();
+        if (protectedBlobBytes.empty())
+        {
+            return false;
+        }
+
+        DATA_BLOB protectedBlob = {
+            .cbData = static_cast<DWORD>(protectedBlobBytes.size()),
+            .pbData = const_cast<PBYTE>(protectedBlobBytes.data())
+        };
+        DATA_BLOB plainBlob{};
+        if (!CryptUnprotectData(
+            &protectedBlob,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &plainBlob))
+        {
+            return false;
+        }
+
+        auto cleanup = wil::scope_exit([&]() {
+            if (plainBlob.pbData)
+            {
+                LocalFree(plainBlob.pbData);
+            }
+        });
+
+        outPlainSecret.assign(plainBlob.pbData, plainBlob.pbData + plainBlob.cbData);
+        return !outPlainSecret.empty();
+    }
+
     std::wstring ClassifySyncFailureKind(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
     {
         switch (status.StatusCode)
@@ -823,18 +895,21 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::SetHMACSecret(std::vector<BYTE> hmacSecret)
     {
-        // This function saves the random HMAC secret generated in plain text.
-        // In a real application, the HMAC secret is either retrieved from the server or may be user supplied
-        // or saved in encrypted form.
+        // Persist the secret only as a DPAPI-protected blob (never plain text).
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         if (hmacSecret.empty())
         {
             wil::unique_hkey hKey;
             RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
-            LONG deleteResult = RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
-            if (deleteResult != ERROR_SUCCESS && deleteResult != ERROR_FILE_NOT_FOUND)
+            LONG deleteProtected = RegDeleteValue(hKey.get(), c_pluginProtectedHMACSecretInput);
+            if (deleteProtected != ERROR_SUCCESS && deleteProtected != ERROR_FILE_NOT_FOUND)
             {
-                RETURN_HR(HRESULT_FROM_WIN32(deleteResult));
+                RETURN_HR(HRESULT_FROM_WIN32(deleteProtected));
+            }
+            LONG deleteLegacy = RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
+            if (deleteLegacy != ERROR_SUCCESS && deleteLegacy != ERROR_FILE_NOT_FOUND)
+            {
+                RETURN_HR(HRESULT_FROM_WIN32(deleteLegacy));
             }
             m_hmacSecret.clear();
             return S_OK;
@@ -842,12 +917,61 @@ namespace winrt::PasskeyManager::implementation {
 
         if (m_hmacSecret != hmacSecret)
         {
+            std::vector<BYTE> protectedSecret;
+            RETURN_HR_IF(E_FAIL, !ProtectSecretForLocalUser(hmacSecret, protectedSecret));
+
             wil::unique_hkey hKey;
             RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
-            RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(hmacSecret.data()), wil::safe_cast<DWORD>(hmacSecret.size())));
+            RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginProtectedHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(protectedSecret.data()), wil::safe_cast<DWORD>(protectedSecret.size())));
+            LONG deleteLegacy = RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
+            if (deleteLegacy != ERROR_SUCCESS && deleteLegacy != ERROR_FILE_NOT_FOUND)
+            {
+                RETURN_HR(HRESULT_FROM_WIN32(deleteLegacy));
+            }
             m_hmacSecret = hmacSecret;
         }
         return S_OK;
+    }
+
+    void PluginRegistrationManager::ReloadRegistryValues()
+    {
+        std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
+
+        auto protectedOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginProtectedHMACSecretInput, REG_BINARY);
+        if (protectedOpt.has_value() && !protectedOpt->empty())
+        {
+            std::vector<BYTE> plainSecret;
+            if (UnprotectSecretForLocalUser(protectedOpt.value(), plainSecret))
+            {
+                m_hmacSecret = std::move(plainSecret);
+            }
+            return;
+        }
+
+        auto legacyOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginHMACSecretInput, REG_BINARY);
+        if (!legacyOpt.has_value() || legacyOpt->empty())
+        {
+            return;
+        }
+
+        // Migration path from legacy plain-text value.
+        m_hmacSecret = legacyOpt.value();
+        std::vector<BYTE> protectedSecret;
+        if (!ProtectSecretForLocalUser(m_hmacSecret, protectedSecret))
+        {
+            return;
+        }
+
+        wil::unique_hkey hKey;
+        if (RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        {
+            return;
+        }
+        if (RegSetValueEx(hKey.get(), c_pluginProtectedHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(protectedSecret.data()), wil::safe_cast<DWORD>(protectedSecret.size())) != ERROR_SUCCESS)
+        {
+            return;
+        }
+        RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
     }
 
     HRESULT PluginRegistrationManager::WriteEncryptedVaultData(std::vector<BYTE> cipherText)

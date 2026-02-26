@@ -29,6 +29,7 @@ constexpr wchar_t c_windowsPluginVaultLockedRegKeyName[] = L"VaultLocked";
 constexpr wchar_t c_windowsPluginSilentOperationRegKeyName[] = L"SilentOperation";
 constexpr wchar_t c_windowsPluginDBUpdateInd[] = L"PluginDBUpdate";
 constexpr wchar_t c_pluginHMACSecretInput[] = L"HMACSecretInput";
+constexpr wchar_t c_pluginProtectedHMACSecretInput[] = L"HMACSecretInputProtected";
 constexpr wchar_t c_pluginEncryptedVaultData[] = L"EncryptedVaultData";
 constexpr wchar_t c_windowsPluginVaultUnlockMethodRegKeyName[] = L"VaultUnlockMethod";
 constexpr wchar_t c_windowsPluginLastMakeCredentialStatusRegKeyName[] = L"LastMakeCredentialStatus";
@@ -73,13 +74,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT ReadEncryptedVaultData(std::vector<BYTE>& cipherText);
         HRESULT ManualResyncSelfHostedVault(std::wstring const& requestId = L"");
         HRESULT RestoreSelfHostedVaultSnapshot(std::wstring const& requestId = L"");
-
-        void ReloadRegistryValues()
-        {
-            std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
-            auto opt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginHMACSecretInput, REG_BINARY);
-            m_hmacSecret = opt.value_or(m_hmacSecret);
-        }
+        void ReloadRegistryValues();
 
     private:
         AUTHENTICATOR_STATE m_pluginState;

@@ -970,7 +970,7 @@ namespace winrt::PasskeyManager::implementation {
                 std::vector<BYTE> hmacSecretInput(
                     pCredentialAttestation.get()->pHmacSecret->pbFirst,
                     pCredentialAttestation.get()->pHmacSecret->pbFirst + pCredentialAttestation.get()->pHmacSecret->cbFirst);
-                RETURN_IF_FAILED(SetHMACSecret(hmacSecretInput));
+                RETURN_IF_FAILED(SetHMACSecret(hmacSecretInput, localRequestId));
                 UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=vault_recovery step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
                 entropy.cbData = pCredentialAttestation.get()->pHmacSecret->cbFirst;
                 entropy.pbData = pCredentialAttestation.get()->pHmacSecret->pbFirst;
@@ -979,7 +979,7 @@ namespace winrt::PasskeyManager::implementation {
             else
             {
                 // PRF未対応時は、認証成功そのものをVault解除のゲートとして扱うフォールバックに切替える。
-                RETURN_IF_FAILED(SetHMACSecret({}));
+                RETURN_IF_FAILED(SetHMACSecret({}, localRequestId));
                 UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=observed operation=vault_recovery step=prf_hmac_secret_missing fallback=non_prf request_id=" + localRequestId + L"ℹ" });
             }
 
@@ -1037,9 +1037,15 @@ namespace winrt::PasskeyManager::implementation {
         return hr;
     }
 
-    HRESULT PluginRegistrationManager::SetHMACSecret(std::vector<BYTE> hmacSecret)
+    HRESULT PluginRegistrationManager::SetHMACSecret(std::vector<BYTE> hmacSecret, std::wstring const& requestId)
     {
         // Persist the secret only as a DPAPI-protected blob (never plain text).
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(L"key_management");
+        }
+
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         if (hmacSecret.empty())
         {
@@ -1056,13 +1062,18 @@ namespace winrt::PasskeyManager::implementation {
                 RETURN_HR(HRESULT_FROM_WIN32(deleteLegacy));
             }
             m_hmacSecret.clear();
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: audit result=success operation=key_management event=prf_secret_cleared storage=registry request_id=" + localRequestId + L"ℹ" });
             return S_OK;
         }
 
         if (m_hmacSecret != hmacSecret)
         {
             std::vector<BYTE> protectedSecret;
-            RETURN_HR_IF(E_FAIL, !ProtectSecretForLocalUser(hmacSecret, protectedSecret));
+            if (!ProtectSecretForLocalUser(hmacSecret, protectedSecret))
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=key_management event=prf_secret_protect_failed reason=dpapi_protect_failed request_id=" + localRequestId + L"⚠" });
+                RETURN_HR(E_FAIL);
+            }
 
             wil::unique_hkey hKey;
             RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
@@ -1073,12 +1084,19 @@ namespace winrt::PasskeyManager::implementation {
                 RETURN_HR(HRESULT_FROM_WIN32(deleteLegacy));
             }
             m_hmacSecret = hmacSecret;
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: audit result=success operation=key_management event=prf_secret_rotated storage=dpapi_protected request_id=" + localRequestId + L"✅" });
         }
         return S_OK;
     }
 
-    void PluginRegistrationManager::ReloadRegistryValues()
+    void PluginRegistrationManager::ReloadRegistryValues(std::wstring const& requestId)
     {
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(L"key_registry_reload");
+        }
+
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
 
         auto protectedOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginProtectedHMACSecretInput, REG_BINARY);
@@ -1088,6 +1106,10 @@ namespace winrt::PasskeyManager::implementation {
             if (UnprotectSecretForLocalUser(protectedOpt.value(), plainSecret))
             {
                 m_hmacSecret = std::move(plainSecret);
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=key_management event=prf_secret_unprotect_failed source=dpapi_protected request_id=" + localRequestId + L"⚠" });
             }
             return;
         }
@@ -1103,19 +1125,23 @@ namespace winrt::PasskeyManager::implementation {
         std::vector<BYTE> protectedSecret;
         if (!ProtectSecretForLocalUser(m_hmacSecret, protectedSecret))
         {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=key_management event=legacy_prf_secret_migration_failed reason=dpapi_protect_failed request_id=" + localRequestId + L"⚠" });
             return;
         }
 
         wil::unique_hkey hKey;
         if (RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
         {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=key_management event=legacy_prf_secret_migration_failed reason=registry_open_failed request_id=" + localRequestId + L"⚠" });
             return;
         }
         if (RegSetValueEx(hKey.get(), c_pluginProtectedHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(protectedSecret.data()), wil::safe_cast<DWORD>(protectedSecret.size())) != ERROR_SUCCESS)
         {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=key_management event=legacy_prf_secret_migration_failed reason=registry_write_failed request_id=" + localRequestId + L"⚠" });
             return;
         }
         RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: audit result=success operation=key_management event=legacy_prf_secret_migrated source=registry_plaintext target=dpapi_protected request_id=" + localRequestId + L"✅" });
     }
 
     HRESULT PluginRegistrationManager::WriteEncryptedVaultData(std::vector<BYTE> cipherText)

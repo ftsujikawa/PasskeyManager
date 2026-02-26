@@ -64,7 +64,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         HRESULT CreateVaultPasskey(HWND hwnd, std::wstring const& requestId = L"");
-        HRESULT SetHMACSecret(std::vector<BYTE> hmacSecret);
+        HRESULT SetHMACSecret(std::vector<BYTE> hmacSecret, std::wstring const& requestId = L"");
         std::vector<BYTE> GetHMACSecret() const
         {
             return m_hmacSecret;
@@ -74,7 +74,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT ReadEncryptedVaultData(std::vector<BYTE>& cipherText);
         HRESULT ManualResyncSelfHostedVault(std::wstring const& requestId = L"");
         HRESULT RestoreSelfHostedVaultSnapshot(std::wstring const& requestId = L"");
-        void ReloadRegistryValues();
+        void ReloadRegistryValues(std::wstring const& requestId = L"");
 
     private:
         AUTHENTICATOR_STATE m_pluginState;

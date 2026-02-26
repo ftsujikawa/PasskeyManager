@@ -1,5 +1,17 @@
 # PR Template Snippets
 
+## 使い分け
+
+- **超短文版**: 1〜2行で速報的にまとめたいとき
+- **短縮版**: 通常のPRで簡潔に説明したいとき
+- **フル版**: 変更背景・検証・影響範囲まで丁寧に残したいとき
+
+## 目次
+
+1. [name_not_resolved host 必須化（超短文版）](#name_not_resolved-host-必須化超短文版)
+2. [name_not_resolved host 必須化（短縮版）](#name_not_resolved-host-必須化短縮版)
+3. [name_not_resolved host 必須化（フル版）](#name_not_resolved-host-必須化フル版)
+
 ## name_not_resolved host 必須化（超短文版）
 
 ```md

@@ -250,6 +250,28 @@ sudo systemctl reload nginx
 
 `server_name example.com;` は必ず実ドメインへ変更する。
 
+このテンプレートは以下を前提にしている:
+
+- `80/tcp` で ACME challenge を受ける
+- 通常アクセスは `https://` へ 301 リダイレクト
+- `443/tcp` で TLS 終端して `127.0.0.1:8088` にプロキシ
+
+証明書適用の例（certbot）:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d example.com
+sudo systemctl reload nginx
+```
+
+更新確認:
+
+```bash
+curl -I http://example.com/healthz
+curl -sS https://example.com/healthz
+```
+
 ### 3) 監査ログ確認（request_id 追跡）
 
 監査ログは `audit.vault_op` プレフィックスで出力され、`request_id` と `path` を含みます。

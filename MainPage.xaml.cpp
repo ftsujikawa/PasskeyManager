@@ -645,6 +645,7 @@ namespace winrt::PasskeyManager::implementation
                 else
                 {
                     self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure request_id=" + requestId + L"⚠" });
+                    self->LogWarning(winrt::hstring{ L"sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure request_id=" + requestId });
                 }
             }
         }

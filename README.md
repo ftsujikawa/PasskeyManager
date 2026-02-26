@@ -2,6 +2,10 @@
 
 PasskeyManager は、Windows 向けのパスキー管理/検証用アプリケーションです。
 
+## Documentation
+
+- `./docs/README.md`（運用ドキュメントの入口）
+
 ## Security Design
 
 - `./docs/tsupasswd_core_threat_model.md`（A-01: STRIDE 脅威モデル初版）

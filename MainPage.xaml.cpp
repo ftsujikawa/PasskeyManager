@@ -1170,7 +1170,8 @@ namespace winrt::PasskeyManager::implementation
             if (!TryGetSyncBaseUrlHost(baseUrl, host) || !IsHostNameResolvable(host))
             {
                 syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=name_not_resolved⚠");
-                LogWarning(L"sync result=rejected operation=save_settings reason=name_not_resolved recovery=check_sync_base_url_dns_or_hosts");
+                std::wstring hostValue = host.empty() ? L"unparsed" : host;
+                LogWarning(winrt::hstring{ L"sync result=rejected operation=save_settings reason=name_not_resolved host=" + hostValue + L" recovery=check_sync_base_url_dns_or_hosts" });
                 co_return;
             }
         }
@@ -1210,6 +1211,8 @@ namespace winrt::PasskeyManager::implementation
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
         std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
+        std::wstring parsedHost;
+        std::wstring parsedHostValue = TryGetSyncBaseUrlHost(baseUrl, parsedHost) ? parsedHost : L"unparsed";
 
         syncBaseUrlTextBox().Text(baseUrl);
 
@@ -1273,7 +1276,7 @@ namespace winrt::PasskeyManager::implementation
         detail += L" failure_kind=" + ClassifySyncFailureKind(hr, status);
         if (IsNameResolutionFailure(hr))
         {
-            detail += L" sync_failure=name_not_resolved recovery=check_sync_base_url_dns_or_hosts";
+            detail += L" sync_failure=name_not_resolved host=" + parsedHostValue + L" recovery=check_sync_base_url_dns_or_hosts";
         }
         if (status.StatusCode > 0)
         {

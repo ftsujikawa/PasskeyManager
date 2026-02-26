@@ -618,6 +618,9 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         std::wstring requestId = BuildRequestId(L"restore_snapshot");
+        std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
+        std::wstring parsedHost;
+        std::wstring parsedHostValue = TryGetSyncBaseUrlHost(syncBaseUrl, parsedHost) ? parsedHost : L"unparsed";
         restoreSyncSnapshotButton().IsEnabled(false);
         LogInProgress(winrt::hstring{ L"summary state=running operation=restore_snapshot request_id=" + requestId });
 
@@ -634,7 +637,15 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                self->syncStatusTextBlock().Text(L"WARNING: sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure⚠");
+                if (IsNameResolutionFailure(hr))
+                {
+                    self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure reason=name_not_resolved host=" + parsedHostValue + L" request_id=" + requestId + L"⚠" });
+                    self->LogWarning(winrt::hstring{ L"sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure reason=name_not_resolved host=" + parsedHostValue + L" recovery=check_sync_base_url_dns_or_hosts request_id=" + requestId });
+                }
+                else
+                {
+                    self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=restore_snapshot outcome=ended_with_warning_or_failure request_id=" + requestId + L"⚠" });
+                }
             }
         }
         co_return;
@@ -1308,6 +1319,9 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         std::wstring requestId = BuildRequestId(L"manual_resync");
+        std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
+        std::wstring parsedHost;
+        std::wstring parsedHostValue = TryGetSyncBaseUrlHost(syncBaseUrl, parsedHost) ? parsedHost : L"unparsed";
         manualSyncButton().IsEnabled(false);
         LogInProgress(winrt::hstring{ L"summary state=running operation=manual_resync request_id=" + requestId });
 
@@ -1320,8 +1334,16 @@ namespace winrt::PasskeyManager::implementation
             self->manualSyncButton().IsEnabled(true);
             if (FAILED(hr))
             {
-                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId + L"⚠" });
-                self->LogWarning(winrt::hstring{ L"sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId });
+                if (IsNameResolutionFailure(hr))
+                {
+                    self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure reason=name_not_resolved host=" + parsedHostValue + L" request_id=" + requestId + L"⚠" });
+                    self->LogWarning(winrt::hstring{ L"sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure reason=name_not_resolved host=" + parsedHostValue + L" recovery=check_sync_base_url_dns_or_hosts request_id=" + requestId });
+                }
+                else
+                {
+                    self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId + L"⚠" });
+                    self->LogWarning(winrt::hstring{ L"sync result=warning operation=manual_resync outcome=ended_with_warning_or_failure request_id=" + requestId });
+                }
             }
         }
         co_return;

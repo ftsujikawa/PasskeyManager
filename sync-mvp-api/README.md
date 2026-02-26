@@ -389,6 +389,27 @@ sudo KEEP_COUNT=10 ./sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh
 sudo KEEP_COUNT=10 DRY_RUN=1 ./sync-mvp-api/scripts/prune_sync_mvp_api_backups.sh
 ```
 
+### 9) 運用状態レポート（初動確認用）
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/report_sync_mvp_api_status.sh`
+
+実行例:
+
+```bash
+chmod +x sync-mvp-api/scripts/report_sync_mvp_api_status.sh
+sudo ./sync-mvp-api/scripts/report_sync_mvp_api_status.sh
+```
+
+主な出力:
+
+- `systemctl status`（直近ログ含む）
+- `healthz` 応答
+- `.env` の存在/権限/必須キー有無
+- 最新バックアップ一覧（最大5件）
+- `audit.vault_op` の直近ログ
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

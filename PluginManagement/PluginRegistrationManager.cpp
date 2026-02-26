@@ -108,6 +108,24 @@ namespace
         return buffer;
     }
 
+    std::wstring BuildRequestId(std::wstring const& operation)
+    {
+        SYSTEMTIME st{};
+        GetSystemTime(&st);
+        wchar_t timestamp[40]{};
+        swprintf_s(
+            timestamp,
+            L"%04u%02u%02uT%02u%02u%02u%03uZ",
+            st.wYear,
+            st.wMonth,
+            st.wDay,
+            st.wHour,
+            st.wMinute,
+            st.wSecond,
+            st.wMilliseconds);
+        return std::wstring{ timestamp } + L"-" + operation;
+    }
+
     std::string Base64UrlEncode(const uint8_t* data, DWORD dataSize)
     {
         DWORD requiredSize = 0;
@@ -298,7 +316,7 @@ namespace
         std::wstring const& syncUserId,
         std::function<void(winrt::hstring const&)> const& statusSink)
     {
-        std::wstring localRequestId = GetNowIsoLikeTimestamp() + L"-put_vault";
+        std::wstring localRequestId = BuildRequestId(L"put_vault");
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
@@ -618,11 +636,10 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::CreateVaultPasskey(HWND hWnd, std::wstring const& requestId)
     {
-        HRESULT hr = S_OK;
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = GetNowIsoLikeTimestamp() + L"-vault_recovery";
+            localRequestId = BuildRequestId(L"vault_recovery");
         }
 
         // populate the input structures
@@ -886,7 +903,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = GetNowIsoLikeTimestamp() + L"-manual_resync";
+            localRequestId = BuildRequestId(L"manual_resync");
         }
 
         std::wstring syncUserId = GetUserEnvironmentRegistryValue(kSyncUserIdEnv);
@@ -919,7 +936,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = GetNowIsoLikeTimestamp() + L"-restore_snapshot";
+            localRequestId = BuildRequestId(L"restore_snapshot");
         }
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
@@ -979,7 +996,11 @@ namespace winrt::PasskeyManager::implementation {
         std::vector<BYTE> cipherBytes;
         if (!Base64UrlDecode(record.Blob.CiphertextBase64, cipherBytes))
         {
-            UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=restore_snapshot reason=invalid_ciphertext hr=-2147024883⚠");
+            UpdatePasskeyOperationStatusText(
+                winrt::hstring{
+                    L"WARNING: sync result=failed operation=restore_snapshot reason=invalid_ciphertext hr=-2147024883 failure_kind=client_error request_id=" +
+                    ResolveRequestId(localRequestId, status) +
+                    L"⚠" });
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 

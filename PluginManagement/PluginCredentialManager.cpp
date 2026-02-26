@@ -15,6 +15,24 @@ namespace winrt::PasskeyManager::implementation
 {
     namespace
     {
+        std::wstring BuildRequestId(std::wstring const& operation)
+        {
+            SYSTEMTIME st{};
+            GetSystemTime(&st);
+            wchar_t timestamp[40]{};
+            swprintf_s(
+                timestamp,
+                L"%04u%02u%02uT%02u%02u%02u%03uZ",
+                st.wYear,
+                st.wMonth,
+                st.wDay,
+                st.wHour,
+                st.wMinute,
+                st.wSecond,
+                st.wMilliseconds);
+            return std::wstring{ timestamp } + L"-" + operation;
+        }
+
         std::wstring EnsureOperationToken(std::wstring message)
         {
             if (message.find(L" operation=") == std::wstring::npos)
@@ -782,6 +800,16 @@ namespace winrt::PasskeyManager::implementation
     // be stored in the cloud.
     HRESULT PluginCredentialManager::UnlockCredentialVaultWithPasskey(HWND hwnd) try
     {
+        std::wstring requestId = BuildRequestId(L"vault_unlock");
+        auto logWarningWithRequestId = [&](std::wstring message)
+        {
+            if (message.find(L" request_id=") == std::wstring::npos)
+            {
+                message += L" request_id=" + requestId;
+            }
+            LogVaultUnlockWarning(message);
+        };
+
         WEBAUTHN_CLIENT_DATA clientData = {};
         clientData.dwVersion = WEBAUTHN_CLIENT_DATA_CURRENT_VERSION;
         clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
@@ -791,7 +819,7 @@ namespace winrt::PasskeyManager::implementation
         clientData.pbClientDataJSON = reinterpret_cast<PBYTE>(clientDataStr.data());
         clientData.cbClientDataJSON = static_cast<DWORD>(clientDataStr.size());
 
-        PluginRegistrationManager::getInstance().ReloadRegistryValues();
+        PluginRegistrationManager::getInstance().ReloadRegistryValues(requestId);
         std::vector<BYTE> hmacSecretValue = PluginRegistrationManager::getInstance().GetHMACSecret();
         bool usePrf = !hmacSecretValue.empty();
 
@@ -819,7 +847,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (usePrf && pAssertion.get()->pHmacSecret == nullptr)
         {
-            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
+            logWarningWithRequestId(L"sync result=failed operation=vault_unlock reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
             return NTE_NOT_SUPPORTED; // The chosen authenticator does not support PRF.
         }
 
@@ -836,7 +864,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText);
         if (FAILED(hrReadVaultData))
         {
-            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=encrypted_vault_data_invalid_or_missing");
+            logWarningWithRequestId(L"sync result=failed operation=vault_unlock reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");
             return hrReadVaultData;
         }
         DATA_BLOB cipherTextBlob = {
@@ -856,7 +884,7 @@ namespace winrt::PasskeyManager::implementation
             &decryptedData))
         {
             HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
-            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=decrypt_failed recovery=run_vault_recovery_and_recreate_passkey");
+            logWarningWithRequestId(L"sync result=failed operation=vault_unlock reason=decrypt_failed recovery=run_vault_recovery_and_recreate_passkey");
             return hr;
         }
 
@@ -870,7 +898,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (decryptedData.cbData != wcslen(c_dummySecretVault) * sizeof(wchar_t) || memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) != 0)
         {
-            LogVaultUnlockWarning(L"sync result=failed operation=vault_unlock reason=vault_integrity_check_failed recovery=recreate_vault_passkey_then_retry");
+            logWarningWithRequestId(L"sync result=failed operation=vault_unlock reason=vault_integrity_check_failed recovery=recreate_vault_passkey_then_retry");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 

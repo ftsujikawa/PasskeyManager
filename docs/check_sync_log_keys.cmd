@@ -50,10 +50,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($line in $syncStartLines) { if ($line -notmatch '(^|\s)request_id=') { $startRequestIdMissing += $line } }" ^
   "if ($startRequestIdMissing.Count -eq 0) { Write-Host 'PASS: request_id_with_sync_start' }" ^
   "else { Write-Host ('FAIL: request_id_with_sync_start count=' + $startRequestIdMissing.Count); $failed += 'request_id_with_sync_start' }" ^
+  "$startRequestIdInvalid = @();" ^
+  "foreach ($line in $syncStartLines) { if ($line -match '(^|\s)request_id=([^\s]+)') { $value = $matches[2].TrimEnd('.', ','); if ($value -notmatch '^[0-9]{8}T[0-9]{9}Z-(put_vault|restore_snapshot|manual_resync)$') { $startRequestIdInvalid += $line } } }" ^
+  "if ($startRequestIdInvalid.Count -eq 0) { Write-Host 'PASS: request_id_format_with_sync_start' }" ^
+  "else { Write-Host ('FAIL: request_id_format_with_sync_start count=' + $startRequestIdInvalid.Count); $failed += 'request_id_format_with_sync_start' }" ^
   "$failureKindMissing = @();" ^
   "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)failure_kind=') { $failureKindMissing += $line } }" ^
   "if ($failureKindMissing.Count -eq 0) { Write-Host 'PASS: failure_kind_with_sync_failure' }" ^
   "else { Write-Host ('FAIL: failure_kind_with_sync_failure count=' + $failureKindMissing.Count); $failed += 'failure_kind_with_sync_failure' }" ^
+  "$allowedFailureKinds = @('authorization','not_found','version_conflict','rate_limited','server_error','http_error','client_error','transport_or_unknown','none');" ^
+  "$failureKindInvalid = @();" ^
+  "foreach ($line in $syncFailureLines) { if ($line -match '(^|\s)failure_kind=([^\s]+)') { $value = $matches[2].TrimEnd('.', ','); if ($allowedFailureKinds -notcontains $value) { $failureKindInvalid += $line } } }" ^
+  "if ($failureKindInvalid.Count -eq 0) { Write-Host 'PASS: failure_kind_allowed_values' }" ^
+  "else { Write-Host ('FAIL: failure_kind_allowed_values count=' + $failureKindInvalid.Count); $failed += 'failure_kind_allowed_values' }" ^
   "if ($failed.Count -gt 0) { Write-Host ('FAIL: check_failures=' + ($failed -join ',')); exit 1 }" ^
   "Write-Host 'OK: abnormal sync log checks passed.'; exit 0"
 

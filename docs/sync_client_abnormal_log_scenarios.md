@@ -203,7 +203,7 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
 - サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `authorization:` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
 
-現在の checker で強制しているルール（9個）:
+現在の checker で強制しているルール（11個）:
 
 1. `409_recovery`
 2. `read_encrypted_vault_data`
@@ -213,7 +213,9 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 6. `message_code_with_message`
 7. `request_id_with_sync_failure`
 8. `request_id_with_sync_start`
-9. `failure_kind_with_sync_failure`
+9. `request_id_format_with_sync_start`
+10. `failure_kind_with_sync_failure`
+11. `failure_kind_allowed_values`
 
 実行方法:
 

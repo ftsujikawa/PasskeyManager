@@ -60,7 +60,7 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 - 同行で `failure_kind=` が付与されていること
 - キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
 
-現在の checker で強制しているルール（9個）:
+現在の checker で強制しているルール（11個）:
 
 1. `409_recovery`
 2. `read_encrypted_vault_data`
@@ -70,7 +70,9 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 6. `message_code_with_message`
 7. `request_id_with_sync_failure`
 8. `request_id_with_sync_start`
-9. `failure_kind_with_sync_failure`
+9. `request_id_format_with_sync_start`
+10. `failure_kind_with_sync_failure`
+11. `failure_kind_allowed_values`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 

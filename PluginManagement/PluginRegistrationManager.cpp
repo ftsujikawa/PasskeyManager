@@ -14,10 +14,113 @@ namespace
 {
     constexpr size_t kMinVaultCipherBlobBytes = 16;
     constexpr size_t kMaxVaultCipherBlobBytes = 64 * 1024;
+    constexpr BYTE kVaultBlobMagic[4] = { 'T', 'V', 'D', '1' };
+    constexpr BYTE kVaultBlobVersion = 1;
+    constexpr size_t kVaultBlobHeaderBytes = 13; // magic(4) + version(1) + cipher_len(4) + checksum(4)
     constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
+
+    enum class VaultBlobParseResult
+    {
+        NotFramed,
+        Ok,
+        Invalid
+    };
+
+    void AppendUint32LE(std::vector<BYTE>& out, uint32_t value)
+    {
+        out.push_back(static_cast<BYTE>(value & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 8) & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 16) & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 24) & 0xFF));
+    }
+
+    bool ReadUint32LE(std::vector<BYTE> const& bytes, size_t offset, uint32_t& outValue)
+    {
+        if (offset + sizeof(uint32_t) > bytes.size())
+        {
+            return false;
+        }
+
+        outValue =
+            static_cast<uint32_t>(bytes[offset]) |
+            (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
+            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
+        return true;
+    }
+
+    uint32_t ComputeFnv1a32(std::vector<BYTE> const& data)
+    {
+        uint32_t hash = 2166136261u;
+        for (BYTE b : data)
+        {
+            hash ^= static_cast<uint32_t>(b);
+            hash *= 16777619u;
+        }
+        return hash;
+    }
+
+    bool BuildVaultBlobWithIntegrity(std::vector<BYTE> const& cipherText, std::vector<BYTE>& outBlob)
+    {
+        outBlob.clear();
+        if (cipherText.empty())
+        {
+            return false;
+        }
+
+        outBlob.reserve(kVaultBlobHeaderBytes + cipherText.size());
+        outBlob.insert(outBlob.end(), std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic));
+        outBlob.push_back(kVaultBlobVersion);
+        AppendUint32LE(outBlob, static_cast<uint32_t>(cipherText.size()));
+        AppendUint32LE(outBlob, ComputeFnv1a32(cipherText));
+        outBlob.insert(outBlob.end(), cipherText.begin(), cipherText.end());
+        return true;
+    }
+
+    VaultBlobParseResult TryExtractVaultCipherWithIntegrity(std::vector<BYTE> const& storedBlob, std::vector<BYTE>& outCipherText)
+    {
+        outCipherText.clear();
+
+        if (storedBlob.size() < kVaultBlobHeaderBytes)
+        {
+            return VaultBlobParseResult::NotFramed;
+        }
+
+        if (!std::equal(std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic), storedBlob.begin()))
+        {
+            return VaultBlobParseResult::NotFramed;
+        }
+
+        if (storedBlob[4] != kVaultBlobVersion)
+        {
+            return VaultBlobParseResult::Invalid;
+        }
+
+        uint32_t cipherLength = 0;
+        uint32_t expectedChecksum = 0;
+        if (!ReadUint32LE(storedBlob, 5, cipherLength) || !ReadUint32LE(storedBlob, 9, expectedChecksum))
+        {
+            return VaultBlobParseResult::Invalid;
+        }
+
+        size_t expectedTotalSize = kVaultBlobHeaderBytes + static_cast<size_t>(cipherLength);
+        if (expectedTotalSize != storedBlob.size())
+        {
+            return VaultBlobParseResult::Invalid;
+        }
+
+        outCipherText.assign(storedBlob.begin() + kVaultBlobHeaderBytes, storedBlob.end());
+        if (ComputeFnv1a32(outCipherText) != expectedChecksum)
+        {
+            outCipherText.clear();
+            return VaultBlobParseResult::Invalid;
+        }
+
+        return VaultBlobParseResult::Ok;
+    }
 
     std::wstring GetProcessEnvironmentVariableValue(wchar_t const* name)
     {
@@ -320,6 +423,11 @@ namespace
         return L"none";
     }
 
+    bool IsNameResolutionFailure(HRESULT hr)
+    {
+        return HRESULT_CODE(hr) == 12007;
+    }
+
     std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
     {
         std::wstring detail = L"failure_kind=" + ClassifySyncFailureKind(hr, status) + L" ";
@@ -342,7 +450,14 @@ namespace
             detail += L"sync_failure=rate_limited recovery=wait_and_retry";
             break;
         default:
-            detail += L"sync_failure=unexpected_or_server_error local_save=kept";
+            if (IsNameResolutionFailure(hr))
+            {
+                detail += L"sync_failure=name_not_resolved recovery=check_sync_base_url_dns_or_hosts local_save=kept";
+            }
+            else
+            {
+                detail += L"sync_failure=unexpected_or_server_error local_save=kept";
+            }
             if (status.StatusCode > 0)
             {
                 detail += L" status=" + std::to_wstring(status.StatusCode);
@@ -976,10 +1091,16 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::WriteEncryptedVaultData(std::vector<BYTE> cipherText)
     {
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), cipherText.empty() || cipherText.size() < kMinVaultCipherBlobBytes);
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE), cipherText.size() > kMaxVaultCipherBlobBytes);
+
+        std::vector<BYTE> framedBlob;
+        RETURN_HR_IF(E_FAIL, !BuildVaultBlobWithIntegrity(cipherText, framedBlob));
+
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         wil::unique_hkey hKey;
         RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
-        RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginEncryptedVaultData, 0, REG_BINARY, reinterpret_cast<PBYTE>(cipherText.data()), wil::safe_cast<DWORD>(cipherText.size())));
+        RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginEncryptedVaultData, 0, REG_BINARY, reinterpret_cast<PBYTE>(framedBlob.data()), wil::safe_cast<DWORD>(framedBlob.size())));
         return S_OK;
     }
 
@@ -1003,23 +1124,36 @@ namespace winrt::PasskeyManager::implementation {
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
-        if (opt->size() < kMinVaultCipherBlobBytes)
+        std::vector<BYTE> vaultCipher;
+        VaultBlobParseResult parseResult = TryExtractVaultCipherWithIntegrity(opt.value(), vaultCipher);
+        if (parseResult == VaultBlobParseResult::Invalid)
+        {
+            UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_integrity_check_failed recovery=recreate_vault_passkey_then_retry⚠");
+            OutputDebugStringW(L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_integrity_check_failed\n");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+        if (parseResult == VaultBlobParseResult::NotFramed)
+        {
+            vaultCipher = opt.value();
+        }
+
+        if (vaultCipher.size() < kMinVaultCipherBlobBytes)
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_small_or_corrupt recovery=recreate_vault_passkey_then_retry⚠");
-            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_small_or_corrupt size=" + std::to_wstring(opt->size()) + L"\n";
+            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_small_or_corrupt size=" + std::to_wstring(vaultCipher.size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
         }
 
-        if (opt->size() > kMaxVaultCipherBlobBytes)
+        if (vaultCipher.size() > kMaxVaultCipherBlobBytes)
         {
             UpdatePasskeyOperationStatusText(L"WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_large_or_unexpected recovery=recreate_vault_passkey_then_retry⚠");
-            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_large_or_unexpected size=" + std::to_wstring(opt->size()) + L"\n";
+            std::wstring msg = L"DEBUG: sync result=failed operation=read_encrypted_vault_data reason=vault_data_too_large_or_unexpected size=" + std::to_wstring(vaultCipher.size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
         }
 
-        cipherText = opt.value();
+        cipherText = std::move(vaultCipher);
         return S_OK;
     }
 

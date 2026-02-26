@@ -353,6 +353,18 @@ namespace {
         return L"none";
     }
 
+    bool IsVaultRecoveryInterrupted(HRESULT hr)
+    {
+        return hr == NTE_USER_CANCELLED
+            || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED)
+            || hr == HRESULT_FROM_WIN32(RPC_X_NULL_REF_POINTER);
+    }
+
+    bool IsNameResolutionFailure(HRESULT hr)
+    {
+        return HRESULT_CODE(hr) == 12007;
+    }
+
     std::wstring ExtractLogTokenValue(std::wstring const& line, std::wstring const& token)
     {
         auto start = line.find(token);
@@ -631,11 +643,11 @@ namespace winrt::PasskeyManager::implementation
             hrCreatePasskey = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd, requestId);
             co_await wil::resume_foreground(DispatcherQueue());
         }
-        if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+        if (IsVaultRecoveryInterrupted(hrCreatePasskey))
         {
             if (auto self{ weakThis.get() })
             {
-                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
             }
         }
         if (auto self{ weakThis.get() })
@@ -703,11 +715,11 @@ namespace winrt::PasskeyManager::implementation
             }
 
             self->SetVaultLockSwitchState(false);
-            if (hrCreatePasskey == NTE_USER_CANCELLED || hrCreatePasskey == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+            if (IsVaultRecoveryInterrupted(hrCreatePasskey))
             {
-                self->vaultRecoveryHintText().Text(L"Passkey registration was cancelled (0x800704C7). In storage selection choose tsupasswd_core and complete the prompt.");
+                self->vaultRecoveryHintText().Text(L"Passkey registration was cancelled or interrupted. In storage selection choose tsupasswd_core and complete the prompt.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
             }
             else
             {
@@ -1145,6 +1157,10 @@ namespace winrt::PasskeyManager::implementation
             L"sync result=failed operation=test_connection attempts=1 hr=" +
             std::to_wstring(static_cast<int>(hr));
         detail += L" failure_kind=" + ClassifySyncFailureKind(hr, status);
+        if (IsNameResolutionFailure(hr))
+        {
+            detail += L" sync_failure=name_not_resolved recovery=check_sync_base_url_dns_or_hosts";
+        }
         if (status.StatusCode > 0)
         {
             detail += L" status=" + std::to_wstring(status.StatusCode);

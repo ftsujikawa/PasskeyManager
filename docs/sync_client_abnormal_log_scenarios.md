@@ -230,6 +230,8 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 - `both` : PASS/FAIL サンプルを両方実行
 - `pass` : PASS サンプルのみ実行
 - `fail` : FAIL サンプルのみ実行
+- `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
+- `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
 
 GitHub CLI から実行する場合:
 
@@ -253,6 +255,12 @@ gh workflow run sync-log-keys-check.yml -f scenario=pass
 
 # FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail
+
+# request_id フォーマット違反サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_request_id_format
+
+# failure_kind 許容値違反サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_failure_kind_value
 ```
 
 単体実行の確認済み結果:

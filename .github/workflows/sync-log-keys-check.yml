@@ -12,6 +12,8 @@ on:
           - both
           - pass
           - fail
+          - fail_request_id_format
+          - fail_failure_kind_value
   push:
     paths:
       - 'README.md'
@@ -63,7 +65,7 @@ jobs:
 
       - name: Validate FAIL request_id format sample file exists
         id: fail_request_id_format_sample_file
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_request_id_format' }}
         shell: cmd
         run: |
           if exist docs\samples\abnormal_sync_logs_fail_request_id_format.txt exit /b 0
@@ -78,7 +80,7 @@ jobs:
 
       - name: Validate FAIL failure_kind value sample file exists
         id: fail_failure_kind_value_sample_file
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_failure_kind_value' }}
         shell: cmd
         run: |
           if exist docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt exit /b 0
@@ -384,7 +386,7 @@ jobs:
 
       - name: FAIL request_id format sample should fail
         id: fail_request_id_format_sample
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_request_id_format' }}
         shell: cmd
         run: |
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail_request_id_format.txt > fail_request_id_format_output.txt 2>&1
@@ -423,7 +425,7 @@ jobs:
 
       - name: FAIL failure_kind value sample should fail
         id: fail_failure_kind_value_sample
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_failure_kind_value' }}
         shell: cmd
         run: |
           call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt > fail_failure_kind_value_output.txt 2>&1
@@ -475,6 +477,12 @@ jobs:
           }
           elseif ($scenario -eq 'pass') {
             $files = @('docs/samples/abnormal_sync_logs_pass.txt')
+          }
+          elseif ($scenario -eq 'fail_request_id_format') {
+            $files = @('docs/samples/abnormal_sync_logs_fail_request_id_format.txt')
+          }
+          elseif ($scenario -eq 'fail_failure_kind_value') {
+            $files = @('docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt')
           }
           else {
             $files = @(

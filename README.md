@@ -101,7 +101,7 @@ gh workflow run sync-log-keys-check.yml -f scenario=both
 gh run watch
 ```
 
-`scenario` は `both` / `pass` / `fail` を指定できます。
+`scenario` は `both` / `pass` / `fail` / `fail_request_id_format` / `fail_failure_kind_value` を指定できます。
 
 単体実行の例:
 
@@ -111,6 +111,12 @@ gh workflow run sync-log-keys-check.yml -f scenario=pass
 
 # FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail
+
+# request_id フォーマット違反サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_request_id_format
+
+# failure_kind 許容値違反サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_failure_kind_value
 ```
 
 単体実行の確認済み結果:

@@ -327,6 +327,12 @@ namespace {
         }
     }
 
+    std::wstring ResolveSyncHostValueOrUnparsed(std::wstring const& baseUrl)
+    {
+        std::wstring parsedHost;
+        return TryGetSyncBaseUrlHost(baseUrl, parsedHost) ? parsedHost : L"unparsed";
+    }
+
     bool IsHostNameResolvable(std::wstring const& host)
     {
         if (host.empty())
@@ -619,8 +625,7 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         std::wstring requestId = BuildRequestId(L"restore_snapshot");
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
-        std::wstring parsedHost;
-        std::wstring parsedHostValue = TryGetSyncBaseUrlHost(syncBaseUrl, parsedHost) ? parsedHost : L"unparsed";
+        std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         restoreSyncSnapshotButton().IsEnabled(false);
         LogInProgress(winrt::hstring{ L"summary state=running operation=restore_snapshot request_id=" + requestId });
 
@@ -1321,8 +1326,7 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         std::wstring requestId = BuildRequestId(L"manual_resync");
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
-        std::wstring parsedHost;
-        std::wstring parsedHostValue = TryGetSyncBaseUrlHost(syncBaseUrl, parsedHost) ? parsedHost : L"unparsed";
+        std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         manualSyncButton().IsEnabled(false);
         LogInProgress(winrt::hstring{ L"summary state=running operation=manual_resync request_id=" + requestId });
 

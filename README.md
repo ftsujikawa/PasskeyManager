@@ -56,10 +56,11 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 - `INFO/WARNING/SUCCESS/FAILED` の `summary` / `sync` 行で `operation=` が付与されていること
 - `message=` を含む行では `message_code=` が併記されていること
 - `sync result=failed operation=(put_vault|restore_snapshot|test_connection)` 行で `request_id=` が付与されていること
+- `INFO: sync state=start operation=(put_vault|restore_snapshot|manual_resync)` 行で `request_id=` が付与されていること
 - 同行で `failure_kind=` が付与されていること
 - キー不足または機微情報マーカー検出時: `FAIL` 表示、終了コード `1`
 
-現在の checker で強制しているルール（8個）:
+現在の checker で強制しているルール（9個）:
 
 1. `409_recovery`
 2. `read_encrypted_vault_data`
@@ -68,7 +69,8 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 5. `operation_key_present`
 6. `message_code_with_message`
 7. `request_id_with_sync_failure`
-8. `failure_kind_with_sync_failure`
+8. `request_id_with_sync_start`
+9. `failure_kind_with_sync_failure`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 

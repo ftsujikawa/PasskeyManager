@@ -44,6 +44,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)request_id=') { $requestIdMissing += $line } }" ^
   "if ($requestIdMissing.Count -eq 0) { Write-Host 'PASS: request_id_with_sync_failure' }" ^
   "else { Write-Host ('FAIL: request_id_with_sync_failure count=' + $requestIdMissing.Count); $failed += 'request_id_with_sync_failure' }" ^
+  "$syncStartLines = @();" ^
+  "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and $line -match '^INFO:\s+sync\s+state=start\s+operation=(put_vault|restore_snapshot|manual_resync)\b') { $syncStartLines += $line } }" ^
+  "$startRequestIdMissing = @();" ^
+  "foreach ($line in $syncStartLines) { if ($line -notmatch '(^|\s)request_id=') { $startRequestIdMissing += $line } }" ^
+  "if ($startRequestIdMissing.Count -eq 0) { Write-Host 'PASS: request_id_with_sync_start' }" ^
+  "else { Write-Host ('FAIL: request_id_with_sync_start count=' + $startRequestIdMissing.Count); $failed += 'request_id_with_sync_start' }" ^
   "$failureKindMissing = @();" ^
   "foreach ($line in $syncFailureLines) { if ($line -notmatch '(^|\s)failure_kind=') { $failureKindMissing += $line } }" ^
   "if ($failureKindMissing.Count -eq 0) { Write-Host 'PASS: failure_kind_with_sync_failure' }" ^

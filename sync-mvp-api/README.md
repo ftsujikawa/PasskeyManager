@@ -346,6 +346,30 @@ sudo BASE_URL="https://example.com" ENV_FILE="/opt/sync-mvp-api/.env" ./sync-mvp
 1. `preflight_sync_mvp_api.sh`
 2. `smoke_sync_mvp_api.sh`
 
+### 7) ロールバック（直前デプロイへの復元）
+
+同梱スクリプト:
+
+- `sync-mvp-api/scripts/rollback_sync_mvp_api.sh`
+
+実行例（最新バックアップへ戻す）:
+
+```bash
+chmod +x sync-mvp-api/scripts/rollback_sync_mvp_api.sh
+sudo ./sync-mvp-api/scripts/rollback_sync_mvp_api.sh
+```
+
+特定バックアップを指定する場合:
+
+```bash
+sudo ./sync-mvp-api/scripts/rollback_sync_mvp_api.sh /opt/sync-mvp-api/backups/publish-20260226133000
+```
+
+備考:
+
+- `deploy_sync_mvp_api_publish.sh` 実行時に `publish-*` バックアップが作成される
+- rollback 後は service 再起動と `healthz` 確認まで自動実行される
+
 ## 備考
 
 - このMVPは PUT 後に SQLite DB へ永続化します（再起動後も復元）。

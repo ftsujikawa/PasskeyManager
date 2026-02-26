@@ -4,6 +4,7 @@ set -euo pipefail
 ARTIFACT_TAR="${1:-${ARTIFACT_TAR:-/tmp/sync-mvp-api-publish.tar.gz}}"
 APP_ROOT="${APP_ROOT:-/opt/sync-mvp-api}"
 PUBLISH_DIR="${PUBLISH_DIR:-$APP_ROOT/publish}"
+BACKUP_DIR="${BACKUP_DIR:-$APP_ROOT/backups}"
 SERVICE_NAME="${SERVICE_NAME:-sync-mvp-api}"
 APP_USER="${APP_USER:-www-data}"
 APP_GROUP="${APP_GROUP:-www-data}"
@@ -30,6 +31,15 @@ fi
 
 echo "Deploy to: $PUBLISH_DIR"
 mkdir -p "$PUBLISH_DIR"
+mkdir -p "$BACKUP_DIR"
+
+if [ -f "$PUBLISH_DIR/SyncMvpApi.dll" ]; then
+  backup_path="$BACKUP_DIR/publish-$(date +%Y%m%d%H%M%S)"
+  echo "Backup current publish to: $backup_path"
+  mkdir -p "$backup_path"
+  cp -a "$PUBLISH_DIR"/. "$backup_path"/
+fi
+
 rm -rf "$PUBLISH_DIR"/*
 cp -a "$WORK_DIR"/. "$PUBLISH_DIR"/
 

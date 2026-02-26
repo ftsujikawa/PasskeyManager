@@ -324,7 +324,7 @@ jobs:
         id: sensitive_markers
         shell: pwsh
         run: |
-          $scenario = '${{ github.event.inputs.scenario || ''both'' }}'
+          $scenario = "${{ github.event.inputs.scenario || 'both' }}"
           if ('${{ github.event_name }}' -ne 'workflow_dispatch' -or $scenario -eq 'both') {
             $files = @(
               'docs/samples/abnormal_sync_logs_pass.txt',

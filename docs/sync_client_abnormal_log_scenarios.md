@@ -230,7 +230,7 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 8. `request_id_with_sync_start`
 9. `request_id_format_with_sync_start`
 10. `failure_kind_with_sync_failure`
-11. `name_not_resolved_host_with_sync_failure`
+11. `name_not_resolved_host_required`
 12. `failure_kind_allowed_values`
 
 実行方法:

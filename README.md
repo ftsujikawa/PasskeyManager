@@ -96,7 +96,7 @@ GitHub Actions の `Sync Log Keys Check` でも、`scenario=both`（または pu
 8. `request_id_with_sync_start`
 9. `request_id_format_with_sync_start`
 10. `failure_kind_with_sync_failure`
-11. `name_not_resolved_host_with_sync_failure`
+11. `name_not_resolved_host_required`
 12. `failure_kind_allowed_values`
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:

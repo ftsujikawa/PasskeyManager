@@ -62,8 +62,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($line in $lines) { if (![string]::IsNullOrWhiteSpace($line) -and ($line -match '(^|\s)sync_failure=name_not_resolved(\s|$)' -or $line -match '(^|\s)reason=name_not_resolved(\s|$)')) { $nameNotResolvedLines += $line } }" ^
   "$nameNotResolvedHostMissing = @();" ^
   "foreach ($line in $nameNotResolvedLines) { if ($line -notmatch '(^|\s)host=') { $nameNotResolvedHostMissing += $line } }" ^
-  "if ($nameNotResolvedHostMissing.Count -eq 0) { Write-Host 'PASS: name_not_resolved_host_with_sync_failure' }" ^
-  "else { Write-Host ('FAIL: name_not_resolved_host_with_sync_failure count=' + $nameNotResolvedHostMissing.Count); $failed += 'name_not_resolved_host_with_sync_failure' }" ^
+  "if ($nameNotResolvedHostMissing.Count -eq 0) { Write-Host 'PASS: name_not_resolved_host_required' }" ^
+  "else { Write-Host ('FAIL: name_not_resolved_host_required count=' + $nameNotResolvedHostMissing.Count); $failed += 'name_not_resolved_host_required' }" ^
   "$allowedFailureKinds = @('authorization','not_found','version_conflict','rate_limited','server_error','http_error','client_error','transport_or_unknown','none');" ^
   "$failureKindInvalid = @();" ^
   "foreach ($line in $syncFailureLines) { if ($line -match '(^|\s)failure_kind=([^\s]+)') { $value = $matches[2].TrimEnd('.', ','); if ($allowedFailureKinds -notcontains $value) { $failureKindInvalid += $line } } }" ^

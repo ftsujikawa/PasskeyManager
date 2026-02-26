@@ -18,6 +18,13 @@ on:
   push:
     paths:
       - 'README.md'
+      - 'MainPage.xaml.cpp'
+      - 'MainPage.xaml.h'
+      - 'PluginManagement/PluginRegistrationManager.cpp'
+      - 'PluginManagement/PluginRegistrationManager.h'
+      - 'PluginManagement/PluginCredentialManager.cpp'
+      - 'src/SyncClient.cpp'
+      - 'src/SyncClient.h'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/check_sync_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
@@ -26,6 +33,13 @@ on:
   pull_request:
     paths:
       - 'README.md'
+      - 'MainPage.xaml.cpp'
+      - 'MainPage.xaml.h'
+      - 'PluginManagement/PluginRegistrationManager.cpp'
+      - 'PluginManagement/PluginRegistrationManager.h'
+      - 'PluginManagement/PluginCredentialManager.cpp'
+      - 'src/SyncClient.cpp'
+      - 'src/SyncClient.h'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/check_sync_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'

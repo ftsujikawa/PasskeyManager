@@ -22,7 +22,7 @@
 - [ ] Key scenario tested manually
 - [ ] Run sync log checker: `docs\check_sync_log_keys_samples.cmd both`
 - [ ] If this PR touches log checker/workflow/docs, run: `docs\check_sync_log_keys_samples.cmd fail_name_resolution_host`
-- [ ] If this PR touches sync errors, confirm `name_not_resolved` logs include `host=`
+- [ ] If this PR touches sync errors, confirm `name_not_resolved` logs (`sync_failure` / `reason`) include `host=`
 - [ ] If this PR touches auth/secret handling, verify no sensitive markers in logs (`token=`, `bearer=`, `authorization=`)
 
 ## Risk / Impact

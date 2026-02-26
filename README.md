@@ -61,6 +61,12 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 docs\check_sync_log_keys.cmd captured_logs.txt
 ```
 
+実運用ログ（抜粋）を軽量チェックする場合（必須異常シナリオの出現は要求しない）:
+
+```cmd
+docs\check_sync_runtime_log_keys.cmd captured_runtime_logs.txt
+```
+
 全サンプルを一括で検証する場合:
 
 ```cmd

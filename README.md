@@ -48,6 +48,7 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 異常系ログ（fixed-format: `key=value`）の再現/確認手順は次のドキュメントを参照してください。
 
 - `./docs/sync_client_abnormal_log_scenarios.md`
+- PR説明文の使い回しには `./docs/PR_TEMPLATE_SNIPPETS.md`（超短文版/短縮版/フル版）
 
 ログ貼り付けテキスト（例: `captured_logs.txt`）から必須キーと機微情報マーカーを自動確認する場合:
 

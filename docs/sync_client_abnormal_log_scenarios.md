@@ -201,6 +201,8 @@ findstr /i /r "token= authorization= authorization: bearer= access_token= refres
 
 - `docs/samples/abnormal_sync_logs_pass.txt` は成功（exit `0`）すること
 - `docs/samples/abnormal_sync_logs_fail.txt` は失敗（exit `1`）すること
+- `docs/samples/abnormal_sync_logs_fail_request_id_format.txt` は `request_id_format_with_sync_start` で失敗（exit `1`）すること
+- `docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt` は `failure_kind_allowed_values` で失敗（exit `1`）すること
 - サンプルログに機微情報マーカー（`token=` / `bearer=` / `authorization=` / `authorization:` / `access_token=` / `refresh_token=` / `client_secret=`）が含まれないこと
 
 現在の checker で強制しているルール（11個）:

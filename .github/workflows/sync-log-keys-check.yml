@@ -61,6 +61,36 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
+      - name: Validate FAIL request_id format sample file exists
+        id: fail_request_id_format_sample_file
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        shell: cmd
+        run: |
+          if exist docs\samples\abnormal_sync_logs_fail_request_id_format.txt exit /b 0
+          echo Missing required sample file: docs\samples\abnormal_sync_logs_fail_request_id_format.txt
+          echo ### FAIL request_id format sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/samples/abnormal_sync_logs_fail_request_id_format.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate FAIL failure_kind value sample file exists
+        id: fail_failure_kind_value_sample_file
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        shell: cmd
+        run: |
+          if exist docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt exit /b 0
+          echo Missing required sample file: docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt
+          echo ### FAIL failure_kind value sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Validate PASS sample file exists
         id: pass_sample_file
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'pass' }}
@@ -352,6 +382,84 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
+      - name: FAIL request_id format sample should fail
+        id: fail_request_id_format_sample
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail_request_id_format.txt > fail_request_id_format_output.txt 2>&1
+          set "CHECKER_RC=%ERRORLEVEL%"
+          set "HAS_TARGET_FAILURE=0"
+          set "HAS_CHECK_FAILURES_SUMMARY=0"
+          set "FAIL_PREFIX_COUNT=0"
+          findstr /b /c:"FAIL: request_id_format_with_sync_start" fail_request_id_format_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_TARGET_FAILURE=1"
+          findstr /b /c:"FAIL: check_failures=request_id_format_with_sync_start" fail_request_id_format_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
+          for /f %%A in ('findstr /b /c:"FAIL:" fail_request_id_format_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
+          if %CHECKER_RC% EQU 1 if %HAS_TARGET_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %FAIL_PREFIX_COUNT% EQU 2 (
+            echo Expected request_id format failure confirmed.
+            echo ### FAIL request_id format sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_reason_request_id_format_with_sync_start ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Expected request_id_format_with_sync_start failure, but condition was not met.
+          type fail_request_id_format_output.txt
+          echo ### FAIL request_id format sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_reason_request_id_format_with_sync_start ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: FAIL failure_kind value sample should fail
+        id: fail_failure_kind_value_sample
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_log_keys.cmd docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt > fail_failure_kind_value_output.txt 2>&1
+          set "CHECKER_RC=%ERRORLEVEL%"
+          set "HAS_TARGET_FAILURE=0"
+          set "HAS_CHECK_FAILURES_SUMMARY=0"
+          set "FAIL_PREFIX_COUNT=0"
+          findstr /b /c:"FAIL: failure_kind_allowed_values" fail_failure_kind_value_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_TARGET_FAILURE=1"
+          findstr /b /c:"FAIL: check_failures=failure_kind_allowed_values" fail_failure_kind_value_output.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_CHECK_FAILURES_SUMMARY=1"
+          for /f %%A in ('findstr /b /c:"FAIL:" fail_failure_kind_value_output.txt ^| find /c ":"') do set "FAIL_PREFIX_COUNT=%%A"
+          if %CHECKER_RC% EQU 1 if %HAS_TARGET_FAILURE% EQU 1 if %HAS_CHECK_FAILURES_SUMMARY% EQU 1 if %FAIL_PREFIX_COUNT% EQU 2 (
+            echo Expected failure_kind_allowed_values failure confirmed.
+            echo ### FAIL failure_kind value sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| fail_reason_failure_kind_allowed_values ^| observed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Expected failure_kind_allowed_values failure, but condition was not met.
+          type fail_failure_kind_value_output.txt
+          echo ### FAIL failure_kind value sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_fail_condition ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %CHECKER_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_reason_failure_kind_allowed_values ^| %HAS_TARGET_FAILURE% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Samples should not contain sensitive key-values
         id: sensitive_markers
         shell: pwsh
@@ -360,14 +468,20 @@ jobs:
           if ('${{ github.event_name }}' -ne 'workflow_dispatch' -or $scenario -eq 'both') {
             $files = @(
               'docs/samples/abnormal_sync_logs_pass.txt',
-              'docs/samples/abnormal_sync_logs_fail.txt'
+              'docs/samples/abnormal_sync_logs_fail.txt',
+              'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
             )
           }
           elseif ($scenario -eq 'pass') {
             $files = @('docs/samples/abnormal_sync_logs_pass.txt')
           }
           else {
-            $files = @('docs/samples/abnormal_sync_logs_fail.txt')
+            $files = @(
+              'docs/samples/abnormal_sync_logs_fail.txt',
+              'docs/samples/abnormal_sync_logs_fail_request_id_format.txt',
+              'docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt'
+            )
           }
           $pattern = '(?i)(token=|bearer=|authorization=|authorization:|access_token=|refresh_token=|client_secret=)'
           $hitFiles = @()
@@ -404,6 +518,8 @@ jobs:
           path: |
             pass_sample_output.txt
             fail_sample_output.txt
+            fail_request_id_format_output.txt
+            fail_failure_kind_value_output.txt
 
       - name: Overall summary
         if: always()
@@ -415,8 +531,12 @@ jobs:
           echo ^| checker_script ^| ${{ steps.checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample_file ^| ${{ steps.pass_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_request_id_format_sample_file ^| ${{ steps.fail_request_id_format_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_failure_kind_value_sample_file ^| ${{ steps.fail_failure_kind_value_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample ^| ${{ steps.pass_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample ^| ${{ steps.fail_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_request_id_format_sample ^| ${{ steps.fail_request_id_format_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| fail_failure_kind_value_sample ^| ${{ steps.fail_failure_kind_value_sample.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| sensitive_markers ^| ${{ steps.sensitive_markers.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| enforced_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"

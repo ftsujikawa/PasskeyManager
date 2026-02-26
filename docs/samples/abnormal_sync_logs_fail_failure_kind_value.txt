@@ -1,0 +1,5 @@
+INFO: sync state=start operation=put_vault user_id=tsu request_id=20260225T162438123Z-put_vault
+WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1520 hr=-2147012889 status=409 failure_kind=unknown_category recovery=manual_resync_now detail=conflict request_id=2026-02-25T16:24:40Z-put_vault
+WARNING: sync result=failed operation=read_encrypted_vault_data reason=vault_data_missing recovery=recreate_vault_passkey_and_register_again
+WARNING: summary result=rejected operation=vault_unlock reason=ui_required hr=-2147019873
+WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1510 hr=-2147012889 failure_kind=client_error code=CLIENT_ERROR request_id=2026-02-25T16:24:16Z-put_vault message_code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response.

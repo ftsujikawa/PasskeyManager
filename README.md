@@ -76,6 +76,13 @@ docs\check_sync_log_keys.cmd captured_logs.txt
 
 GitHub Actions の手動実行（workflow_dispatch）を CLI から行う場合:
 
+補助サンプル（回帰検証用）:
+
+- `docs/samples/abnormal_sync_logs_fail_request_id_format.txt`
+  - `request_id_format_with_sync_start` のみを狙って失敗させる
+- `docs/samples/abnormal_sync_logs_fail_failure_kind_value.txt`
+  - `failure_kind_allowed_values` のみを狙って失敗させる
+
 初回のみ（未ログイン時）:
 
 ```powershell

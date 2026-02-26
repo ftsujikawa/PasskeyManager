@@ -199,6 +199,29 @@ sudo ./scripts/deploy_sync_mvp_api_publish.sh /tmp/sync-mvp-api-publish.tar.gz
 - `sync-mvp-api` 再起動
 - `healthz` 確認
 
+### 2.1) .env / systemd テンプレート
+
+初期セットアップ時は、同梱テンプレートを元に設定を作成する。
+
+```bash
+sudo install -d -m 755 /opt/sync-mvp-api
+sudo cp sync-mvp-api/.env.example /opt/sync-mvp-api/.env
+sudo cp sync-mvp-api/scripts/sync-mvp-api.service.example /etc/systemd/system/sync-mvp-api.service
+```
+
+反映:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now sync-mvp-api
+sudo systemctl status sync-mvp-api --no-pager
+```
+
+注意:
+
+- `.env` の `TSUPASSWD_SYNC_BEARER_TOKEN` は必ず本番用の強ランダム値へ変更する
+- `ASPNETCORE_URLS` はリバースプロキシ構成に合わせて調整する
+
 ### 3) 監査ログ確認（request_id 追跡）
 
 監査ログは `audit.vault_op` プレフィックスで出力され、`request_id` と `path` を含みます。

@@ -1,0 +1,23 @@
+[Unit]
+Description=Sync MVP API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sync-mvp-api/publish
+EnvironmentFile=/opt/sync-mvp-api/.env
+ExecStart=/usr/bin/dotnet /opt/sync-mvp-api/publish/SyncMvpApi.dll
+Restart=always
+RestartSec=3
+
+# Hardening (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sync-mvp-api
+
+[Install]
+WantedBy=multi-user.target

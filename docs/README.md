@@ -13,3 +13,8 @@
 
 - `tsupasswd_core_threat_model.md`
 - `adr/0001-key-hierarchy-and-secret-storage.md`
+
+## Windows App Installation
+
+- `windows_app_install_troubleshooting.md`  
+  MSIX インストール時の競合エラー（例: 0x80073cfb）対処手順

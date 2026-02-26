@@ -452,7 +452,29 @@ namespace
         return HRESULT_CODE(hr) == 12007;
     }
 
-    std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
+    std::wstring ResolveHostForSyncBaseUrl(std::wstring const& syncBaseUrl)
+    {
+        if (syncBaseUrl.empty())
+        {
+            return L"unparsed";
+        }
+
+        try
+        {
+            auto uri = winrt::Windows::Foundation::Uri(winrt::hstring{ syncBaseUrl });
+            auto host = uri.Host();
+            if (!host.empty())
+            {
+                return host.c_str();
+            }
+        }
+        catch (...)
+        {
+        }
+        return L"unparsed";
+    }
+
+    std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status, std::wstring const& syncBaseUrl)
     {
         std::wstring detail = L"failure_kind=" + ClassifySyncFailureKind(hr, status) + L" ";
         switch (status.StatusCode)
@@ -480,7 +502,7 @@ namespace
             }
             else if (IsNameResolutionFailure(hr))
             {
-                detail += L"sync_failure=name_not_resolved recovery=check_sync_base_url_dns_or_hosts local_save=kept";
+                detail += L"sync_failure=name_not_resolved host=" + ResolveHostForSyncBaseUrl(syncBaseUrl) + L" recovery=check_sync_base_url_dns_or_hosts local_save=kept";
             }
             else
             {
@@ -644,7 +666,7 @@ namespace
             std::to_wstring(std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - syncStartTime).count()) +
             L" hr=" + std::to_wstring(static_cast<int>(hrSync)) +
-            L" detail=" + BuildSyncFailureStatusMessage(hrSync, syncStatus);
+            L" detail=" + BuildSyncFailureStatusMessage(hrSync, syncStatus, syncBaseUrl);
         if (syncStatus.StatusCode == 409)
         {
             syncWarning += L" recovery=manual_resync_now";
@@ -1299,7 +1321,7 @@ namespace winrt::PasskeyManager::implementation {
             std::wstring warning =
                 L"WARNING: sync result=failed operation=restore_snapshot hr=" +
                 std::to_wstring(static_cast<int>(hr)) +
-                L" detail=" + BuildSyncFailureStatusMessage(hr, status);
+                L" detail=" + BuildSyncFailureStatusMessage(hr, status, syncBaseUrl);
             if (status.RequestId.empty())
             {
                 warning += L" request_id=" + localRequestId;

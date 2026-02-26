@@ -112,6 +112,7 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 
 - `request_id=`（相関キー）
 - `failure_kind=`（失敗分類）
+- `name_not_resolved` の場合は `host=` を必須（`sync_failure=name_not_resolved` / `reason=name_not_resolved` の両経路）
 
 ---
 

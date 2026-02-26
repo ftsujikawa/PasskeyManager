@@ -15,6 +15,7 @@
 #include <coroutine>
 #include <thread>
 #include <chrono>
+#include <ws2tcpip.h>
 #include <DispatcherQueue.h>
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Microsoft.UI.Content.h>
@@ -301,6 +302,55 @@ namespace {
     bool IsAllowInsecureHttpEnabled()
     {
         return IsTruthySetting(ReadSyncSettingValue(kSyncAllowInsecureHttpEnv));
+    }
+
+    bool TryGetSyncBaseUrlHost(std::wstring const& baseUrl, std::wstring& outHost)
+    {
+        outHost.clear();
+        try
+        {
+            auto uri = winrt::Windows::Foundation::Uri(winrt::hstring{ baseUrl });
+            auto host = uri.Host();
+            if (host.empty())
+            {
+                return false;
+            }
+            outHost = host.c_str();
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    bool IsHostNameResolvable(std::wstring const& host)
+    {
+        if (host.empty())
+        {
+            return false;
+        }
+
+        WSADATA wsData{};
+        if (WSAStartup(MAKEWORD(2, 2), &wsData) != 0)
+        {
+            return false;
+        }
+        auto wsCleanup = wil::scope_exit([]
+        {
+            WSACleanup();
+        });
+
+        ADDRINFOW hints{};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        PADDRINFOW result = nullptr;
+        int resolveResult = GetAddrInfoW(host.c_str(), nullptr, &hints, &result);
+        if (result)
+        {
+            FreeAddrInfoW(result);
+        }
+        return resolveResult == 0;
     }
 
     bool IsValidSyncUserId(std::wstring const& userId)
@@ -1110,6 +1160,16 @@ namespace winrt::PasskeyManager::implementation
             syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=https_required⚠");
             LogWarning(L"sync result=rejected operation=save_settings reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only");
             co_return;
+        }
+        if (!baseUrl.empty())
+        {
+            std::wstring host;
+            if (!TryGetSyncBaseUrlHost(baseUrl, host) || !IsHostNameResolvable(host))
+            {
+                syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=name_not_resolved⚠");
+                LogWarning(L"sync result=rejected operation=save_settings reason=name_not_resolved recovery=check_sync_base_url_dns_or_hosts");
+                co_return;
+            }
         }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {

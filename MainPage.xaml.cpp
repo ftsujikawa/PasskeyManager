@@ -1701,14 +1701,15 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"delete_selected_cached_credentials";
-        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
+        std::wstring requestId = BuildRequestId(operation);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
 
         // find the list of creds with checkbox checked
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection" });
+            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection request_id=" + requestId });
             co_return;
         }
 
@@ -1722,7 +1723,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        LogInProgress(winrt::hstring{ L"summary state=selected operation=" + operation + L" selected=" + std::to_wstring(credentialIdList.size()) });
+        LogInProgress(winrt::hstring{ L"summary state=selected operation=" + operation + L" selected=" + std::to_wstring(credentialIdList.size()) + L" request_id=" + requestId });
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -1763,16 +1764,16 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->LogInfo(winrt::hstring{ L"summary result=not_found operation=" + operation });
+            self->LogInfo(winrt::hstring{ L"summary result=not_found operation=" + operation + L" request_id=" + requestId });
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail + L" request_id=" + requestId }, hr);
             co_return;
         }
-        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
         co_return;
     }
 

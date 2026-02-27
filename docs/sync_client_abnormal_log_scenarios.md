@@ -234,6 +234,7 @@ runtime checker の PASS/FAIL サンプルを一括検証する場合:
 
 ```cmd
 docs\check_sync_runtime_log_keys_samples.cmd both
+docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_id_format
 ```
 
 `check_sync_runtime_log_keys.cmd` は、次を重視する軽量チェック。

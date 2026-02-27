@@ -6,6 +6,7 @@
 
 - `sync_client_abnormal_log_scenarios.md`  
   異常系シナリオ、サンプル、GitHub Actions 実行手順
+  （末尾に `Vault Schema v1 クイック回帰チェックリスト` を含む）
 - `check_sync_runtime_log_keys.cmd`  
   実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）
 - `check_sync_runtime_log_keys_samples.cmd`  

@@ -6,6 +6,10 @@
 - **短縮版**: 通常のPRで簡潔に説明したいとき
 - **フル版**: 変更背景・検証・影響範囲まで丁寧に残したいとき
 
+保存済みの最新PR本文（runtime checker 連携更新）は以下を参照:
+
+- [docs/pr_runtime_checker_update.md](./pr_runtime_checker_update.md)
+
 ## 目次
 
 1. [name_not_resolved host 必須化（超短文版）](#name_not_resolved-host-必須化超短文版)

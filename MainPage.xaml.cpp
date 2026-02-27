@@ -1383,7 +1383,11 @@ namespace winrt::PasskeyManager::implementation
         if (auto self = weakThis.get())
         {
             self->manualSyncButton().IsEnabled(true);
-            if (FAILED(hr))
+            if (SUCCEEDED(hr))
+            {
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else
             {
                 if (IsNameResolutionFailure(hr))
                 {

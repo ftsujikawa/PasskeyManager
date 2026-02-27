@@ -15,6 +15,7 @@
 1. [name_not_resolved host 必須化（超短文版）](#name_not_resolved-host-必須化超短文版)
 2. [name_not_resolved host 必須化（短縮版）](#name_not_resolved-host-必須化短縮版)
 3. [name_not_resolved host 必須化（フル版）](#name_not_resolved-host-必須化フル版)
+4. [runtime checker 連携更新（保存版PR本文）](./pr_runtime_checker_update.md)
 
 ## name_not_resolved host 必須化（超短文版）
 

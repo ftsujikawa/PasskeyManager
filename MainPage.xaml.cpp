@@ -651,7 +651,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
         std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         restoreSyncSnapshotButton().IsEnabled(false);
-        LogInProgress(winrt::hstring{ L"summary state=running operation=restore_snapshot request_id=" + requestId });
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
 
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().RestoreSelfHostedVaultSnapshot(requestId);
@@ -1362,7 +1362,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
         std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         manualSyncButton().IsEnabled(false);
-        LogInProgress(winrt::hstring{ L"summary state=running operation=manual_resync request_id=" + requestId });
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
 
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId);

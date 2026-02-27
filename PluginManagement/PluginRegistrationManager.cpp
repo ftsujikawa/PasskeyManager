@@ -3,6 +3,7 @@
 #include "PluginRegistrationManager.h"
 #include "src/SyncClient.h"
 #include "src/SyncSnapshotStore.h"
+#include "src/VaultSerialization.h"
 #include <CorError.h>
 #include <wil/safecast.h>
 #include <functional>
@@ -1007,9 +1008,31 @@ namespace winrt::PasskeyManager::implementation {
                 UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=observed operation=" + operation + L" step=prf_hmac_secret_missing fallback=non_prf request_id=" + localRequestId + L"ℹ" });
             }
 
+            std::vector<BYTE> vaultPlaintext;
+            {
+                tsupasswd::VaultDocumentV1 vaultDoc{};
+                vaultDoc.SchemaVersion = 1;
+                vaultDoc.VaultId = localRequestId;
+                vaultDoc.Revision = 1;
+
+                std::wstring vaultJson;
+                if (tsupasswd::SerializeVaultDocumentV1(vaultDoc, vaultJson))
+                {
+                    std::string utf8 = winrt::to_string(winrt::hstring{ vaultJson });
+                    vaultPlaintext.assign(utf8.begin(), utf8.end());
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=ready operation=" + operation + L" step=vault_schema_v1_initialized request_id=" + localRequestId + L"ℹ" });
+                }
+                else
+                {
+                    vaultPlaintext.resize(wcslen(c_dummySecretVault) * sizeof(wchar_t));
+                    memcpy(vaultPlaintext.data(), c_dummySecretVault, vaultPlaintext.size());
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=warning operation=" + operation + L" step=vault_schema_v1_initialize_failed fallback=legacy_dummy_secret request_id=" + localRequestId + L"⚠" });
+                }
+            }
+
             DATA_BLOB vaultData = {
-                .cbData = static_cast<DWORD>(wcslen(c_dummySecretVault) * sizeof(wchar_t)),
-                .pbData = reinterpret_cast<BYTE*>(const_cast<PWSTR>(c_dummySecretVault))
+                .cbData = static_cast<DWORD>(vaultPlaintext.size()),
+                .pbData = vaultPlaintext.data()
             };
             DATA_BLOB cipherText = {};
             RETURN_IF_WIN32_BOOL_FALSE(CryptProtectData(

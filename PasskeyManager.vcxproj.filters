@@ -37,6 +37,9 @@
     <ClCompile Include="src\SyncClient.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\VaultSerialization.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -60,6 +63,12 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="src\SyncClient.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VaultModel.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VaultSerialization.h">
       <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>

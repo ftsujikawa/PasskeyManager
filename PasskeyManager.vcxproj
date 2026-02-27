@@ -182,6 +182,8 @@
     <ClInclude Include="src\SyncSnapshotStore.h" />
     <ClInclude Include="src\SyncHistoryStore.h" />
     <ClInclude Include="src\SyncClient.h" />
+    <ClInclude Include="src\VaultModel.h" />
+    <ClInclude Include="src\VaultSerialization.h" />
     <ClInclude Include="src\DiagnosticsConfig.h" />
   </ItemGroup>
   <ItemGroup>
@@ -233,6 +235,7 @@
     <ClCompile Include="src\SyncSnapshotStore.cpp" />
     <ClCompile Include="src\SyncHistoryStore.cpp" />
     <ClCompile Include="src\SyncClient.cpp" />
+    <ClCompile Include="src\VaultSerialization.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="App.idl">

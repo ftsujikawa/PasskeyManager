@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "PluginCredentialManager.h"
+#include "src/VaultSerialization.h"
 #include <CorError.h>
 #include <Credential.h>
 #include <wil/registry_helpers.h>
@@ -900,9 +901,27 @@ namespace winrt::PasskeyManager::implementation
             }
         });
 
-        if (decryptedData.cbData != wcslen(c_dummySecretVault) * sizeof(wchar_t) || memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) != 0)
+        bool legacyDummyVault =
+            decryptedData.cbData == wcslen(c_dummySecretVault) * sizeof(wchar_t) &&
+            memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) == 0;
+        if (legacyDummyVault)
         {
-            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=vault_integrity_check_failed recovery=recreate_vault_passkey_then_retry");
+            return S_OK;
+        }
+
+        std::string decryptedUtf8(
+            reinterpret_cast<char const*>(decryptedData.pbData),
+            reinterpret_cast<char const*>(decryptedData.pbData) + decryptedData.cbData);
+        std::wstring decryptedJson = winrt::to_hstring(decryptedUtf8).c_str();
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::wstring parseError;
+        if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+        {
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=vault_integrity_check_failed detail=vault_schema_v1_parse_failed parse_error=" +
+                parseError +
+                L" recovery=recreate_vault_passkey_then_retry");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 

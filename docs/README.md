@@ -14,6 +14,8 @@
   PR 説明文のひな形（超短文版 / 短縮版 / フル版）
 - `pr_runtime_checker_update.md`  
   runtime checker 連携更新の保存済み PR 本文
+- `runtime_checker_rollout_completion.md`  
+  runtime checker 連携の完了記録（検証 run / CI時間比較を含む）
 
 ## Security Design
 

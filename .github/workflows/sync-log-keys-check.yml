@@ -786,6 +786,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             batch_samples_output.txt
+            runtime_batch_samples_output.txt
             pass_sample_output.txt
             fail_sample_output.txt
             fail_request_id_format_output.txt
@@ -801,7 +802,9 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_script ^| ${{ steps.checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| batch_checker_script ^| ${{ steps.batch_checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_checker_script ^| ${{ steps.runtime_checker_script.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| batch_samples ^| ${{ steps.batch_samples.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_batch_samples ^| ${{ steps.runtime_batch_samples.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| pass_sample_file ^| ${{ steps.pass_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_sample_file ^| ${{ steps.fail_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_request_id_format_sample_file ^| ${{ steps.fail_request_id_format_sample_file.outcome || 'skipped' }} ^|>>"%GITHUB_STEP_SUMMARY%"

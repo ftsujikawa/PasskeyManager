@@ -22,6 +22,7 @@ namespace
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
+    constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
     constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
 
     enum class VaultBlobParseResult
@@ -882,6 +883,26 @@ namespace winrt::PasskeyManager::implementation {
         if (localRequestId.empty())
         {
             localRequestId = BuildRequestId(operation);
+        }
+
+        if (IsTruthySetting(GetEnvironmentVariableValue(kVaultSchemaSelfTestEnv)))
+        {
+            std::wstring selfTestError;
+            if (!tsupasswd::RunVaultSerializationV1RegressionTests(selfTestError))
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"WARNING: summary result=warning operation=" + operation +
+                        L" step=vault_schema_v1_regression_test_failed detail=" + selfTestError +
+                        L" request_id=" + localRequestId + L"⚠" });
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: summary state=observed operation=" + operation +
+                        L" step=vault_schema_v1_regression_test_passed request_id=" + localRequestId + L"ℹ" });
+            }
         }
 
         // populate the input structures

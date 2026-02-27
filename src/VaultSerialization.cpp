@@ -315,4 +315,74 @@ namespace tsupasswd
 
         return DeserializeVaultDocumentV1(json, outDoc, outError);
     }
+
+    bool RunVaultSerializationV1RegressionTests(std::wstring& outError)
+    {
+        outError.clear();
+
+        VaultDocumentV1 input{};
+        input.SchemaVersion = 1;
+        input.VaultId = L"regression-vault";
+        input.Revision = 7;
+
+        VaultItemV1 item{};
+        item.ItemId = L"item-1";
+        item.ItemType = VaultItemType::Login;
+        item.Title = L"GitHub";
+        item.Notes = L"sample";
+        item.CreatedAt = L"2026-01-01T00:00:00Z";
+        item.UpdatedAt = L"2026-01-01T00:00:00Z";
+        item.Login.Username = L"alice";
+        item.Login.Password = L"secret";
+        item.Login.Url = L"https://github.com";
+        item.Login.TotpSecret = L"JBSWY3DPEHPK3PXP";
+        input.Items.push_back(item);
+
+        std::vector<BYTE> utf8;
+        if (!SerializeVaultDocumentV1ToUtf8Bytes(input, utf8))
+        {
+            outError = L"roundtrip_serialize_failed";
+            return false;
+        }
+
+        VaultDocumentV1 roundtrip{};
+        if (!DeserializeVaultDocumentV1FromUtf8Bytes(utf8.data(), utf8.size(), roundtrip, outError))
+        {
+            if (outError.empty())
+            {
+                outError = L"roundtrip_deserialize_failed";
+            }
+            return false;
+        }
+
+        if (roundtrip.SchemaVersion != 1 ||
+            roundtrip.VaultId != input.VaultId ||
+            roundtrip.Revision != input.Revision ||
+            roundtrip.Items.size() != 1 ||
+            roundtrip.Items[0].ItemId != item.ItemId ||
+            roundtrip.Items[0].Title != item.Title ||
+            roundtrip.Items[0].Login.Username != item.Login.Username ||
+            roundtrip.Items[0].Login.Password != item.Login.Password)
+        {
+            outError = L"roundtrip_value_mismatch";
+            return false;
+        }
+
+        VaultDocumentV1 invalid{};
+        std::wstring invalidError;
+        std::wstring invalidJson =
+            L"{\"schema_version\":2,\"vault_id\":\"v\",\"revision\":1,\"items\":[]}";
+        if (DeserializeVaultDocumentV1(invalidJson, invalid, invalidError))
+        {
+            outError = L"invalid_schema_should_fail";
+            return false;
+        }
+        if (invalidError != L"unsupported_schema_version")
+        {
+            outError = L"invalid_schema_error_unexpected";
+            return false;
+        }
+
+        return true;
+    }
 }

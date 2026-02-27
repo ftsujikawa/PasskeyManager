@@ -20,4 +20,6 @@ namespace tsupasswd
         size_t dataSize,
         VaultDocumentV1& outDoc,
         std::wstring& outError);
+
+    bool RunVaultSerializationV1RegressionTests(std::wstring& outError);
 }

@@ -11,6 +11,7 @@
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
 #include "src/SyncHistoryStore.h"
 #include "src/SyncClient.h"
+#include "src/VaultSerialization.h"
 #include <future>
 #include <coroutine>
 #include <thread>
@@ -1397,6 +1398,34 @@ namespace winrt::PasskeyManager::implementation
                     self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + warningFields + L"⚠" });
                     self->LogWarning(winrt::hstring{ warningFields });
                 }
+            }
+        }
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::runVaultSchemaSelfTestButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto weakThis = get_weak();
+        std::wstring operation = L"vault_schema_self_test";
+        std::wstring requestId = BuildRequestId(operation);
+        runVaultSchemaSelfTestButton().IsEnabled(false);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
+
+        co_await winrt::resume_background();
+        std::wstring selfTestError;
+        bool passed = tsupasswd::RunVaultSerializationV1RegressionTests(selfTestError);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->runVaultSchemaSelfTestButton().IsEnabled(true);
+            if (passed)
+            {
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" step=vault_schema_v1_regression_test_passed request_id=" + requestId });
+            }
+            else
+            {
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=vault_schema_v1_regression_test_failed detail=" + selfTestError + L" request_id=" + requestId });
             }
         }
         co_return;

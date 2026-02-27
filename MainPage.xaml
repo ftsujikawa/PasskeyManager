@@ -312,6 +312,10 @@
                                 Click="testSyncConnectionButton_Click"
                                 Content="Test Connection" />
                             <Button
+                                x:Name="runVaultSchemaSelfTestButton"
+                                Click="runVaultSchemaSelfTestButton_Click"
+                                Content="Run Vault Self-Test (Debug)" />
+                            <Button
                                 x:Name="manualSyncButton"
                                 Click="manualSyncButton_Click"
                                 Content="Resync Now" />

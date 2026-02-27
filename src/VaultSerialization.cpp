@@ -383,6 +383,55 @@ namespace tsupasswd
             return false;
         }
 
+        auto expectDeserializeFailure = [&](std::wstring const& json, std::wstring const& expectedError, std::wstring const& context)
+        {
+            VaultDocumentV1 local{};
+            std::wstring localError;
+            if (DeserializeVaultDocumentV1(json, local, localError))
+            {
+                outError = context + L"_should_fail";
+                return false;
+            }
+            if (localError != expectedError)
+            {
+                outError = context + L"_unexpected_error";
+                return false;
+            }
+            return true;
+        };
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_type\":\"login\",\"title\":\"t\",\"login\":{\"username\":\"u\",\"password\":\"p\"}}]}",
+            L"item_id_required",
+            L"missing_item_id"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"item_type\":\"login\",\"login\":{\"username\":\"u\",\"password\":\"p\"}}]}",
+            L"title_required",
+            L"missing_title"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"item_type\":\"login\",\"title\":\"t\",\"login\":{\"password\":\"p\"}}]}",
+            L"login_username_required",
+            L"missing_login_username"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"item_type\":\"login\",\"title\":\"t\",\"login\":{\"username\":\"u\"}}]}",
+            L"login_password_required",
+            L"missing_login_password"))
+        {
+            return false;
+        }
+
         return true;
     }
 }

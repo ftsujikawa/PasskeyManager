@@ -690,10 +690,11 @@ namespace winrt::PasskeyManager::implementation
     {
         auto strongThis = get_strong();
         auto weakThis = get_weak();
-        std::wstring requestId = BuildRequestId(L"vault_recovery");
+        std::wstring operation = L"vault_recovery";
+        std::wstring requestId = BuildRequestId(operation);
         runVaultRecoveryButton().IsEnabled(false);
         quickCreateVaultPasskeyButton().IsEnabled(false);
-        LogInProgress(winrt::hstring{ L"summary state=running operation=vault_recovery request_id=" + requestId });
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
         vaultRecoveryHintText().Text(L"Vault passkey registration in progress. In storage selection, choose tsupasswd_core and complete the prompt.");
         vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 
@@ -741,17 +742,17 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Plugin is not enabled. Click 'Enable in Settings', then run Create Vault Passkey again.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=vault_recovery reason=plugin_not_enabled state=" + stateText + L" action=open_settings request_id=" + requestId });
+                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_enabled state=" + stateText + L" action=open_settings request_id=" + requestId });
 
                 auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
                 bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
                 if (launched)
                 {
-                    self->LogSuccess(winrt::hstring{ L"summary result=success operation=vault_recovery action=open_settings request_id=" + requestId });
+                    self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" action=open_settings request_id=" + requestId });
                 }
                 else
                 {
-                    self->LogWarning(winrt::hstring{ L"summary result=failed operation=vault_recovery action=open_settings reason=launch_failed request_id=" + requestId });
+                    self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" action=open_settings reason=launch_failed request_id=" + requestId });
                 }
             }
             co_return;
@@ -759,7 +760,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (auto self{ weakThis.get() })
         {
-            self->LogInfo(winrt::hstring{ L"summary state=ready operation=vault_recovery stage=precheck_passed next=create_vault_passkey request_id=" + requestId });
+            self->LogInfo(winrt::hstring{ L"summary state=ready operation=" + operation + L" stage=precheck_passed next=create_vault_passkey request_id=" + requestId });
         }
 
         // Let the log/hint text render before WebAuthN dialog appears.
@@ -784,7 +785,7 @@ namespace winrt::PasskeyManager::implementation
         {
             if (auto self{ weakThis.get() })
             {
-                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=" + operation + L" step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
             }
         }
         if (auto self{ weakThis.get() })
@@ -798,16 +799,16 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Failed to switch Vault Unlock method to Passkey. Retry after Refresh.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogFailure(winrt::hstring{ L"summary result=failed operation=vault_recovery step=set_unlock_method_passkey request_id=" + requestId }, hrSetMethod);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=set_unlock_method_passkey request_id=" + requestId }, hrSetMethod);
                 co_return;
             }
 
             if (FAILED(hrSetSilent))
             {
-                self->LogWarning(winrt::hstring{ L"summary result=warning operation=vault_recovery step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + requestId });
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + requestId });
             }
 
-            self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=create_vault_passkey_returned hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" request_id=" + requestId });
+            self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=create_vault_passkey_returned hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" request_id=" + requestId });
             if (FAILED(hrCreatePasskey))
             {
                 HRESULT pluginPerformStatus = S_OK;
@@ -819,9 +820,9 @@ namespace winrt::PasskeyManager::implementation
                     pluginUvStatus = curApp->m_pluginOperationStatus.uvSignatureVerificationStatus;
                     pluginRequestSignStatus = curApp->m_pluginOperationStatus.requestSignatureVerificationStatus;
                 }
-                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_perform_operation_status hr=" + std::to_wstring(static_cast<int>(pluginPerformStatus)) + L" request_id=" + requestId });
-                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_uv_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginUvStatus)) + L" request_id=" + requestId });
-                self->LogInfo(winrt::hstring{ L"summary state=observed operation=vault_recovery step=plugin_request_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginRequestSignStatus)) + L" request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_perform_operation_status hr=" + std::to_wstring(static_cast<int>(pluginPerformStatus)) + L" request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_uv_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginUvStatus)) + L" request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_request_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginRequestSignStatus)) + L" request_id=" + requestId });
             }
 
             if (SUCCEEDED(hrCreatePasskey))
@@ -829,7 +830,7 @@ namespace winrt::PasskeyManager::implementation
                 self->vaultRecoveryHintText().Text(L"");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->LogSuccess(winrt::hstring{ L"summary result=success operation=vault_recovery outcome=passkey_created request_id=" + requestId });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_created request_id=" + requestId });
                 co_return;
             }
 
@@ -838,7 +839,7 @@ namespace winrt::PasskeyManager::implementation
                 self->vaultRecoveryHintText().Text(L"");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
                 self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->LogSuccess(winrt::hstring{ L"summary result=success operation=vault_recovery outcome=passkey_already_exists request_id=" + requestId });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_already_exists request_id=" + requestId });
                 co_return;
             }
 
@@ -847,7 +848,7 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Passkey registration is not supported by the selected authenticator. Try selecting tsupasswd_core and retry.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"summary result=failed operation=vault_recovery reason=authenticator_not_supported_prf_hmac request_id=" + requestId });
+                self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" reason=authenticator_not_supported_prf_hmac request_id=" + requestId });
                 co_return;
             }
 
@@ -856,13 +857,13 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->vaultRecoveryHintText().Text(L"Passkey registration was cancelled or interrupted. In storage selection choose tsupasswd_core and complete the prompt.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
+                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=" + operation + L" step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
             }
             else
             {
                 self->vaultRecoveryHintText().Text(L"Vault passkey registration failed. Check the latest FAILED/INFO log line for the HRESULT and retry.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogFailure(winrt::hstring{ L"summary result=failed operation=vault_recovery step=create_vault_passkey request_id=" + requestId }, hrCreatePasskey);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=create_vault_passkey request_id=" + requestId }, hrCreatePasskey);
             }
         }
         co_return;

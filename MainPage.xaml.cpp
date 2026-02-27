@@ -1896,14 +1896,15 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::clearLogsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"clear_logs";
+        std::wstring requestId = BuildRequestId(operation);
         m_logEntries.clear();
         auto hr = tsupasswd::SyncHistoryStore::Clear();
         if (FAILED(hr))
         {
-            OutputDebugStringW((L"DEBUG: summary result=failed operation=" + operation + L" step=clear_sync_history_file hr=" + std::to_wstring(static_cast<int>(hr)) + L"\n").c_str());
+            OutputDebugStringW((L"DEBUG: summary result=failed operation=" + operation + L" step=clear_sync_history_file hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId + L"\n").c_str());
         }
         RebuildLogView();
-        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=clear_sync_history_view✅" });
+        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=clear_sync_history_view request_id=" + requestId + L"✅" });
         co_return;
     }
 

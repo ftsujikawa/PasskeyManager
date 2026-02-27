@@ -8,7 +8,7 @@
   異常系シナリオ、サンプル、GitHub Actions 実行手順
   （末尾に `Vault Schema v1 クイック回帰チェックリスト` を含む）
 - `check_sync_runtime_log_keys.cmd`  
-  実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）
+  実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）。現在は11ルールを検証し、`manual_resync` success summary の `request_id` フォーマット整合も含む
 - `check_sync_runtime_log_keys_samples.cmd`  
   runtime checker の PASS/FAIL サンプル一括検証
 - `PR_TEMPLATE_SNIPPETS.md`  

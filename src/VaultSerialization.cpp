@@ -210,6 +210,11 @@ namespace tsupasswd
         {
             outDoc.Revision = static_cast<int64_t>(revision);
         }
+        else if (root.HasKey(L"revision"))
+        {
+            outError = L"revision_invalid";
+            return false;
+        }
 
         auto itemsValue = root.GetNamedValue(L"items", nullptr);
         if (!itemsValue || itemsValue.ValueType() != JsonValueType::Array)
@@ -492,6 +497,14 @@ namespace tsupasswd
             L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"title\":\"t\",\"login\":{\"username\":\"u\",\"password\":\"p\"}}]}",
             L"unsupported_item_type",
             L"missing_item_type"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":\"1\",\"items\":[]}",
+            L"revision_invalid",
+            L"invalid_revision_type"))
         {
             return false;
         }

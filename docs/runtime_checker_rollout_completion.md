@@ -17,6 +17,19 @@
 - `22470571793` (push, docs index / saved PR body trigger check) : success
 - `22470794705` (push, snippet TOC update) : success
 - `22470669838` (push, runtime verification note update) : success
+- `22471411086` (push, after duplicate-check reduction) : success
+
+## CI Duration Comparison (push)
+- After (`1d50123`): `22471411086` = `24s`
+- Before (recent pushes):
+  - `22470794705` = `27s`
+  - `22470669838` = `26s`
+  - `22470571793` = `55s`
+  - `22470408671` = `28s`
+  - `22469426419` = `33s`
+  - `22469344505` = `33s`
+- Before average (6 runs): `33.7s`
+- Improvement: `-9.7s` (about `29%` faster)
 
 ## Notes
 - `name_not_resolved_host_required` ルールを含む既存 checker 群との整合は維持。

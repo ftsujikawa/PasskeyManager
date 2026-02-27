@@ -51,3 +51,6 @@ tsupasswd_core_*_Test/
 # Local OAuth settings (secrets)
 appsetting.local.json
 appsettings.local.json
+
+# Local captured runtime logs
+captured_runtime_logs*.txt

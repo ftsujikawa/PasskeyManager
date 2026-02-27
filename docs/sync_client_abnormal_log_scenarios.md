@@ -331,3 +331,30 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_name_resolution_host
 gh run list --workflow sync-log-keys-check.yml --limit 5
 gh run view --log
 ```
+
+---
+
+## 8. Vault Schema v1 クイック回帰チェックリスト
+
+通常運用の変更後に、最短で実施できる確認手順。
+
+1. `Run Vault Self-Test (Debug)` を実行する。
+2. `Run Vault Recovery` を実行する。
+3. `Resync Now` を実行する（必要に応じて競合リトライを確認）。
+
+期待ログ（最低ライン）:
+
+- self-test
+  - `SUCCESS: summary result=success operation=vault_schema_self_test step=vault_schema_v1_regression_test_passed request_id=...`
+- vault recovery
+  - `SUCCESS: summary result=success operation=vault_recovery outcome=passkey_created request_id=...`
+- put_vault
+  - （競合があれば）`INFO: sync result=retry_conflict operation=put_vault ... request_id=...`
+  - 最終的に `SUCCESS: sync result=success operation=put_vault ... request_id=...`
+- manual resync
+  - `SUCCESS: summary result=success operation=manual_resync request_id=...`
+
+補足:
+
+- `vault_schema_self_test` が失敗した場合は、`step=vault_schema_v1_regression_test_failed detail=...` を確認して原因切り分けする。
+- `manual_resync` の success summary には `request_id=` を必須とする（runtime checker で検証）。

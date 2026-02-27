@@ -1263,33 +1263,33 @@ namespace winrt::PasskeyManager::implementation
 
         if (!IsValidSyncBaseUrl(baseUrl))
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=invalid_base_url request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=invalid_base_url request_id=" + testConnectionRequestId });
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + testConnectionRequestId });
             co_return;
         }
         if (!IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=https_required request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + testConnectionRequestId });
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + testConnectionRequestId });
             co_return;
         }
         if (token.empty())
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=token_missing request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=token_missing request_id=" + testConnectionRequestId });
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=token_missing request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=token_missing request_id=" + testConnectionRequestId });
             co_return;
         }
         if (!IsValidSyncUserId(userId))
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=test_connection reason=invalid_user_id request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=test_connection reason=invalid_user_id request_id=" + testConnectionRequestId });
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + testConnectionRequestId + L"⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + testConnectionRequestId });
             co_return;
         }
 
         auto weakThis = get_weak();
         testSyncConnectionButton().IsEnabled(false);
-        syncStatusTextBlock().Text(winrt::hstring{ L"INFO: summary state=running operation=test_connection request_id=" + testConnectionRequestId + L"⏳" });
-        LogInProgress(winrt::hstring{ L"summary state=running operation=test_connection request_id=" + testConnectionRequestId });
+        syncStatusTextBlock().Text(winrt::hstring{ L"INFO: summary state=running operation=" + operation + L" request_id=" + testConnectionRequestId + L"⏳" });
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + testConnectionRequestId });
 
         co_await winrt::resume_background();
         tsupasswd::SyncClient syncClient(baseUrl);
@@ -1310,13 +1310,13 @@ namespace winrt::PasskeyManager::implementation
         self->testSyncConnectionButton().IsEnabled(true);
         if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + resolvedRequestId + L"✅" });
-            self->LogSuccess(winrt::hstring{ L"sync result=success operation=test_connection outcome=reachable_or_not_found request_id=" + resolvedRequestId });
+            self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" outcome=reachable_or_not_found request_id=" + resolvedRequestId + L"✅" });
+            self->LogSuccess(winrt::hstring{ L"sync result=success operation=" + operation + L" outcome=reachable_or_not_found request_id=" + resolvedRequestId });
             co_return;
         }
 
         std::wstring detail =
-            L"sync result=failed operation=test_connection attempts=1 hr=" +
+            L"sync result=failed operation=" + operation + L" attempts=1 hr=" +
             std::to_wstring(static_cast<int>(hr));
         detail += L" failure_kind=" + ClassifySyncFailureKind(hr, status);
         if (IsNameResolutionFailure(hr))

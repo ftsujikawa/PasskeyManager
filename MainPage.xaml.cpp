@@ -1177,6 +1177,7 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::loadSyncSettingsButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
+        std::wstring operation = L"load_settings";
         auto baseUrl = ReadSyncSettingValue(kSyncBaseUrlEnv);
         auto token = ReadSyncSettingValue(kSyncBearerTokenEnv);
         auto userId = ReadSyncSettingValue(kSyncUserIdEnv);
@@ -1185,8 +1186,8 @@ namespace winrt::PasskeyManager::implementation
         syncBearerTokenBox().Password(token);
         syncUserIdTextBox().Text(userId);
 
-        syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=load_settings source=process_registry✅");
-        LogInfo(L"sync result=success operation=load_settings source=process_registry");
+        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" source=process_registry✅" });
+        LogInfo(winrt::hstring{ L"sync result=success operation=" + operation + L" source=process_registry" });
         co_return;
     }
 

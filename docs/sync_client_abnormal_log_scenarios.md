@@ -235,6 +235,7 @@ runtime checker の PASS/FAIL サンプルを一括検証する場合:
 ```cmd
 docs\check_sync_runtime_log_keys_samples.cmd both
 docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_id_format
+docs\check_sync_runtime_log_keys_samples.cmd fail_delete_everywhere_summary_request_id
 ```
 
 `check_sync_runtime_log_keys.cmd` は、次を重視する軽量チェック。
@@ -244,6 +245,7 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_
 - `message=` がある行の `message_code=` 併記
 - `sync state=start` / `sync result=failed|warning` 系での `request_id=` 整合
 - `SUCCESS: summary result=success operation=manual_resync` 行で `request_id=` の存在とフォーマット整合
+- `SUCCESS: summary result=success operation=delete_selected_credentials_everywhere` 行で `request_id=` の存在
 - `name_not_resolved` 系での `host=` 必須
 
 注: 異常系シナリオ（`409_recovery` / `vault_unlock_ui_required` など）の「必須出現」は要求しない。
@@ -277,8 +279,9 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_
 - `batch` : 全サンプルを一括検証（batch checker のみ実行）
 - `runtime` : runtime サンプルを一括検証（runtime checker のみ実行）
 - `fail_manual_resync_summary_request_id_format` : `manual_resync` success summary の `request_id` フォーマット違反サンプルのみ実行
+- `fail_delete_everywhere_summary_request_id` : `delete_selected_credentials_everywhere` success summary の `request_id` 欠落サンプルのみ実行
 - `pass` : PASS サンプルのみ実行
-- `fail` : FAIL サンプル実行（abnormal FAIL に加えて runtime FAIL `manual_resync` request_id フォーマット違反も確認）
+- `fail` : FAIL サンプル実行（abnormal FAIL に加えて runtime FAIL `manual_resync` request_id フォーマット違反 / `delete_selected_credentials_everywhere` request_id 欠落も確認）
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
 - `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
 - `fail_name_resolution_host` : `sync_failure=name_not_resolved` または `reason=name_not_resolved` で `host=` 欠落サンプルのみ実行
@@ -311,6 +314,9 @@ gh workflow run sync-log-keys-check.yml -f scenario=runtime
 
 # manual_resync success summary の request_id フォーマット違反サンプルのみ（expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_manual_resync_summary_request_id_format
+
+# delete_selected_credentials_everywhere success summary の request_id 欠落サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_delete_everywhere_summary_request_id
 
 # FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail

@@ -13,6 +13,7 @@ on:
           - batch
           - runtime
           - fail_manual_resync_summary_request_id_format
+          - fail_delete_everywhere_summary_request_id
           - pass
           - fail
           - fail_request_id_format
@@ -79,8 +80,8 @@ jobs:
           echo ^| scenario ^| ${{ github.event.inputs.scenario || 'both' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_rule_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,name_not_resolved_host_required,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| runtime_checker_rule_count ^| 11 ^|>>"%GITHUB_STEP_SUMMARY%"
-          echo ^| runtime_checker_rules ^| sensitive_markers_absent,sync_lines_present,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_with_manual_resync_summary_success,request_id_format_with_manual_resync_summary_success,request_id_format_with_sync_start_runtime,name_not_resolved_host_required,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_checker_rule_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_checker_rules ^| sensitive_markers_absent,sync_lines_present,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_with_manual_resync_summary_success,request_id_with_delete_selected_credentials_everywhere_summary_success,request_id_format_with_manual_resync_summary_success,request_id_format_with_sync_start_runtime,name_not_resolved_host_required,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: Validate checker script exists
@@ -94,6 +95,54 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| file ^| docs/check_sync_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate runtime FAIL delete_everywhere summary request_id sample file exists
+        id: runtime_fail_delete_everywhere_summary_request_id_sample_file
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' || github.event.inputs.scenario == 'runtime' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_delete_everywhere_summary_request_id') }}
+        shell: cmd
+        run: |
+          if not exist docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt (
+            echo Missing required sample file: docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt
+            echo ### Runtime FAIL delete_everywhere summary request_id sample file>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/samples/runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+          set "HAS_DELETE_EVERYWHERE_SUMMARY_LINE=0"
+          set "HAS_REQUEST_KEY=0"
+          set "HAS_REQUEST_ID_KEY=0"
+          findstr /i /c:"SUCCESS: summary result=success operation=delete_selected_credentials_everywhere" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_DELETE_EVERYWHERE_SUMMARY_LINE=1"
+          findstr /i /r /c:" request=[^ ]" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_KEY=1"
+          findstr /i /r /c:" request_id=[^ ]" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_ID_KEY=1"
+          if %HAS_DELETE_EVERYWHERE_SUMMARY_LINE% EQU 1 if %HAS_REQUEST_KEY% EQU 1 if %HAS_REQUEST_ID_KEY% EQU 0 exit /b 0
+          echo Runtime FAIL sample must contain delete_selected_credentials_everywhere success summary line with request= and without request_id=.
+          echo ### Runtime FAIL delete_everywhere summary request_id sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| invalid_sample_content ^|>>"%GITHUB_STEP_SUMMARY%"
+          if %HAS_DELETE_EVERYWHERE_SUMMARY_LINE% EQU 1 (
+            echo ^| has_delete_everywhere_summary_line ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_delete_everywhere_summary_line ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_REQUEST_KEY% EQU 1 (
+            echo ^| has_request_key ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_request_key ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_REQUEST_ID_KEY% EQU 1 (
+            echo ^| has_request_id_key ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_request_id_key ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
@@ -159,6 +208,34 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Runtime FAIL delete_everywhere summary request_id sample should fail
+        id: runtime_fail_delete_everywhere_summary_request_id_sample
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_delete_everywhere_summary_request_id') }}
+        shell: cmd
+        run: |
+          call docs\check_sync_runtime_log_keys_samples.cmd fail_delete_everywhere_summary_request_id > runtime_fail_delete_everywhere_summary_request_id_output.txt 2>&1
+          set "RUNTIME_FAIL_DELETE_EVERYWHERE_SUMMARY_REQUEST_ID_RC=%ERRORLEVEL%"
+          if %RUNTIME_FAIL_DELETE_EVERYWHERE_SUMMARY_REQUEST_ID_RC% EQU 0 (
+            echo ### Runtime FAIL delete_everywhere summary request_id sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %RUNTIME_FAIL_DELETE_EVERYWHERE_SUMMARY_REQUEST_ID_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Runtime fail sample checker failed unexpectedly. checker_exit_code=%RUNTIME_FAIL_DELETE_EVERYWHERE_SUMMARY_REQUEST_ID_RC%
+          type runtime_fail_delete_everywhere_summary_request_id_output.txt
+          echo ### Runtime FAIL delete_everywhere summary request_id sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %RUNTIME_FAIL_DELETE_EVERYWHERE_SUMMARY_REQUEST_ID_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
@@ -621,6 +698,7 @@ jobs:
             echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
             if /i "${{ github.event.inputs.scenario }}"=="fail" (
               echo ^| expected_runtime_fail_manual_resync_summary_request_id_format ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
+              echo ^| expected_runtime_fail_delete_everywhere_summary_request_id ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
             )
             echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -650,6 +728,7 @@ jobs:
           echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
           if /i "${{ github.event.inputs.scenario }}"=="fail" (
             echo ^| expected_runtime_fail_manual_resync_summary_request_id_format ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_runtime_fail_delete_everywhere_summary_request_id ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
           )
           echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"

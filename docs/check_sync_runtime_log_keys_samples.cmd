@@ -19,15 +19,17 @@ if /i "%SCENARIO%"=="batch" goto :run_both
 if /i "%SCENARIO%"=="pass" goto :run_pass
 if /i "%SCENARIO%"=="fail" goto :run_fail
 if /i "%SCENARIO%"=="fail_manual_resync_summary_request_id_format" goto :run_fail_manual_resync_summary_request_id_format
+if /i "%SCENARIO%"=="fail_delete_everywhere_summary_request_id" goto :run_fail_delete_everywhere_summary_request_id
 
 echo ERROR: unsupported scenario: %SCENARIO%
-echo Usage: %~nx0 [both^|batch^|pass^|fail^|fail_manual_resync_summary_request_id_format]
+echo Usage: %~nx0 [both^|batch^|pass^|fail^|fail_manual_resync_summary_request_id_format^|fail_delete_everywhere_summary_request_id]
 exit /b 2
 
 :run_both
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_pass.txt" 0
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail.txt" 1
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt" 1
+call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt" 1
 goto :finish
 
 :run_pass
@@ -37,10 +39,15 @@ goto :finish
 :run_fail
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail.txt" 1
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt" 1
+call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt" 1
 goto :finish
 
 :run_fail_manual_resync_summary_request_id_format
 call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt" 1
+goto :finish
+
+:run_fail_delete_everywhere_summary_request_id
+call :run_case "%SCRIPT_DIR%samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt" 1
 goto :finish
 
 :finish

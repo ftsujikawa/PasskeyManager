@@ -647,7 +647,7 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         std::wstring operation = L"restore_snapshot";
-        std::wstring requestId = BuildRequestId(L"restore_snapshot");
+        std::wstring requestId = BuildRequestId(operation);
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
         std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         restoreSyncSnapshotButton().IsEnabled(false);
@@ -1255,7 +1255,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
         std::wstring operation = L"test_connection";
-        std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
+        std::wstring testConnectionRequestId = BuildRequestId(operation);
         std::wstring parsedHost;
         std::wstring parsedHostValue = TryGetSyncBaseUrlHost(baseUrl, parsedHost) ? parsedHost : L"unparsed";
 
@@ -1358,7 +1358,7 @@ namespace winrt::PasskeyManager::implementation
     {
         auto weakThis = get_weak();
         std::wstring operation = L"manual_resync";
-        std::wstring requestId = BuildRequestId(L"manual_resync");
+        std::wstring requestId = BuildRequestId(operation);
         std::wstring syncBaseUrl = NormalizeSyncBaseUrl(ReadSyncSettingValue(kSyncBaseUrlEnv));
         std::wstring parsedHostValue = ResolveSyncHostValueOrUnparsed(syncBaseUrl);
         manualSyncButton().IsEnabled(false);

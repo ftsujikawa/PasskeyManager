@@ -464,6 +464,38 @@ namespace tsupasswd
             return false;
         }
 
+        if (!expectDeserializeFailure(
+            L"{\"vault_id\":\"v\",\"revision\":1,\"items\":[]}",
+            L"schema_version_required",
+            L"missing_schema_version"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[123]}",
+            L"item_object_required",
+            L"invalid_item_object_type"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"item_type\":\"secure_note\",\"title\":\"t\",\"login\":{\"username\":\"u\",\"password\":\"p\"}}]}",
+            L"unsupported_item_type",
+            L"invalid_item_type_value"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"title\":\"t\",\"login\":{\"username\":\"u\",\"password\":\"p\"}}]}",
+            L"unsupported_item_type",
+            L"missing_item_type"))
+        {
+            return false;
+        }
+
         return true;
     }
 }

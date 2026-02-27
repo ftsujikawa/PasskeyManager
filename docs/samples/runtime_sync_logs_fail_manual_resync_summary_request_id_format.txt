@@ -1,0 +1,2 @@
+INFO: sync state=start operation=manual_resync request_id=20260227T000004123Z-manual_resync
+SUCCESS: summary result=success operation=manual_resync request_id=2026-02-27T00:00:05Z-manual_resync

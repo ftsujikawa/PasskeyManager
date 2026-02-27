@@ -28,8 +28,11 @@ on:
       - 'src/SyncClient.h'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/check_sync_log_keys_samples.cmd'
+      - 'docs/check_sync_runtime_log_keys.cmd'
+      - 'docs/check_sync_runtime_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'
+      - 'docs/samples/runtime_sync_logs_*.txt'
       - '.github/workflows/sync-log-keys-check.yml'
   pull_request:
     paths:
@@ -43,8 +46,11 @@ on:
       - 'src/SyncClient.h'
       - 'docs/check_sync_log_keys.cmd'
       - 'docs/check_sync_log_keys_samples.cmd'
+      - 'docs/check_sync_runtime_log_keys.cmd'
+      - 'docs/check_sync_runtime_log_keys_samples.cmd'
       - 'docs/sync_client_abnormal_log_scenarios.md'
       - 'docs/samples/abnormal_sync_logs_*.txt'
+      - 'docs/samples/runtime_sync_logs_*.txt'
       - '.github/workflows/sync-log-keys-check.yml'
 
 jobs:
@@ -95,6 +101,30 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
+      - name: Validate runtime checker scripts exist
+        id: runtime_checker_script
+        shell: cmd
+        run: |
+          if not exist docs\check_sync_runtime_log_keys.cmd (
+            echo Missing required checker script: docs\check_sync_runtime_log_keys.cmd
+            echo ### Runtime checker script>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/check_sync_runtime_log_keys.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+          if exist docs\check_sync_runtime_log_keys_samples.cmd exit /b 0
+          echo Missing required checker script: docs\check_sync_runtime_log_keys_samples.cmd
+          echo ### Runtime checker samples script>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/check_sync_runtime_log_keys_samples.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Batch sample checker should pass
         id: batch_samples
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' }}
@@ -119,6 +149,34 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Runtime batch sample checker should pass
+        id: runtime_batch_samples
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_runtime_log_keys_samples.cmd both > runtime_batch_samples_output.txt 2>&1
+          set "RUNTIME_BATCH_RC=%ERRORLEVEL%"
+          if %RUNTIME_BATCH_RC% EQU 0 (
+            echo ### Runtime batch sample checker>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %RUNTIME_BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Runtime batch sample checker failed. checker_exit_code=%RUNTIME_BATCH_RC%
+          type runtime_batch_samples_output.txt
+          echo ### Runtime batch sample checker>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %RUNTIME_BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1

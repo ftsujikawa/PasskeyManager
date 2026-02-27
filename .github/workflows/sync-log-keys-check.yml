@@ -219,6 +219,46 @@ jobs:
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 
+      - name: Validate runtime FAIL manual_resync summary request_id format sample file exists
+        id: runtime_fail_manual_resync_summary_request_id_format_sample_file
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' || github.event.inputs.scenario == 'runtime' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_manual_resync_summary_request_id_format') }}
+        shell: cmd
+        run: |
+          if not exist docs\samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt (
+            echo Missing required sample file: docs\samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt
+            echo ### Runtime FAIL manual_resync summary request_id format sample file>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/samples/runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+          set "HAS_MANUAL_RESYNC_SUMMARY_LINE=0"
+          set "HAS_MALFORMED_REQUEST_ID=0"
+          findstr /i /c:"SUCCESS: summary result=success operation=manual_resync" docs\samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_MANUAL_RESYNC_SUMMARY_LINE=1"
+          findstr /i /r /c:"request_id=[0-9][0-9][0-9][0-9]-" docs\samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt >nul
+          if %ERRORLEVEL% EQU 0 set "HAS_MALFORMED_REQUEST_ID=1"
+          if %HAS_MANUAL_RESYNC_SUMMARY_LINE% EQU 1 if %HAS_MALFORMED_REQUEST_ID% EQU 1 exit /b 0
+          echo Runtime FAIL sample must contain manual_resync success summary line with malformed request_id format.
+          echo ### Runtime FAIL manual_resync summary request_id format sample file>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| invalid_sample_content ^|>>"%GITHUB_STEP_SUMMARY%"
+          if %HAS_MANUAL_RESYNC_SUMMARY_LINE% EQU 1 (
+            echo ^| has_manual_resync_summary_line ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_manual_resync_summary_line ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          if %HAS_MALFORMED_REQUEST_ID% EQU 1 (
+            echo ^| has_malformed_request_id ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
+          ) else (
+            echo ^| has_malformed_request_id ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
       - name: Validate FAIL request_id format sample file exists
         id: fail_request_id_format_sample_file
         if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_request_id_format') }}

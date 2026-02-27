@@ -242,6 +242,7 @@ docs\check_sync_runtime_log_keys_samples.cmd both
 - `summary` / `sync` ログの `operation=` 存在
 - `message=` がある行の `message_code=` 併記
 - `sync state=start` / `sync result=failed|warning` 系での `request_id=` 整合
+- `SUCCESS: summary result=success operation=manual_resync` 行で `request_id=` の存在とフォーマット整合
 - `name_not_resolved` 系での `host=` 必須
 
 注: 異常系シナリオ（`409_recovery` / `vault_unlock_ui_required` など）の「必須出現」は要求しない。

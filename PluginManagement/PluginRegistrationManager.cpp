@@ -1015,11 +1015,8 @@ namespace winrt::PasskeyManager::implementation {
                 vaultDoc.VaultId = localRequestId;
                 vaultDoc.Revision = 1;
 
-                std::wstring vaultJson;
-                if (tsupasswd::SerializeVaultDocumentV1(vaultDoc, vaultJson))
+                if (tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, vaultPlaintext))
                 {
-                    std::string utf8 = winrt::to_string(winrt::hstring{ vaultJson });
-                    vaultPlaintext.assign(utf8.begin(), utf8.end());
                     UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=ready operation=" + operation + L" step=vault_schema_v1_initialized request_id=" + localRequestId + L"ℹ" });
                 }
                 else

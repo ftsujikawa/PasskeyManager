@@ -150,6 +150,22 @@ namespace tsupasswd
         return true;
     }
 
+    bool SerializeVaultDocumentV1ToUtf8Bytes(
+        VaultDocumentV1 const& doc,
+        std::vector<BYTE>& outBytes)
+    {
+        std::wstring json;
+        if (!SerializeVaultDocumentV1(doc, json))
+        {
+            outBytes.clear();
+            return false;
+        }
+
+        std::string utf8 = winrt::to_string(winrt::hstring{ json });
+        outBytes.assign(utf8.begin(), utf8.end());
+        return true;
+    }
+
     bool DeserializeVaultDocumentV1(
         std::wstring const& json,
         VaultDocumentV1& outDoc,
@@ -265,5 +281,38 @@ namespace tsupasswd
         }
 
         return ValidateRequiredFields(outDoc, outError);
+    }
+
+    bool DeserializeVaultDocumentV1FromUtf8Bytes(
+        BYTE const* data,
+        size_t dataSize,
+        VaultDocumentV1& outDoc,
+        std::wstring& outError)
+    {
+        outDoc = {};
+        outError.clear();
+
+        if (data == nullptr || dataSize == 0)
+        {
+            outError = L"empty_json";
+            return false;
+        }
+
+        std::string utf8(
+            reinterpret_cast<char const*>(data),
+            reinterpret_cast<char const*>(data) + dataSize);
+
+        std::wstring json;
+        try
+        {
+            json = winrt::to_hstring(utf8).c_str();
+        }
+        catch (...)
+        {
+            outError = L"json_utf8_decode_failed";
+            return false;
+        }
+
+        return DeserializeVaultDocumentV1(json, outDoc, outError);
     }
 }

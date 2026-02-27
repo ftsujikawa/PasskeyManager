@@ -909,13 +909,13 @@ namespace winrt::PasskeyManager::implementation
             return S_OK;
         }
 
-        std::string decryptedUtf8(
-            reinterpret_cast<char const*>(decryptedData.pbData),
-            reinterpret_cast<char const*>(decryptedData.pbData) + decryptedData.cbData);
-        std::wstring decryptedJson = winrt::to_hstring(decryptedUtf8).c_str();
         tsupasswd::VaultDocumentV1 vaultDoc{};
         std::wstring parseError;
-        if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+        if (!tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(
+            decryptedData.pbData,
+            decryptedData.cbData,
+            vaultDoc,
+            parseError))
         {
             logWarningWithRequestId(
                 L"sync result=failed operation=" + operation +

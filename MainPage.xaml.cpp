@@ -1540,6 +1540,7 @@ namespace winrt::PasskeyManager::implementation
     {
         std::wstring operation = L"add_all_credentials";
         std::wstring unlockOperation = L"vault_unlock";
+        std::wstring requestId = BuildRequestId(operation);
         LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
 
         auto& credentialManager = PluginCredentialManager::getInstance();

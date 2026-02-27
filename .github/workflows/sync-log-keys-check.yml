@@ -11,6 +11,7 @@ on:
         options:
           - both
           - batch
+          - runtime
           - pass
           - fail
           - fail_request_id_format
@@ -155,7 +156,7 @@ jobs:
 
       - name: Runtime batch sample checker should pass
         id: runtime_batch_samples
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.scenario == 'both' || github.event.inputs.scenario == 'batch' || github.event.inputs.scenario == 'runtime' }}
         shell: cmd
         run: |
           call docs\check_sync_runtime_log_keys_samples.cmd both > runtime_batch_samples_output.txt 2>&1

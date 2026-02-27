@@ -1385,6 +1385,7 @@ namespace winrt::PasskeyManager::implementation
             self->manualSyncButton().IsEnabled(true);
             if (SUCCEEDED(hr))
             {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
             }
             else

@@ -1591,29 +1591,30 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == NTE_EXISTS || hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
         {
-            self->LogInfo(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=already_cached_no_new" });
+            self->LogInfo(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=already_cached_no_new request_id=" + requestId });
             co_return;
         }
         if (FAILED(hr))
         {
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail }, hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail + L" request_id=" + requestId }, hr);
             co_return;
         }
-        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
         co_return;
     }
 
     winrt::IAsyncAction MainPage::addSelectedCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"add_selected_credentials";
-        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
+        std::wstring requestId = BuildRequestId(operation);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
 
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection" });
+            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection request_id=" + requestId });
             co_return;
         }
 
@@ -1626,7 +1627,7 @@ namespace winrt::PasskeyManager::implementation
             credentialIdList.push_back(credentialIdToAdd);
         }
 
-        LogInProgress(winrt::hstring{ L"summary state=selected operation=" + operation + L" selected=" + std::to_wstring(credentialIdList.size()) });
+        LogInProgress(winrt::hstring{ L"summary state=selected operation=" + operation + L" selected=" + std::to_wstring(credentialIdList.size()) + L" request_id=" + requestId });
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();

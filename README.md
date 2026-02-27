@@ -54,6 +54,7 @@ gh repo set-default <ORG_OR_USER>/<REPO>
 
 - `./docs/sync_client_abnormal_log_scenarios.md`
 - PR説明文の使い回しには `./docs/PR_TEMPLATE_SNIPPETS.md`（超短文版/短縮版/フル版）
+- runtime checker 連携の完了記録は `./docs/runtime_checker_rollout_completion.md`
 
 ログ貼り付けテキスト（例: `captured_logs.txt`）から必須キーと機微情報マーカーを自動確認する場合:
 

@@ -1783,7 +1783,7 @@ namespace winrt::PasskeyManager::implementation
         if (m_isDeleteEverywhereInProgress)
         {
             LogWarning(winrt::hstring{
-                L"summary result=rejected reason=in_progress request=" +
+                L"summary result=rejected operation=delete_selected_credentials_everywhere reason=in_progress request_id=" +
                 std::to_wstring(requestId) +
                 L" active_run=" +
                 std::to_wstring(m_deleteEverywhereActiveRunId) });
@@ -1796,7 +1796,7 @@ namespace winrt::PasskeyManager::implementation
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)
         {
-            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection request=" + std::to_wstring(requestId) }, E_NOT_SET);
+            LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_selection request_id=" + std::to_wstring(requestId) }, E_NOT_SET);
             co_return;
         }
 
@@ -1806,7 +1806,7 @@ namespace winrt::PasskeyManager::implementation
         auto runStartTime = std::chrono::steady_clock::now();
         deleteSelectedLocalButton().IsEnabled(false);
         LogInProgress(winrt::hstring{
-            L"summary state=running operation=" + operation + L" request=" +
+            L"summary state=running operation=" + operation + L" request_id=" +
             std::to_wstring(requestId) +
             L" run=" +
             std::to_wstring(runId) });
@@ -1823,7 +1823,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         // update the status block with count of selected creds
-        hstring statusText = winrt::hstring{ L"INFO: summary state=selected operation=" + operation + L" request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" selected=" + std::to_wstring(credentialIdList.size()) + L"ℹ" };
+        hstring statusText = winrt::hstring{ L"INFO: summary state=selected operation=" + operation + L" request_id=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" selected=" + std::to_wstring(credentialIdList.size()) + L"ℹ" };
         UpdatePasskeyOperationStatusText(statusText);
 
         co_await winrt::resume_background();
@@ -1871,18 +1871,18 @@ namespace winrt::PasskeyManager::implementation
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
             auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
-            self->LogInfo(winrt::hstring{ L"summary result=not_found operation=" + operation + L" request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
+            self->LogInfo(winrt::hstring{ L"summary result=not_found operation=" + operation + L" request_id=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
             co_return;
         }
         if (FAILED(hr))
         {
             auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
             std::wstring detail = DescribeCredentialOperationFailure(hr);
-            self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) + L" detail=" + detail }, hr);
+            self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" request_id=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) + L" detail=" + detail }, hr);
             co_return;
         }
         auto missingCount = credentialIdList.size() - cachedCredentialIdList.size();
-        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + std::to_wstring(requestId) + L" run=" + std::to_wstring(runId) + L" attempts=1 elapsed_ms=" + std::to_wstring(elapsedMs) + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" selected=" + std::to_wstring(credentialIdList.size()) + L" cached=" + std::to_wstring(cachedCredentialIdList.size()) + L" missing=" + std::to_wstring(missingCount) });
         co_return;
     }
 

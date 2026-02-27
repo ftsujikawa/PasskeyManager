@@ -177,8 +177,8 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_name_resolution_host
 実運用ログの代表例（fixed-format, key=value）:
 
 ```text
-SUCCESS: summary result=success operation=delete_selected_credentials_everywhere request=1 run=1 attempts=1 elapsed_ms=75 hr=0 selected=3 cached=3 missing=0✅
-INFO: summary state=running operation=delete_selected_credentials_everywhere request=1 run=1⏳
+SUCCESS: summary result=success operation=delete_selected_credentials_everywhere request_id=1 run=1 attempts=1 elapsed_ms=75 hr=0 selected=3 cached=3 missing=0✅
+INFO: summary state=running operation=delete_selected_credentials_everywhere request_id=1 run=1⏳
 INFO: summary state=running operation=vault_recovery request_id=20260225T162435905Z-vault_recovery⏳
 WARNING: sync result=failed operation=put_vault attempts=3/3 elapsed_ms=1523 hr=-2147012889 detail=failure_kind=client_error sync_failure=unexpected_or_server_error local_save=kept code=CLIENT_ERROR message_code=CLIENT_ERROR message=SyncClient::PutVault failed before receiving valid response. request_id=2026-02-25T16:24:40Z-put_vault
 INFO: sync result=retry_backoff operation=put_vault attempt=3/3 backoff_ms=1000 elapsed_ms=517 request_id=2026-02-25T16:24:40Z-put_vaultℹ

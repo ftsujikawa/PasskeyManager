@@ -15,6 +15,8 @@ namespace winrt::PasskeyManager::implementation
 {
     namespace
     {
+        constexpr wchar_t kVaultUnlockOperation[] = L"vault_unlock";
+
         std::wstring BuildRequestId(std::wstring const& operation)
         {
             SYSTEMTIME st{};
@@ -37,7 +39,7 @@ namespace winrt::PasskeyManager::implementation
         {
             if (message.find(L" operation=") == std::wstring::npos)
             {
-                message += L" operation=vault_unlock";
+                message += L" operation=" + std::wstring{ kVaultUnlockOperation };
             }
             return message;
         }
@@ -800,7 +802,7 @@ namespace winrt::PasskeyManager::implementation
     // be stored in the cloud.
     HRESULT PluginCredentialManager::UnlockCredentialVaultWithPasskey(HWND hwnd) try
     {
-        std::wstring operation = L"vault_unlock";
+        std::wstring operation = kVaultUnlockOperation;
         std::wstring requestId = BuildRequestId(operation);
         auto logWarningWithRequestId = [&](std::wstring message)
         {

@@ -274,6 +274,7 @@ docs\check_sync_runtime_log_keys_samples.cmd both
 - `both` : PASS/FAIL サンプルを両方実行
 - `batch` : 全サンプルを一括検証（batch checker のみ実行）
 - `runtime` : runtime サンプルを一括検証（runtime checker のみ実行）
+- `fail_manual_resync_summary_request_id_format` : `manual_resync` success summary の `request_id` フォーマット違反サンプルのみ実行
 - `pass` : PASS サンプルのみ実行
 - `fail` : FAIL サンプルのみ実行
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
@@ -305,6 +306,9 @@ gh workflow run sync-log-keys-check.yml -f scenario=batch
 
 # runtime サンプルの一括検証のみ（runtime checker を実行）
 gh workflow run sync-log-keys-check.yml -f scenario=runtime
+
+# manual_resync success summary の request_id フォーマット違反サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_manual_resync_summary_request_id_format
 
 # FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail

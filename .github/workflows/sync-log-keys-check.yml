@@ -12,6 +12,7 @@ on:
           - both
           - batch
           - runtime
+          - fail_manual_resync_summary_request_id_format
           - pass
           - fail
           - fail_request_id_format
@@ -156,6 +157,34 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_exit_code ^| %BATCH_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Runtime FAIL manual_resync summary request_id format sample should fail
+        id: runtime_fail_manual_resync_summary_request_id_format_sample
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.scenario == 'fail_manual_resync_summary_request_id_format' }}
+        shell: cmd
+        run: |
+          call docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_id_format > runtime_fail_manual_resync_summary_request_id_format_output.txt 2>&1
+          set "RUNTIME_FAIL_MANUAL_RESYNC_SUMMARY_REQUEST_ID_FORMAT_RC=%ERRORLEVEL%"
+          if %RUNTIME_FAIL_MANUAL_RESYNC_SUMMARY_REQUEST_ID_FORMAT_RC% EQU 0 (
+            echo ### Runtime FAIL manual_resync summary request_id format sample>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| expected_failure_confirmed ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %RUNTIME_FAIL_MANUAL_RESYNC_SUMMARY_REQUEST_ID_FORMAT_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Runtime fail sample checker failed unexpectedly. checker_exit_code=%RUNTIME_FAIL_MANUAL_RESYNC_SUMMARY_REQUEST_ID_FORMAT_RC%
+          type runtime_fail_manual_resync_summary_request_id_format_output.txt
+          echo ### Runtime FAIL manual_resync summary request_id format sample>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %RUNTIME_FAIL_MANUAL_RESYNC_SUMMARY_REQUEST_ID_FORMAT_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1

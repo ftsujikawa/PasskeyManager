@@ -885,6 +885,7 @@ namespace winrt::PasskeyManager::implementation
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         auto unlockMethod = toggleSwitchState ? VaultUnlockMethod::Passkey : VaultUnlockMethod::Consent;
+        std::wstring operation = L"vault_recovery";
         std::wstring vaultRecoveryRequestId;
         if (unlockMethod == VaultUnlockMethod::Passkey)
         {
@@ -913,7 +914,7 @@ namespace winrt::PasskeyManager::implementation
             self->LogSuccess(winrt::hstring{ L"summary result=success operation=set_vault_unlock_method method=" + methodValue });
             if (unlockMethod == VaultUnlockMethod::Passkey && FAILED(hrSetSilent))
             {
-                self->LogWarning(winrt::hstring{ L"summary result=warning operation=vault_recovery step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + vaultRecoveryRequestId });
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + vaultRecoveryRequestId });
             }
         }
 
@@ -921,7 +922,7 @@ namespace winrt::PasskeyManager::implementation
         {
             if (self)
             {
-                self->LogInfo(winrt::hstring{ L"summary state=running operation=vault_recovery trigger=unlock_method_toggle step=create_vault_passkey_start request_id=" + vaultRecoveryRequestId });
+                self->LogInfo(winrt::hstring{ L"summary state=running operation=" + operation + L" trigger=unlock_method_toggle step=create_vault_passkey_start request_id=" + vaultRecoveryRequestId });
             }
             // Let the log render before WebAuthN blocks the UI thread.
             co_await winrt::resume_after(std::chrono::milliseconds(50));
@@ -939,7 +940,7 @@ namespace winrt::PasskeyManager::implementation
             {
                 if (self)
                 {
-                    self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled request_id=" + vaultRecoveryRequestId });
+                    self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=" + operation + L" step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled request_id=" + vaultRecoveryRequestId });
                 }
             }
 
@@ -950,11 +951,11 @@ namespace winrt::PasskeyManager::implementation
                 {
                     if (hr == NTE_EXISTS)
                     {
-                        self->LogSuccess(winrt::hstring{ L"summary result=success operation=vault_recovery outcome=passkey_already_exists request_id=" + vaultRecoveryRequestId });
+                        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_already_exists request_id=" + vaultRecoveryRequestId });
                     }
                     else
                     {
-                        self->LogSuccess(winrt::hstring{ L"summary result=success operation=vault_recovery outcome=passkey_created request_id=" + vaultRecoveryRequestId });
+                        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_created request_id=" + vaultRecoveryRequestId });
                     }
                 }
             }
@@ -965,16 +966,16 @@ namespace winrt::PasskeyManager::implementation
                 {
                     if (hr == NTE_USER_CANCELLED || hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
                     {
-                        self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=vault_recovery step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled request_id=" + vaultRecoveryRequestId });
+                        self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=" + operation + L" step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hr)) + L" reason=user_cancelled request_id=" + vaultRecoveryRequestId });
                     }
                     else
                     {
-                        self->LogFailure(winrt::hstring{ L"summary result=failed operation=vault_recovery step=create_vault_passkey request_id=" + vaultRecoveryRequestId }, hr);
+                        self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=create_vault_passkey request_id=" + vaultRecoveryRequestId }, hr);
                     }
 
                     if (hr == NTE_NOT_SUPPORTED)
                     {
-                        self->LogWarning(winrt::hstring{ L"summary result=failed operation=vault_recovery reason=authenticator_not_supported_prf_hmac request_id=" + vaultRecoveryRequestId });
+                        self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" reason=authenticator_not_supported_prf_hmac request_id=" + vaultRecoveryRequestId });
                     }
                 }
             }

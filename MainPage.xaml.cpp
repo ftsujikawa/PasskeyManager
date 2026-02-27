@@ -1400,7 +1400,8 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::unregisterPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"summary state=running operation=unregister_plugin");
+        std::wstring operation = L"unregister_plugin";
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
         auto weakThis = get_weak();
 
         if (m_cookie.has_value())
@@ -1422,7 +1423,7 @@ namespace winrt::PasskeyManager::implementation
         self->UpdatePluginEnableState();
         if (FAILED(hr))
         {
-            self->LogFailure(L"summary result=failed operation=unregister_plugin", hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
             co_return;
         }
 
@@ -1450,17 +1451,18 @@ namespace winrt::PasskeyManager::implementation
 
         if (removed)
         {
-            self->LogSuccess(L"summary result=success operation=unregister_plugin");
+            self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
         }
         else
         {
-            self->LogWarning(L"summary result=warning operation=unregister_plugin outcome=still_visible_in_settings");
+            self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" outcome=still_visible_in_settings" });
         }
     }
 
     winrt::IAsyncAction MainPage::registerPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"summary state=running operation=register_plugin");
+        std::wstring operation = L"register_plugin";
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().RegisterPlugin();
@@ -1476,17 +1478,18 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            self->LogFailure(L"summary result=failed operation=register_plugin", hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
             co_return;
         }
-        self->LogSuccess(L"summary result=success operation=register_plugin");
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
 
         m_cookie = RegisterWebAuthNStatusChangeCallback(static_cast<void*>(this));
     }
 
     winrt::IAsyncAction MainPage::updatePluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        LogInProgress(L"summary state=running operation=update_plugin");
+        std::wstring operation = L"update_plugin";
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         HRESULT hr = PluginRegistrationManager::getInstance().UpdatePlugin();
@@ -1503,10 +1506,10 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            self->LogFailure(L"summary result=failed operation=update_plugin", hr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
             co_return;
         }
-        self->LogSuccess(L"summary result=success operation=update_plugin");
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
     }
 
     winrt::IAsyncAction MainPage::addAllPluginCredentials_Click(IInspectable const&, RoutedEventArgs const&)

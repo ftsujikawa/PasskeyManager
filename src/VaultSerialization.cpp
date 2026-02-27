@@ -432,6 +432,38 @@ namespace tsupasswd
             return false;
         }
 
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"revision\":1,\"items\":[]}",
+            L"vault_id_required",
+            L"missing_vault_id"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1}",
+            L"items_required",
+            L"missing_items"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":{}}",
+            L"items_required",
+            L"invalid_items_type"))
+        {
+            return false;
+        }
+
+        if (!expectDeserializeFailure(
+            L"{\"schema_version\":1,\"vault_id\":\"v\",\"revision\":1,\"items\":[{\"item_id\":\"i\",\"item_type\":\"login\",\"title\":\"t\"}]}",
+            L"login_required",
+            L"missing_login_object"))
+        {
+            return false;
+        }
+
         return true;
     }
 }

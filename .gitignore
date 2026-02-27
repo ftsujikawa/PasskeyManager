@@ -1,26 +1,3 @@
-# .gitignore にテストビルドを追加
-@"
-# MSIX Test Builds
-tsupasswd_core_*_Test/
-*.appinstaller
-
-# Temporary scripts
-a.ps1
-pfx.ps1
-index.html
-
-# Build output
-x64/
-x86/
-ARM64/
-Debug/
-Release/
-*.msix
-*.msixbundle
-"@ | Add-Content -Path ".gitignore"
-
-git add .gitignore
-git commit -m "Update .gitignore for MSIX build artifacts"
 # Temporary PowerShell scripts
 *.ps1
 
@@ -33,6 +10,7 @@ git commit -m "Update .gitignore for MSIX build artifacts"
 
 # Build directories
 .vs/
+AppPackages/
 packages/
 BundleArtifacts/
 Generated Files/
@@ -54,3 +32,6 @@ appsettings.local.json
 
 # Local captured runtime logs
 captured_runtime_logs*.txt
+
+# Local temporary files
+index.html

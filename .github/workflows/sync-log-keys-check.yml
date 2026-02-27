@@ -79,6 +79,8 @@ jobs:
           echo ^| scenario ^| ${{ github.event.inputs.scenario || 'both' }} ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_rule_count ^| 12 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| checker_rules ^| 409_recovery,read_encrypted_vault_data,vault_unlock_ui_required,sensitive_markers_absent,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_format_with_sync_start,failure_kind_with_sync_failure,name_not_resolved_host_required,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_checker_rule_count ^| 11 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| runtime_checker_rules ^| sensitive_markers_absent,sync_lines_present,operation_key_present,message_code_with_message,request_id_with_sync_failure,request_id_with_sync_start,request_id_with_manual_resync_summary_success,request_id_format_with_manual_resync_summary_success,request_id_format_with_sync_start_runtime,name_not_resolved_host_required,failure_kind_allowed_values ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
 
       - name: Validate checker script exists

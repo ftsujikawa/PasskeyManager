@@ -114,6 +114,12 @@ UI必須状態の拒否が `operation=vault_unlock reason=ui_required` で出る
 - `failure_kind=`（失敗分類）
 - `name_not_resolved` の場合は `host=` を必須（`sync_failure=name_not_resolved` / `reason=name_not_resolved` の両経路）
 
+### 固定ルール（2026-02 時点）
+
+- `MainPage.xaml.cpp` / `PluginManagement/PluginRegistrationManager.cpp` / `PluginManagement/PluginCredentialManager.cpp` のログ実装では、同一関数内で繰り返し使う `operation` 値を直書きせず、`operation` 変数（または共有定数）経由で構築する。
+- `name_not_resolved` を表すログ（`sync_failure=name_not_resolved` または `reason=name_not_resolved`）では、`host=` を必須とする。
+- 上記2点は `docs/check_sync_runtime_log_keys.cmd` および `sync-log-keys-check.yml` のチェック方針と整合させる（実装修正時はサンプルログと checker ルールも同時更新）。
+
 ---
 
 ## 5. 参照実装

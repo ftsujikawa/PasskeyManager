@@ -165,7 +165,7 @@ jobs:
 
       - name: Runtime FAIL manual_resync summary request_id format sample should fail
         id: runtime_fail_manual_resync_summary_request_id_format_sample
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.scenario == 'fail_manual_resync_summary_request_id_format' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == 'fail_manual_resync_summary_request_id_format') }}
         shell: cmd
         run: |
           call docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_id_format > runtime_fail_manual_resync_summary_request_id_format_output.txt 2>&1

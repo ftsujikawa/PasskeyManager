@@ -278,7 +278,7 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_
 - `runtime` : runtime サンプルを一括検証（runtime checker のみ実行）
 - `fail_manual_resync_summary_request_id_format` : `manual_resync` success summary の `request_id` フォーマット違反サンプルのみ実行
 - `pass` : PASS サンプルのみ実行
-- `fail` : FAIL サンプルのみ実行
+- `fail` : FAIL サンプル実行（abnormal FAIL に加えて runtime FAIL `manual_resync` request_id フォーマット違反も確認）
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
 - `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
 - `fail_name_resolution_host` : `sync_failure=name_not_resolved` または `reason=name_not_resolved` で `host=` 欠落サンプルのみ実行

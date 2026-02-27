@@ -1193,19 +1193,20 @@ namespace winrt::PasskeyManager::implementation
         std::wstring baseUrl = NormalizeSyncBaseUrl(syncBaseUrlTextBox().Text().c_str());
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+        std::wstring operation = L"save_settings";
 
         syncBaseUrlTextBox().Text(baseUrl);
 
         if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=invalid_base_url⚠");
-            LogWarning(L"sync result=rejected operation=save_settings reason=invalid_base_url");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_base_url⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_base_url" });
             co_return;
         }
         if (!baseUrl.empty() && !IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=https_required⚠");
-            LogWarning(L"sync result=rejected operation=save_settings reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only" });
             co_return;
         }
         if (!baseUrl.empty())
@@ -1214,15 +1215,15 @@ namespace winrt::PasskeyManager::implementation
             if (!TryGetSyncBaseUrlHost(baseUrl, host) || !IsHostNameResolvable(host))
             {
                 std::wstring hostValue = host.empty() ? L"unparsed" : host;
-                syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=save_settings reason=name_not_resolved host=" + hostValue + L"⚠" });
-                LogWarning(winrt::hstring{ L"sync result=rejected operation=save_settings reason=name_not_resolved host=" + hostValue + L" recovery=check_sync_base_url_dns_or_hosts" });
+                syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=name_not_resolved host=" + hostValue + L"⚠" });
+                LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=name_not_resolved host=" + hostValue + L" recovery=check_sync_base_url_dns_or_hosts" });
                 co_return;
             }
         }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {
-            syncStatusTextBlock().Text(L"WARNING: sync result=rejected operation=save_settings reason=invalid_user_id⚠");
-            LogWarning(L"sync result=rejected operation=save_settings reason=invalid_user_id");
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id⚠" });
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_user_id" });
             co_return;
         }
 
@@ -1239,13 +1240,13 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            syncStatusTextBlock().Text(L"FAILED: summary result=failed operation=save_settings❌");
-            LogFailure(L"summary result=failed operation=save_settings", hr);
+            syncStatusTextBlock().Text(winrt::hstring{ L"FAILED: summary result=failed operation=" + operation + L"❌" });
+            LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
             co_return;
         }
 
-        syncStatusTextBlock().Text(L"SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id✅");
-        LogSuccess(L"sync result=success operation=save_settings fields=base_url,token,user_id");
+        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" fields=base_url,token,user_id✅" });
+        LogSuccess(winrt::hstring{ L"sync result=success operation=" + operation + L" fields=base_url,token,user_id" });
         co_return;
     }
 

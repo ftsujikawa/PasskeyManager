@@ -798,13 +798,6 @@ namespace winrt::PasskeyManager::implementation
             hrCreatePasskey = PluginRegistrationManager::getInstance().CreateVaultPasskey(hwnd, requestId);
             co_await wil::resume_foreground(DispatcherQueue());
         }
-        if (IsVaultRecoveryInterrupted(hrCreatePasskey))
-        {
-            if (auto self{ weakThis.get() })
-            {
-                self->LogInfo(winrt::hstring{ L"summary result=cancelled operation=" + operation + L" step=create_vault_passkey hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" reason=user_cancelled_or_ui_interrupted request_id=" + requestId });
-            }
-        }
         if (auto self{ weakThis.get() })
         {
             self->SetVaultLockSwitchState(true);

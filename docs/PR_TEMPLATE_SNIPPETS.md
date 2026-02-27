@@ -15,7 +15,9 @@
 1. [name_not_resolved host 必須化（超短文版）](#name_not_resolved-host-必須化超短文版)
 2. [name_not_resolved host 必須化（短縮版）](#name_not_resolved-host-必須化短縮版)
 3. [name_not_resolved host 必須化（フル版）](#name_not_resolved-host-必須化フル版)
-4. [runtime checker 連携更新（保存版PR本文）](./pr_runtime_checker_update.md)
+4. [operation 統一 + host必須運用固定化（超短文版）](#operation-統一--host必須運用固定化超短文版)
+5. [operation 統一 + host必須運用固定化（短縮版）](#operation-統一--host必須運用固定化短縮版)
+6. [runtime checker 連携更新（保存版PR本文）](./pr_runtime_checker_update.md)
 
 ## name_not_resolved host 必須化（超短文版）
 
@@ -64,4 +66,30 @@ docs\check_sync_log_keys_samples.cmd fail_name_resolution_host
 - `docs/check_sync_log_keys.cmd`
 - `.github/workflows/sync-log-keys-check.yml`
 - `docs/samples/*` と関連ドキュメントの該当変更を戻す
+```
+
+## operation 統一 + host必須運用固定化（超短文版）
+
+```md
+ログ保守性向上のため、`MainPage` / `PluginRegistrationManager` / `PluginCredentialManager` の operation 直書きを変数・共有定数経由へ統一し、`name_not_resolved` 時の `host=` 必須方針を運用ドキュメントへ明文化しました。Sync Log Keys Check の成功を確認済みです。
+```
+
+## operation 統一 + host必須運用固定化（短縮版）
+
+```md
+## 概要
+ログ文言の保守性・一貫性向上のため、主要3ファイル（`MainPage.xaml.cpp` / `PluginManagement/PluginRegistrationManager.cpp` / `PluginManagement/PluginCredentialManager.cpp`）で operation 直書きを変数・共有定数経由へ統一しました。あわせて `name_not_resolved` での `host=` 必須方針を `docs/sync_client_abnormal_log_scenarios.md` に固定ルールとして追記しました。
+
+## 変更内容
+- 実装: operation 直書きを関数内 `operation` 変数/共有定数へ統一
+- 実装: `name_not_resolved` ログ（`sync_failure` / `reason` 両経路）で `host=` 必須を維持
+- docs: 運用固定ルール（operation統一・host必須・checker/CI整合）を追記
+
+## 検証
+- `Sync Log Keys Check`（pushトリガー）成功
+- `name_not_resolved` の `host=` 付与漏れなし
+
+## 影響範囲
+- ログ文言生成と運用ドキュメント
+- 機能フロー（同期本体処理）への挙動変更なし
 ```

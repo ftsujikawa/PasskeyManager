@@ -619,6 +619,9 @@ jobs:
             echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| fail_prefix_count ^| %FAIL_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
+            if /i "${{ github.event.inputs.scenario }}"=="fail" (
+              echo ^| expected_runtime_fail_manual_resync_summary_request_id_format ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
+            )
             echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
             echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"
@@ -645,6 +648,9 @@ jobs:
           echo ^| expected_checker_exit_code ^| 1 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| fail_prefix_count ^| %FAIL_PREFIX_COUNT% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_fail_prefix_count ^| 4 ^|>>"%GITHUB_STEP_SUMMARY%"
+          if /i "${{ github.event.inputs.scenario }}"=="fail" (
+            echo ^| expected_runtime_fail_manual_resync_summary_request_id_format ^| executed ^|>>"%GITHUB_STEP_SUMMARY%"
+          )
           echo ^| expected_reason_409_recovery ^| %STATUS_409_RECOVERY% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_read_encrypted_vault_data ^| %STATUS_READ_ENCRYPTED_VAULT_DATA% ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| expected_reason_message_code_with_message ^| %STATUS_MESSAGE_CODE_WITH_MESSAGE% ^|>>"%GITHUB_STEP_SUMMARY%"

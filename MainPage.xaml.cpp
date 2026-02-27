@@ -886,6 +886,7 @@ namespace winrt::PasskeyManager::implementation
         co_await winrt::resume_background();
         auto unlockMethod = toggleSwitchState ? VaultUnlockMethod::Passkey : VaultUnlockMethod::Consent;
         std::wstring operation = L"vault_recovery";
+        std::wstring unlockMethodOperation = L"set_vault_unlock_method";
         std::wstring vaultRecoveryRequestId;
         if (unlockMethod == VaultUnlockMethod::Passkey)
         {
@@ -905,13 +906,13 @@ namespace winrt::PasskeyManager::implementation
             SetVaultLockSwitchState(!toggleSwitchState);
             if (self)
             {
-                self->LogFailure(L"summary result=failed operation=set_vault_unlock_method", hr);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + unlockMethodOperation }, hr);
             }
         }
         else if (self)
         {
             std::wstring methodValue = (unlockMethod == VaultUnlockMethod::Passkey) ? L"passkey" : L"consent";
-            self->LogSuccess(winrt::hstring{ L"summary result=success operation=set_vault_unlock_method method=" + methodValue });
+            self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + unlockMethodOperation + L" method=" + methodValue });
             if (unlockMethod == VaultUnlockMethod::Passkey && FAILED(hrSetSilent))
             {
                 self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + vaultRecoveryRequestId });
@@ -987,6 +988,7 @@ namespace winrt::PasskeyManager::implementation
     {
         auto toggleSwitch = sender.as<Microsoft::UI::Xaml::Controls::ToggleSwitch>();
         auto toggleSwitchState = toggleSwitch.IsOn();
+        std::wstring operation = L"set_silent_operation";
 
         auto weakThis = get_weak();
 
@@ -997,7 +999,7 @@ namespace winrt::PasskeyManager::implementation
             co_await wil::resume_foreground(DispatcherQueue());
             if (auto self{ weakThis.get() })
             {
-                self->LogFailure(L"summary result=failed operation=set_silent_operation", hr);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
             }
         }
         co_return;
@@ -1027,10 +1029,11 @@ namespace winrt::PasskeyManager::implementation
                 }
                 if (auto self{ weakThis.get() })
                 {
+                    std::wstring operation = L"vault_unlock";
                     co_await wil::resume_foreground(self->DispatcherQueue());
                     if (shouldLogWarning)
                     {
-                        self->LogWarning(winrt::hstring{ L"summary result=rejected operation=vault_unlock reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L"" });
+                        self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L"" });
                     }
                     self->UpdatePluginEnableState();
                 }

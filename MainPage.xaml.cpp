@@ -1254,6 +1254,7 @@ namespace winrt::PasskeyManager::implementation
         std::wstring baseUrl = NormalizeSyncBaseUrl(syncBaseUrlTextBox().Text().c_str());
         std::wstring token = TrimCopy(syncBearerTokenBox().Password().c_str());
         std::wstring userId = TrimCopy(syncUserIdTextBox().Text().c_str());
+        std::wstring operation = L"test_connection";
         std::wstring testConnectionRequestId = BuildRequestId(L"test_connection");
         std::wstring parsedHost;
         std::wstring parsedHostValue = TryGetSyncBaseUrlHost(baseUrl, parsedHost) ? parsedHost : L"unparsed";
@@ -1343,7 +1344,12 @@ namespace winrt::PasskeyManager::implementation
             }
             detail += L" message=" + status.ErrorMessage;
         }
-        self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=test_connection outcome=request_failed request_id=" + resolvedRequestId + L"⚠" });
+        std::wstring statusFields = BuildSyncWarningOutcomeLogFields(operation, resolvedRequestId);
+        if (IsNameResolutionFailure(hr))
+        {
+            statusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedRequestId, false);
+        }
+        self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + statusFields + L"⚠" });
         self->LogWarning(winrt::hstring{ detail });
         co_return;
     }

@@ -1,0 +1,30 @@
+項目名,値
+申請ID,PM-LOGKEY-20260228-01
+案件名,"sync/runtime ログキー検証強化（settings success request_id）"
+対象システム,PasskeyManager
+対象リポジトリ,ftsujikawa/PasskeyManager
+対象ブランチ,master
+版数,v1.0
+申請日,2026-02-28
+申請者,<記入>
+承認者,<記入>
+承認日,<記入>
+変更要求の概要,"load_settings / save_settings 成功ログの request_id について、存在と形式整合（operation一致）を runtime checker で必須化"
+変更理由,"settings成功ログのrequest_id欠落・形式不整合をCIで確実に検知し、ログ監査のトレーサビリティを確保するため"
+変更対象（ファイル）,"@docs/check_sync_runtime_log_keys.ps1#1-315 / @docs/check_sync_runtime_log_keys.cmd#1-61 / @.github/workflows/sync-log-keys-check.yml#200-229 / @.github/workflows/sync-log-keys-check.yml#297-323 / @docs/samples/runtime_sync_logs_fail_settings_success_request_id.txt#1-2 / @docs/samples/runtime_sync_logs_fail_settings_success_request_id_format.txt#1-2 / @docs/samples/runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt#1-3 / @docs/README.md#10-11 / @docs/sync_client_abnormal_log_scenarios.md#256-271"
+変更内容,"1) settings成功ログのrequest_id存在チェック追加 2) request_id形式/operation一致チェック追加 3) FAILサンプル追加（欠落/形式不正） 4) workflowのdelete_everywhere FAIL検証を対象行限定へ修正"
+業務影響,なし
+システム影響,"あり（CI検証・ログ品質保証）"
+利用者影響,なし
+セキュリティ影響,なし
+リスク,"正規表現・対象行条件の過不足による誤検知/見逃し"
+リスク対策,"FAILサンプル分離、scenario=both/fail 両系統実行、対象行限定チェック"
+テスト実施内容,"sync-log-keys-check を scenario=both と scenario=fail で実行"
+テスト結果,"scenario=both: success（Run ID: 22513165210） / scenario=fail: success（Run ID: 22513547225、FAILサンプルは期待どおりfail判定）"
+証跡URL,"https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513165210 / https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513547225"
+適用手順,"1) master反映確認 2) sync-log-keys-check(scenario=both)実行 3) success確認で適用完了"
+ロールバック手順,"1) 最終コミットaa095ecを起点に特定 2) workflow/checker/sample/docsを復元 3) scenario=both再実行で基準線復帰確認"
+最終コミットID,aa095ec
+コミットメッセージ,"Fix delete_everywhere sample validation in workflow"
+関連チケット,<記入>
+関連PR,<記入>

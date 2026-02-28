@@ -250,6 +250,7 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_settings_sync_success_request_
 - `SUCCESS: summary result=success operation=delete_selected_credentials_everywhere` 行で `request_id=` の存在
 - `INFO|SUCCESS: sync result=success operation=load_settings|save_settings` 行で `request_id=` の存在とフォーマット整合
 - `name_not_resolved` 系での `host=` 必須
+- 評価対象は `INFO|SUCCESS|WARNING|FAILED:` 行のみ（`DEBUG:` 行や補助文字列は対象外）
 
 注: 異常系シナリオ（`409_recovery` / `vault_unlock_ui_required` など）の「必須出現」は要求しない。
 

@@ -1,0 +1,1 @@
+INFO: sync result=success operation=load_settings source=process_registry

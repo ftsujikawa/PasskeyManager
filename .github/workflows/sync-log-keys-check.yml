@@ -197,36 +197,21 @@ jobs:
             echo.>>"%GITHUB_STEP_SUMMARY%"
             exit /b 1
           )
-          set "HAS_DELETE_EVERYWHERE_SUMMARY_LINE=0"
-          set "HAS_REQUEST_KEY_ON_DELETE_LINE=0"
-          set "HAS_REQUEST_ID_KEY_ON_DELETE_LINE=0"
-          findstr /i /c:"SUCCESS: summary result=success operation=delete_selected_credentials_everywhere" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
-          if %ERRORLEVEL% EQU 0 set "HAS_DELETE_EVERYWHERE_SUMMARY_LINE=1"
-          findstr /i /r /c:"^SUCCESS: summary result=success operation=delete_selected_credentials_everywhere .* request=[^ ]" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
-          if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_KEY_ON_DELETE_LINE=1"
-          findstr /i /r /c:"^SUCCESS: summary result=success operation=delete_selected_credentials_everywhere .* request_id=[^ ]" docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt >nul
-          if %ERRORLEVEL% EQU 0 set "HAS_REQUEST_ID_KEY_ON_DELETE_LINE=1"
-          if %HAS_DELETE_EVERYWHERE_SUMMARY_LINE% EQU 1 if %HAS_REQUEST_KEY_ON_DELETE_LINE% EQU 1 if %HAS_REQUEST_ID_KEY_ON_DELETE_LINE% EQU 0 exit /b 0
+          powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "$target='docs\\samples\\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt';" ^
+            "$line=Get-Content -Path $target | Where-Object { $_ -match '^SUCCESS:\s+summary\s+result=success\s+operation=delete_selected_credentials_everywhere\b' } | Select-Object -First 1;" ^
+            "if ($null -eq $line) { exit 3 }" ^
+            "$hasRequest = $line -match '(^|\s)request=[^\s]+';" ^
+            "$hasRequestId = $line -match '(^|\s)request_id=[^\s]+';" ^
+            "if ($hasRequest -and -not $hasRequestId) { exit 0 }" ^
+            "exit 1"
+          if %ERRORLEVEL% EQU 0 exit /b 0
           echo Runtime FAIL sample must contain delete_selected_credentials_everywhere success summary line with request= and without request_id=.
           echo ### Runtime FAIL delete_everywhere summary request_id sample file>>"%GITHUB_STEP_SUMMARY%"
           echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| invalid_sample_content ^|>>"%GITHUB_STEP_SUMMARY%"
-          if %HAS_DELETE_EVERYWHERE_SUMMARY_LINE% EQU 1 (
-            echo ^| has_delete_everywhere_summary_line ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
-          ) else (
-            echo ^| has_delete_everywhere_summary_line ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
-          )
-          if %HAS_REQUEST_KEY_ON_DELETE_LINE% EQU 1 (
-            echo ^| has_request_key_on_delete_line ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
-          ) else (
-            echo ^| has_request_key_on_delete_line ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
-          )
-          if %HAS_REQUEST_ID_KEY_ON_DELETE_LINE% EQU 1 (
-            echo ^| has_request_id_key_on_delete_line ^| yes ^|>>"%GITHUB_STEP_SUMMARY%"
-          ) else (
-            echo ^| has_request_id_key_on_delete_line ^| no ^|>>"%GITHUB_STEP_SUMMARY%"
-          )
+          echo ^| expected_line_pattern ^| SUCCESS: summary result=success operation=delete_selected_credentials_everywhere ... request=... ^(without request_id^) ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 

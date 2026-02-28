@@ -27,10 +27,12 @@
 - 追加修正:
   - `set_vault_unlock_method` の `summary result=success/failed` に `request_id` を付与。
   - `set_silent_operation` / `copy_logs` / `delete_all_local_credentials` / `delete_all_credentials` / `activate_plugin` / `set_vault_lock_state` の summary ログへ `request_id` を付与。
+  - runtime checker の評価対象を `INFO|SUCCESS|WARNING|FAILED` 行に限定し、`DEBUG` 行は対象外に明確化。
+  - `runtime_sync_logs_pass.txt` に `DEBUG` 行（request_id なし）を追加し、対象外であることを回帰確認。
 
 ### 監査メモ（次フェーズ候補）
-- 一部 `summary result=` ログに `request_id` なしの箇所が残る（同期系以外の運用ログを含む）。
-- 次フェーズで、対象範囲を「sync/summary全体」へ広げるかを合意の上で段階対応する。
+- `request_id` 強制対象は運用ログ行（`INFO|SUCCESS|WARNING|FAILED`）とし、`DEBUG` / 補助文字列は非対象。
+- 次フェーズで、運用ログ対象の追加ルール（例: summary success 全般）を段階拡張する。
 
 ## 3) 提出物の1本化（本ドキュメント）
 
@@ -44,8 +46,8 @@
 ## CI証跡
 - scenario=both: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513165210
 - scenario=fail: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513547225
-- scenario=both（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514062851
-- scenario=fail（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514284139
+- scenario=both（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514721481
+- scenario=fail（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514734537
 
 ## 変更コミット
 - `aa095ec` Fix delete_everywhere sample validation in workflow
@@ -54,3 +56,6 @@
 - `1d787d8` Add sync log keys handoff summary
 - `95fdc4e` Add sync log keys submission mail template
 - `aa14c56` Add release package doc and request_id to unlock summary logs
+- `75a95d8` Expand summary request_id coverage and refresh release docs
+- `6ce8161` Scope runtime checker to operational log lines
+- `daed3e6` Add debug-line pass sample for runtime checker scope

@@ -10,6 +10,12 @@ if (-not (Test-Path -LiteralPath $LogFile)) {
 
 $log = Get-Content -Raw -LiteralPath $LogFile
 $lines = $log -split "`r?`n"
+$runtimeLines = @()
+foreach ($line in $lines) {
+    if (-not [string]::IsNullOrWhiteSpace($line) -and $line -match '^(INFO|WARNING|SUCCESS|FAILED):\s+') {
+        $runtimeLines += $line
+    }
+}
 $failed = @()
 
 $allowedFailureKinds = @(
@@ -86,7 +92,7 @@ else {
 }
 
 $messageCodeMissing = @()
-foreach ($line in $lines) {
+foreach ($line in $runtimeLines) {
     if (-not [string]::IsNullOrWhiteSpace($line) -and $line -match '(^|\s)message=' -and $line -notmatch '(^|\s)message_code=') {
         $messageCodeMissing += $line
     }
@@ -269,7 +275,7 @@ else {
 }
 
 $nameNotResolvedLines = @()
-foreach ($line in $lines) {
+foreach ($line in $runtimeLines) {
     if (-not [string]::IsNullOrWhiteSpace($line) -and ($line -match '(^|\s)sync_failure=name_not_resolved(\s|$)' -or $line -match '(^|\s)reason=name_not_resolved(\s|$)')) {
         $nameNotResolvedLines += $line
     }
@@ -289,7 +295,7 @@ else {
 }
 
 $failureKindInvalid = @()
-foreach ($line in $lines) {
+foreach ($line in $runtimeLines) {
     if ($line -match '(^|\s)failure_kind=([^\s]+)') {
         $value = Normalize-Token $matches[2]
         if ($allowedFailureKinds -notcontains $value) {

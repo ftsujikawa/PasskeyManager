@@ -385,6 +385,12 @@
     <Filter Include="docs">
       <UniqueIdentifier>{1CFF31B3-6B15-428D-B048-0C5E9C40E7A0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="docs\adr">
+      <UniqueIdentifier>{9B6DF3F0-8D65-41A6-AF47-62E96CF45F80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="docs\samples">
+      <UniqueIdentifier>{10D85EEA-2B59-409E-B4F7-D5B29E4368B5}</UniqueIdentifier>
+    </Filter>
     <Filter Include="publish">
       <UniqueIdentifier>{5F7984E2-3C40-4BC3-9E56-45A21B4E62D2}</UniqueIdentifier>
     </Filter>
@@ -405,7 +411,73 @@
     <None Include="packages.config" />
     <None Include="Assets\Square192x192Logo.svg" />
     <None Include="Assets\PasskeyManager.svg" />
+    <None Include="docs\PR_TEMPLATE_SNIPPETS.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\README.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\audit_submission_form.csv">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_request_id_gap_blocks.cmd">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_request_id_gap_blocks.ps1">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_sync_log_keys.cmd">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_sync_log_keys_samples.cmd">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_sync_runtime_log_keys.cmd">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_sync_runtime_log_keys.ps1">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\check_sync_runtime_log_keys_samples.cmd">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\jira_import_compatible.csv">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\next_task_kickoff.md">
+      <Filter>docs</Filter>
+    </None>
     <None Include="docs\plugin_state_transition_test.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\pr_comment_short.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\pr_operation_normalization_rollout.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\pr_runtime_checker_update.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\pr_short_summary_name_not_resolved_host.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\request_id_gap_report.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\runtime_checker_rollout_completion.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync_client_abnormal_log_scenarios.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync_log_keys_handoff.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync_log_keys_release_package.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync_log_keys_submission_mail.md">
       <Filter>docs</Filter>
     </None>
     <None Include="docs\sync_mvp_api_issue_templates.md">
@@ -413,6 +485,48 @@
     </None>
     <None Include="docs\sync_mvp_api_operations_checklist.md">
       <Filter>docs</Filter>
+    </None>
+    <None Include="docs\tsupasswd_core_threat_model.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\windows_app_install_troubleshooting.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="docs\adr\0001-key-hierarchy-and-secret-storage.md">
+      <Filter>docs\adr</Filter>
+    </None>
+    <None Include="docs\samples\abnormal_sync_logs_fail.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\abnormal_sync_logs_fail_failure_kind_value.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\abnormal_sync_logs_fail_name_resolution_host.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\abnormal_sync_logs_fail_request_id_format.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\abnormal_sync_logs_pass.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_fail.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_fail_delete_everywhere_summary_request_id.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_fail_manual_resync_summary_request_id_format.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_fail_settings_success_request_id.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_fail_settings_success_request_id_format.txt">
+      <Filter>docs\samples</Filter>
+    </None>
+    <None Include="docs\samples\runtime_sync_logs_pass.txt">
+      <Filter>docs\samples</Filter>
     </None>
     <None Include="publish\SyncMvpApi.deps.json">
       <Filter>publish</Filter>

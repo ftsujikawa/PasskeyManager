@@ -242,7 +242,6 @@ namespace winrt::PasskeyManager::implementation
         bool m_suppressVaultLockSwitchToggled = false;
         bool m_isRestoringLogHistory = false;
         bool m_isDeleteEverywhereInProgress = false;
-        uint64_t m_deleteEverywhereRequestCounter = 0;
         uint64_t m_deleteEverywhereRunCounter = 0;
         uint64_t m_deleteEverywhereActiveRunId = 0;
         std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};

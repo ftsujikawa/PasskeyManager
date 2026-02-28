@@ -854,7 +854,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         std::vector<uint8_t> cipherText;
-        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText);
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, requestId);
         if (FAILED(hrReadVaultData))
         {
             logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");

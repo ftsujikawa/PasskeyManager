@@ -1216,23 +1216,28 @@ namespace winrt::PasskeyManager::implementation {
         return S_OK;
     }
 
-    HRESULT PluginRegistrationManager::ReadEncryptedVaultData(std::vector<BYTE>& cipherText)
+    HRESULT PluginRegistrationManager::ReadEncryptedVaultData(std::vector<BYTE>& cipherText, std::wstring const& requestId)
     {
         std::wstring operation = L"read_encrypted_vault_data";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(operation);
+        }
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         cipherText.clear();
 
         auto opt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginEncryptedVaultData, REG_BINARY);
         if (!opt)
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=recreate_vault_passkey_and_register_again⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=recreate_vault_passkey_and_register_again request_id=" + localRequestId + L"⚠" });
             OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_missing source=registry\n").c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
 
         if (opt->empty())
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt recovery=recreate_vault_passkey_then_retry⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt\n").c_str());
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
@@ -1241,7 +1246,7 @@ namespace winrt::PasskeyManager::implementation {
         VaultBlobParseResult parseResult = TryExtractVaultCipherWithIntegrity(opt.value(), vaultCipher);
         if (parseResult == VaultBlobParseResult::Invalid)
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed recovery=recreate_vault_passkey_then_retry⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed\n").c_str());
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
@@ -1252,7 +1257,7 @@ namespace winrt::PasskeyManager::implementation {
 
         if (vaultCipher.size() < kMinVaultCipherBlobBytes)
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_small_or_corrupt recovery=recreate_vault_passkey_then_retry⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_small_or_corrupt recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             std::wstring msg = L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_too_small_or_corrupt size=" + std::to_wstring(vaultCipher.size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
@@ -1260,7 +1265,7 @@ namespace winrt::PasskeyManager::implementation {
 
         if (vaultCipher.size() > kMaxVaultCipherBlobBytes)
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_large_or_unexpected recovery=recreate_vault_passkey_then_retry⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_large_or_unexpected recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             std::wstring msg = L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_too_large_or_unexpected size=" + std::to_wstring(vaultCipher.size()) + L"\n";
             OutputDebugStringW(msg.c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
@@ -1290,7 +1295,7 @@ namespace winrt::PasskeyManager::implementation {
         }
 
         std::vector<BYTE> encryptedVaultData;
-        RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData));
+        RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData, localRequestId));
 
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" request_id=" + localRequestId + L"ℹ" });
         auto hrSync = SyncEncryptedVaultWithRetry(
@@ -1392,7 +1397,7 @@ namespace winrt::PasskeyManager::implementation {
         if (FAILED(hrSnapshot))
         {
             std::wstring snapshotOperation = L"restore_snapshot_snapshot_history_append";
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=" + snapshotOperation + L" hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L"ℹ" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync result=warning operation=" + snapshotOperation + L" hr=" + std::to_wstring(static_cast<int>(hrSnapshot)) + L" request_id=" + localRequestId + L"ℹ" });
         }
 
         std::wstring success =

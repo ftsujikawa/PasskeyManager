@@ -237,6 +237,7 @@ docs\check_sync_runtime_log_keys_samples.cmd both
 docs\check_sync_runtime_log_keys_samples.cmd fail_manual_resync_summary_request_id_format
 docs\check_sync_runtime_log_keys_samples.cmd fail_delete_everywhere_summary_request_id
 docs\check_sync_runtime_log_keys_samples.cmd fail_settings_sync_success_request_id
+docs\check_sync_runtime_log_keys_samples.cmd fail_settings_sync_success_request_id_format
 ```
 
 `check_sync_runtime_log_keys.cmd` は、次を重視する軽量チェック。
@@ -247,25 +248,27 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_settings_sync_success_request_
 - `sync state=start` / `sync result=failed|warning` 系での `request_id=` 整合
 - `SUCCESS: summary result=success operation=manual_resync` 行で `request_id=` の存在とフォーマット整合
 - `SUCCESS: summary result=success operation=delete_selected_credentials_everywhere` 行で `request_id=` の存在
-- `INFO|SUCCESS: sync result=success operation=load_settings|save_settings` 行で `request_id=` の存在
+- `INFO|SUCCESS: sync result=success operation=load_settings|save_settings` 行で `request_id=` の存在とフォーマット整合
 - `name_not_resolved` 系での `host=` 必須
 
 注: 異常系シナリオ（`409_recovery` / `vault_unlock_ui_required` など）の「必須出現」は要求しない。
 
-現在の checker で強制しているルール（12個）:
+現在の runtime checker で強制しているルール（14個）:
 
-1. `409_recovery`
-2. `read_encrypted_vault_data`
-3. `vault_unlock_ui_required`
-4. `sensitive_markers_absent`
-5. `operation_key_present`
-6. `message_code_with_message`
-7. `request_id_with_sync_failure`
-8. `request_id_with_sync_start`
-9. `request_id_format_with_sync_start`
-10. `failure_kind_with_sync_failure`
-11. `name_not_resolved_host_required`
-12. `failure_kind_allowed_values`
+1. `sensitive_markers_absent`
+2. `sync_lines_present`
+3. `operation_key_present`
+4. `message_code_with_message`
+5. `request_id_with_sync_failure`
+6. `request_id_with_sync_start`
+7. `request_id_with_manual_resync_summary_success`
+8. `request_id_with_delete_selected_credentials_everywhere_summary_success`
+9. `request_id_with_settings_sync_success`
+10. `request_id_format_with_settings_sync_success`
+11. `request_id_format_with_manual_resync_summary_success`
+12. `request_id_format_with_sync_start_runtime`
+13. `name_not_resolved_host_required`
+14. `failure_kind_allowed_values`
 
 実行方法:
 
@@ -283,8 +286,9 @@ docs\check_sync_runtime_log_keys_samples.cmd fail_settings_sync_success_request_
 - `fail_manual_resync_summary_request_id_format` : `manual_resync` success summary の `request_id` フォーマット違反サンプルのみ実行
 - `fail_delete_everywhere_summary_request_id` : `delete_selected_credentials_everywhere` success summary の `request_id` 欠落サンプルのみ実行
 - `fail_settings_sync_success_request_id` : `load_settings` / `save_settings` sync success の `request_id` 欠落サンプルのみ実行
+- `fail_settings_sync_success_request_id_format` : `load_settings` / `save_settings` sync success の `request_id` フォーマット不整合サンプルのみ実行
 - `pass` : PASS サンプルのみ実行
-- `fail` : FAIL サンプル実行（abnormal FAIL に加えて runtime FAIL `manual_resync` request_id フォーマット違反 / `delete_selected_credentials_everywhere` request_id 欠落 / `load_settings|save_settings` sync success request_id 欠落も確認）
+- `fail` : FAIL サンプル実行（abnormal FAIL に加えて runtime FAIL `manual_resync` request_id フォーマット違反 / `delete_selected_credentials_everywhere` request_id 欠落 / `load_settings|save_settings` sync success request_id 欠落 / `load_settings|save_settings` sync success request_id フォーマット不整合も確認）
 - `fail_request_id_format` : request_id フォーマット違反サンプルのみ実行
 - `fail_failure_kind_value` : failure_kind 許容値違反サンプルのみ実行
 - `fail_name_resolution_host` : `sync_failure=name_not_resolved` または `reason=name_not_resolved` で `host=` 欠落サンプルのみ実行
@@ -323,6 +327,9 @@ gh workflow run sync-log-keys-check.yml -f scenario=fail_delete_everywhere_summa
 
 # load_settings / save_settings sync success の request_id 欠落サンプルのみ（expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail_settings_sync_success_request_id
+
+# load_settings / save_settings sync success の request_id フォーマット不整合サンプルのみ（expected failure として success が期待値）
+gh workflow run sync-log-keys-check.yml -f scenario=fail_settings_sync_success_request_id_format
 
 # FAIL サンプルのみ（checker は失敗し、workflow では expected failure として success が期待値）
 gh workflow run sync-log-keys-check.yml -f scenario=fail

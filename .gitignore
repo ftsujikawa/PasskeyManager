@@ -1,5 +1,6 @@
 # Temporary PowerShell scripts
 *.ps1
+!docs/check_sync_runtime_log_keys.ps1
 
 # PFX certificates
 *.pfx

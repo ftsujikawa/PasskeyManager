@@ -1810,22 +1810,21 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::deleteSelectedPluginCredentialsEverywhere_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        uint64_t requestId = ++m_deleteEverywhereRequestCounter;
-        std::wstring requestIdToken = std::to_wstring(requestId);
+        std::wstring operation = L"delete_selected_credentials_everywhere";
+        std::wstring requestIdToken = BuildRequestId(operation);
 
         if (m_isDeleteEverywhereInProgress)
         {
             LogWarning(winrt::hstring{
                 BuildSummaryResultLog(
                     L"rejected",
-                    L"delete_selected_credentials_everywhere",
+                    operation,
                     requestIdToken,
                     L"reason=in_progress active_run=" + std::to_wstring(m_deleteEverywhereActiveRunId)) });
             co_return;
         }
 
         auto weakThis = get_weak();
-        std::wstring operation = L"delete_selected_credentials_everywhere";
         std::vector<std::vector<UINT8>> credentialIdList;
         auto selectedItems = credentialListView().SelectedItems();
         if (selectedItems.Size() == 0)

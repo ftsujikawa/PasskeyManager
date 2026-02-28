@@ -36,6 +36,8 @@ on:
       - 'docs/check_sync_runtime_log_keys.cmd'
       - 'docs/check_sync_runtime_log_keys.ps1'
       - 'docs/check_sync_runtime_log_keys_samples.cmd'
+      - 'docs/check_request_id_gap_blocks.cmd'
+      - 'docs/check_request_id_gap_blocks.ps1'
       - 'docs/README.md'
       - 'docs/PR_TEMPLATE_SNIPPETS.md'
       - 'docs/pr_runtime_checker_update.md'
@@ -58,6 +60,8 @@ on:
       - 'docs/check_sync_runtime_log_keys.cmd'
       - 'docs/check_sync_runtime_log_keys.ps1'
       - 'docs/check_sync_runtime_log_keys_samples.cmd'
+      - 'docs/check_request_id_gap_blocks.cmd'
+      - 'docs/check_request_id_gap_blocks.ps1'
       - 'docs/README.md'
       - 'docs/PR_TEMPLATE_SNIPPETS.md'
       - 'docs/pr_runtime_checker_update.md'
@@ -260,6 +264,57 @@ jobs:
           echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
           echo ^| file ^| docs/check_sync_runtime_log_keys_samples.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Validate block request_id gap checker scripts exist
+        id: block_gap_checker_script
+        shell: cmd
+        run: |
+          if not exist docs\check_request_id_gap_blocks.cmd (
+            echo Missing required checker script: docs\check_request_id_gap_blocks.cmd
+            echo ### Block request_id gap checker script>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| file ^| docs/check_request_id_gap_blocks.cmd ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 1
+          )
+          if exist docs\check_request_id_gap_blocks.ps1 exit /b 0
+          echo Missing required checker script: docs\check_request_id_gap_blocks.ps1
+          echo ### Block request_id gap checker script>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| missing_required_file ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| file ^| docs/check_request_id_gap_blocks.ps1 ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo.>>"%GITHUB_STEP_SUMMARY%"
+          exit /b 1
+
+      - name: Block request_id gap checker should pass
+        id: block_gap_checker
+        shell: cmd
+        run: |
+          call docs\check_request_id_gap_blocks.cmd . > block_gap_checker_output.txt 2>&1
+          set "BLOCK_GAP_RC=%ERRORLEVEL%"
+          if %BLOCK_GAP_RC% EQU 0 (
+            echo ### Block request_id gap checker>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| status ^| success_as_expected ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| checker_exit_code ^| %BLOCK_GAP_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
+            echo.>>"%GITHUB_STEP_SUMMARY%"
+            exit /b 0
+          )
+          echo Block request_id gap checker failed. checker_exit_code=%BLOCK_GAP_RC%
+          type block_gap_checker_output.txt
+          echo ### Block request_id gap checker>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| key ^| value ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^|---^|---^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| status ^| unexpected_failure ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| checker_exit_code ^| %BLOCK_GAP_RC% ^|>>"%GITHUB_STEP_SUMMARY%"
+          echo ^| expected_checker_exit_code ^| 0 ^|>>"%GITHUB_STEP_SUMMARY%"
           echo.>>"%GITHUB_STEP_SUMMARY%"
           exit /b 1
 

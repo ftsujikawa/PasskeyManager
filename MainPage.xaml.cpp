@@ -1143,6 +1143,7 @@ namespace winrt::PasskeyManager::implementation
     void MainPage::ReloadSnapshotCandidates()
     {
         std::wstring operation = L"load_snapshot_candidates";
+        std::wstring requestId = BuildRequestId(operation);
         m_syncSnapshotCandidates = tsupasswd::SyncSnapshotStore::Load();
 
         snapshotCandidatesCombo().Items().Clear();
@@ -1155,11 +1156,11 @@ namespace winrt::PasskeyManager::implementation
         {
             snapshotCandidatesCombo().SelectedIndex(0);
             auto latest = m_syncSnapshotCandidates.back();
-            syncStatusTextBlock().Text(winrt::hstring{ L"INFO: sync state=ready operation=" + operation + L" count=" + std::to_wstring(m_syncSnapshotCandidates.size()) + L" selected=latestℹ" });
+            syncStatusTextBlock().Text(winrt::hstring{ L"INFO: sync state=ready operation=" + operation + L" count=" + std::to_wstring(m_syncSnapshotCandidates.size()) + L" selected=latest request_id=" + requestId + L"ℹ" });
         }
         else
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"INFO: sync state=ready operation=" + operation + L" count=0 reason=no_snapshot_historyℹ" });
+            syncStatusTextBlock().Text(winrt::hstring{ L"INFO: sync state=ready operation=" + operation + L" count=0 reason=no_snapshot_history request_id=" + requestId + L"ℹ" });
         }
     }
 

@@ -397,6 +397,15 @@
     <Filter Include="sync-mvp-api">
       <UniqueIdentifier>{C52E1287-3A49-46AA-B783-A18E2D4D6746}</UniqueIdentifier>
     </Filter>
+    <Filter Include="sync-mvp-api\Properties">
+      <UniqueIdentifier>{5438E7A5-E2E7-40EA-B8B8-804C4CCDC104}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sync-mvp-api\data">
+      <UniqueIdentifier>{A8D0FDD5-A597-4442-9A81-B8D5C3EBEE7B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sync-mvp-api\scripts">
+      <UniqueIdentifier>{D1EC7542-B2F0-4F53-A89D-9E1FA6A9A742}</UniqueIdentifier>
+    </Filter>
     <Filter Include="src">
       <UniqueIdentifier>{66BD6107-0812-4014-A3C2-1ED357A03E58}</UniqueIdentifier>
     </Filter>
@@ -549,13 +558,67 @@
     <None Include="publish\web.config">
       <Filter>publish</Filter>
     </None>
+    <None Include="sync-mvp-api\.env.example">
+      <Filter>sync-mvp-api</Filter>
+    </None>
     <None Include="sync-mvp-api\Program.cs">
       <Filter>sync-mvp-api</Filter>
+    </None>
+    <None Include="sync-mvp-api\Properties\launchSettings.json">
+      <Filter>sync-mvp-api\Properties</Filter>
     </None>
     <None Include="sync-mvp-api\README.md">
       <Filter>sync-mvp-api</Filter>
     </None>
     <None Include="sync-mvp-api\SyncMvpApi.csproj">
+      <Filter>sync-mvp-api</Filter>
+    </None>
+    <None Include="sync-mvp-api\data\vault-store.json">
+      <Filter>sync-mvp-api\data</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\bootstrap_sync_mvp_api_host.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\deploy_sync_mvp_api_publish.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\nginx-sync-mvp-api.conf.example">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\package_sync_mvp_api.cmd">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\post_deploy_verify_sync_mvp_api.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\preflight_sync_mvp_api.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\prune_sync_mvp_api_backups.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\report_sync_mvp_api_status.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\rollback_sync_mvp_api.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\rotate_sync_mvp_api_token.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\smoke_sync_mvp_api.sh">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\sync-mvp-api-maintenance.service.example">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\sync-mvp-api-maintenance.timer.example">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\scripts\sync-mvp-api.service.example">
+      <Filter>sync-mvp-api\scripts</Filter>
+    </None>
+    <None Include="sync-mvp-api\sync-mvp-api-publish.tar.gz">
       <Filter>sync-mvp-api</Filter>
     </None>
     <None Include="tsupasswd_core_TemporaryKey.pfx" />

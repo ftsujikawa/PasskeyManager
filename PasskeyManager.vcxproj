@@ -360,10 +360,28 @@
     <None Include="publish\SyncMvpApi.runtimeconfig.json" />
     <None Include="publish\SyncMvpApi.staticwebassets.endpoints.json" />
     <None Include="publish\web.config" />
+    <None Include="sync-mvp-api\.env.example" />
     <None Include="sync-mvp-api\Program.cs" />
+    <None Include="sync-mvp-api\Properties\launchSettings.json" />
     <None Include="sync-mvp-api\README.md" />
     <None Include="sync-mvp-api\SyncMvpApi.csproj" />
     <None Include="sync-mvp-api\SyncMvpApi.sln" />
+    <None Include="sync-mvp-api\data\vault-store.json" />
+    <None Include="sync-mvp-api\scripts\bootstrap_sync_mvp_api_host.sh" />
+    <None Include="sync-mvp-api\scripts\deploy_sync_mvp_api_publish.sh" />
+    <None Include="sync-mvp-api\scripts\nginx-sync-mvp-api.conf.example" />
+    <None Include="sync-mvp-api\scripts\package_sync_mvp_api.cmd" />
+    <None Include="sync-mvp-api\scripts\post_deploy_verify_sync_mvp_api.sh" />
+    <None Include="sync-mvp-api\scripts\preflight_sync_mvp_api.sh" />
+    <None Include="sync-mvp-api\scripts\prune_sync_mvp_api_backups.sh" />
+    <None Include="sync-mvp-api\scripts\report_sync_mvp_api_status.sh" />
+    <None Include="sync-mvp-api\scripts\rollback_sync_mvp_api.sh" />
+    <None Include="sync-mvp-api\scripts\rotate_sync_mvp_api_token.sh" />
+    <None Include="sync-mvp-api\scripts\smoke_sync_mvp_api.sh" />
+    <None Include="sync-mvp-api\scripts\sync-mvp-api-maintenance.service.example" />
+    <None Include="sync-mvp-api\scripts\sync-mvp-api-maintenance.timer.example" />
+    <None Include="sync-mvp-api\scripts\sync-mvp-api.service.example" />
+    <None Include="sync-mvp-api\sync-mvp-api-publish.tar.gz" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>

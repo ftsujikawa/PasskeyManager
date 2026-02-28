@@ -3,4 +3,5 @@ SUCCESS: sync result=success operation=put_vault attempts=1/3 elapsed_ms=15 hr=0
 SUCCESS: summary result=success operation=manual_resync request_id=20260227T000003123Z-manual_resync
 SUCCESS: summary result=success operation=delete_selected_credentials_everywhere request_id=20260227T000003124Z-delete_selected_credentials_everywhere run=1 attempts=1 elapsed_ms=58 hr=0 selected=1 cached=1 missing=0
 WARNING: sync result=failed operation=test_connection attempts=1 hr=-2147012889 failure_kind=client_error sync_failure=name_not_resolved host=tsupasswd.example.invalid recovery=check_sync_base_url_dns_or_hosts code=CLIENT_ERROR request_id=20260227T000002123Z-test_connection message_code=CLIENT_ERROR message=SyncClient::GetVault failed before receiving valid response.
-INFO: sync result=success operation=load_settings source=process_registry
+INFO: sync result=success operation=load_settings source=process_registry request_id=20260227T000004123Z-load_settings
+SUCCESS: sync result=success operation=save_settings fields=base_url,token,user_id request_id=20260227T000005123Z-save_settings

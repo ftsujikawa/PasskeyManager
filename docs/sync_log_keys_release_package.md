@@ -26,6 +26,7 @@
 - `request=` キーの残存はなし（`request_id`へ統一済み）。
 - 追加修正:
   - `set_vault_unlock_method` の `summary result=success/failed` に `request_id` を付与。
+  - `set_silent_operation` / `copy_logs` / `delete_all_local_credentials` / `delete_all_credentials` / `activate_plugin` / `set_vault_lock_state` の summary ログへ `request_id` を付与。
 
 ### 監査メモ（次フェーズ候補）
 - 一部 `summary result=` ログに `request_id` なしの箇所が残る（同期系以外の運用ログを含む）。
@@ -43,7 +44,8 @@
 ## CI証跡
 - scenario=both: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513165210
 - scenario=fail: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513547225
-- scenario=both（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22513936197
+- scenario=both（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514062851
+- scenario=fail（最新反映確認）: https://github.com/ftsujikawa/PasskeyManager/actions/runs/22514284139
 
 ## 変更コミット
 - `aa095ec` Fix delete_everywhere sample validation in workflow
@@ -51,3 +53,4 @@
 - `7bd6bc5` Add short PR comment summary
 - `1d787d8` Add sync log keys handoff summary
 - `95fdc4e` Add sync log keys submission mail template
+- `aa14c56` Add release package doc and request_id to unlock summary logs

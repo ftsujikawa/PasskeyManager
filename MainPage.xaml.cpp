@@ -1000,6 +1000,7 @@ namespace winrt::PasskeyManager::implementation
         auto toggleSwitch = sender.as<Microsoft::UI::Xaml::Controls::ToggleSwitch>();
         auto toggleSwitchState = toggleSwitch.IsOn();
         std::wstring operation = L"set_silent_operation";
+        std::wstring requestId = BuildRequestId(operation);
 
         auto weakThis = get_weak();
 
@@ -1010,7 +1011,7 @@ namespace winrt::PasskeyManager::implementation
             co_await wil::resume_foreground(DispatcherQueue());
             if (auto self{ weakThis.get() })
             {
-                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" request_id=" + requestId }, hr);
             }
         }
         co_return;
@@ -1041,10 +1042,11 @@ namespace winrt::PasskeyManager::implementation
                 if (auto self{ weakThis.get() })
                 {
                     std::wstring operation = L"vault_unlock";
+                    std::wstring requestId = BuildRequestId(operation);
                     co_await wil::resume_foreground(self->DispatcherQueue());
                     if (shouldLogWarning)
                     {
-                        self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L"" });
+                        self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L" request_id=" + requestId });
                     }
                     self->UpdatePluginEnableState();
                 }
@@ -2068,9 +2070,10 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::copyLatestLogButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"copy_logs";
+        std::wstring requestId = BuildRequestId(operation);
         if (m_logEntries.empty())
         {
-            LogInfo(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_logs" });
+            LogInfo(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=no_logs request_id=" + requestId });
             co_return;
         }
 
@@ -2099,11 +2102,11 @@ namespace winrt::PasskeyManager::implementation
 
         if (copiedLines > 1)
         {
-            LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" scope=visible lines=" + std::to_wstring(copiedLines) });
+            LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" scope=visible lines=" + std::to_wstring(copiedLines) + L" request_id=" + requestId });
         }
         else
         {
-            LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" scope=visible lines=1" });
+            LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" scope=visible lines=1 request_id=" + requestId });
         }
         co_return;
     }
@@ -2111,7 +2114,8 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::deleteAllLocalCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"delete_all_local_credentials";
-        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
+        std::wstring requestId = BuildRequestId(operation);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
 
         auto weakThis = get_weak();
         co_await winrt::resume_background();
@@ -2129,17 +2133,18 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (!resetResult)
         {
-            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=credential_store_update_failed" }, HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=credential_store_update_failed request_id=" + requestId }, HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
             co_return;
         }
-        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
         co_return;
     }
 
     winrt::IAsyncAction MainPage::deleteAllCredentials_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         std::wstring operation = L"delete_all_credentials";
-        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation });
+        std::wstring requestId = BuildRequestId(operation);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
         auto weakThis = get_weak();
         co_await winrt::resume_background();
         auto& credManager = PluginCredentialManager::getInstance();
@@ -2156,17 +2161,17 @@ namespace winrt::PasskeyManager::implementation
         self->UpdateCredentialList();
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) && resetResult)
         {
-            self->LogInfo(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=cache_not_found_local_deleted" });
+            self->LogInfo(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=cache_not_found_local_deleted request_id=" + requestId });
             co_return;
         }
         if (FAILED(hr) || !resetResult)
         {
             HRESULT effectiveHr = FAILED(hr) ? hr : HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
             std::wstring detail = DescribeCredentialOperationFailure(effectiveHr);
-            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail }, effectiveHr);
+            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" detail=" + detail + L" request_id=" + requestId }, effectiveHr);
             co_return;
         }
-        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation });
+        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
     }
 
     void MainPage::UpdatePluginStateTextBlock(AUTHENTICATOR_STATE state)
@@ -2217,16 +2222,17 @@ namespace winrt::PasskeyManager::implementation
         // URI ms-settings:passkeys-advancedoptions to navigate to the page on Settings app where the users can enable the plugin
         auto weakThis = get_weak();
         std::wstring operation = L"activate_plugin";
-        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" action=open_settings" });
+        std::wstring requestId = BuildRequestId(operation);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" action=open_settings request_id=" + requestId });
         auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
         bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
         if (!launched)
         {
-            LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" action=open_settings reason=launch_failed" });
+            LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" action=open_settings reason=launch_failed request_id=" + requestId });
             co_return;
         }
 
-        LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" action=open_settings" });
+        LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" action=open_settings request_id=" + requestId });
 
         for (int attempt = 0; attempt < 5; ++attempt)
         {
@@ -2241,7 +2247,7 @@ namespace winrt::PasskeyManager::implementation
                 self->UpdatePluginEnableState();
                 if (SUCCEEDED(hrState) && state == AuthenticatorState_Enabled)
                 {
-                    self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=state_enabled" });
+                    self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=state_enabled request_id=" + requestId });
                     co_return;
                 }
             }
@@ -2251,7 +2257,7 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" outcome=state_not_enabled_after_wait" });
+        LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" outcome=state_not_enabled_after_wait request_id=" + requestId });
         co_return;
     }
 
@@ -2281,6 +2287,7 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::VaultUnlockControl_IsCheckedChanged(winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButton const& sender, winrt::Microsoft::UI::Xaml::Controls::ToggleSplitButtonIsCheckedChangedEventArgs const& args)
     {
         std::wstring operation = L"set_vault_lock_state";
+        std::wstring requestId = BuildRequestId(operation);
         // Capture the value we need before switching context
         bool toggleSplitState = sender.IsChecked();
 
@@ -2288,7 +2295,7 @@ namespace winrt::PasskeyManager::implementation
 
         if (FAILED(hr))
         {
-            LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation }, hr);
+            LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" request_id=" + requestId }, hr);
         }
 
         UpdateVaultUnlockControlText(toggleSplitState);

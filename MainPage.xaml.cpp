@@ -897,6 +897,7 @@ namespace winrt::PasskeyManager::implementation
         auto unlockMethod = toggleSwitchState ? VaultUnlockMethod::Passkey : VaultUnlockMethod::Consent;
         std::wstring operation = L"vault_recovery";
         std::wstring unlockMethodOperation = L"set_vault_unlock_method";
+        std::wstring unlockMethodRequestId = BuildRequestId(unlockMethodOperation);
         std::wstring vaultRecoveryRequestId;
         if (unlockMethod == VaultUnlockMethod::Passkey)
         {
@@ -916,13 +917,13 @@ namespace winrt::PasskeyManager::implementation
             SetVaultLockSwitchState(!toggleSwitchState);
             if (self)
             {
-                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + unlockMethodOperation }, hr);
+                self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + unlockMethodOperation + L" request_id=" + unlockMethodRequestId }, hr);
             }
         }
         else if (self)
         {
             std::wstring methodValue = (unlockMethod == VaultUnlockMethod::Passkey) ? L"passkey" : L"consent";
-            self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + unlockMethodOperation + L" method=" + methodValue });
+            self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + unlockMethodOperation + L" method=" + methodValue + L" request_id=" + unlockMethodRequestId });
             if (unlockMethod == VaultUnlockMethod::Passkey && FAILED(hrSetSilent))
             {
                 self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=set_silent_off hr=" + std::to_wstring(static_cast<int>(hrSetSilent)) + L" detail=plugin_ui_visibility_unset request_id=" + vaultRecoveryRequestId });

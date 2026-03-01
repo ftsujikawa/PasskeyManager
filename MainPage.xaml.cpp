@@ -737,7 +737,7 @@ namespace winrt::PasskeyManager::implementation
         bool pluginRegistrationAttempted = true;
         HRESULT hrRegisterPlugin = S_OK;
         HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
-        if (SUCCEEDED(hrState) || hrState == NTE_NOT_FOUND)
+        if (hrState == NTE_NOT_FOUND)
         {
             hrRegisterPlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
             if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
@@ -1011,7 +1011,7 @@ namespace winrt::PasskeyManager::implementation
             bool pluginRegistrationAttempted = true;
             HRESULT hrRegisterPlugin = S_OK;
             HRESULT hrPluginState = PluginRegistrationManager::getInstance().RefreshPluginState();
-            if (SUCCEEDED(hrPluginState) || hrPluginState == NTE_NOT_FOUND)
+            if (hrPluginState == NTE_NOT_FOUND)
             {
                 hrRegisterPlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
                 if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
@@ -1302,7 +1302,15 @@ namespace winrt::PasskeyManager::implementation
         std::wstring requestId = BuildRequestId(operation);
 
         co_await winrt::resume_background();
-        HRESULT hrEnsurePlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
+        HRESULT hrEnsurePlugin = PluginRegistrationManager::getInstance().RefreshPluginState();
+        if (hrEnsurePlugin == NTE_NOT_FOUND)
+        {
+            hrEnsurePlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
+        }
+        else if (SUCCEEDED(hrEnsurePlugin))
+        {
+            hrEnsurePlugin = PluginRegistrationManager::getInstance().UpdatePlugin();
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
         if (FAILED(hrEnsurePlugin) && hrEnsurePlugin != NTE_EXISTS)

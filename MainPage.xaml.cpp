@@ -759,15 +759,16 @@ namespace winrt::PasskeyManager::implementation
             pluginState = PluginRegistrationManager::getInstance().GetPluginState();
             pluginRegistered = SUCCEEDED(hrState);
         }
-        HRESULT hrSetMethod = pluginRegistered
+        bool pluginEnabled = pluginRegistered && pluginState == AuthenticatorState_Enabled;
+        HRESULT hrSetMethod = pluginEnabled
             ? PluginCredentialManager::getInstance().SetVaultUnlockMethod(VaultUnlockMethod::Passkey)
             : HRESULT_FROM_WIN32(ERROR_NOT_READY);
-        HRESULT hrSetSilent = pluginRegistered
+        HRESULT hrSetSilent = pluginEnabled
             ? PluginCredentialManager::getInstance().SetSilentOperation(false)
             : HRESULT_FROM_WIN32(ERROR_NOT_READY);
 
         co_await wil::resume_foreground(DispatcherQueue());
-        if (!pluginRegistered)
+        if (!pluginEnabled)
         {
             if (auto self{ weakThis.get() })
             {
@@ -799,16 +800,24 @@ namespace winrt::PasskeyManager::implementation
                 self->runVaultRecoveryButton().IsEnabled(true);
                 self->quickCreateVaultPasskeyButton().IsEnabled(true);
                 self->SetVaultLockSwitchState(false);
-                if (FAILED(hrRegisterPlugin) && hrRegisterPlugin != NTE_EXISTS)
+                if (!pluginRegistered)
                 {
-                    self->vaultRecoveryHintText().Text(L"Failed to register tsupasswd_core. Open Settings and enable tsupasswd_core, then run Create Vault Passkey again.");
+                    if (FAILED(hrRegisterPlugin) && hrRegisterPlugin != NTE_EXISTS)
+                    {
+                        self->vaultRecoveryHintText().Text(L"Failed to register tsupasswd_core. Open Settings and enable tsupasswd_core, then run Create Vault Passkey again.");
+                    }
+                    else
+                    {
+                        self->vaultRecoveryHintText().Text(L"Plugin is not registered yet. Run Create Vault Passkey again. If prompted, open Settings and enable tsupasswd_core.");
+                    }
                 }
                 else
                 {
-                    self->vaultRecoveryHintText().Text(L"Plugin is not registered yet. Run Create Vault Passkey again. If prompted, open Settings and enable tsupasswd_core.");
+                    self->vaultRecoveryHintText().Text(L"Plugin is registered but disabled. Open Settings and enable tsupasswd_core, then retry Create Vault Passkey.");
                 }
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_registered state=" + stateText + L" action=open_settings request_id=" + requestId });
+                std::wstring rejectedReason = pluginRegistered ? L"plugin_not_enabled" : L"plugin_not_registered";
+                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=" + rejectedReason + L" state=" + stateText + L" action=open_settings request_id=" + requestId });
 
                 auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
                 bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
@@ -1016,9 +1025,11 @@ namespace winrt::PasskeyManager::implementation
                 }
             }
             bool pluginRegistered = SUCCEEDED(hrPluginState);
+            AUTHENTICATOR_STATE pluginState = PluginRegistrationManager::getInstance().GetPluginState();
+            bool pluginEnabled = pluginRegistered && pluginState == AuthenticatorState_Enabled;
             co_await wil::resume_foreground(DispatcherQueue());
             self = weakThis.get();
-            if (!pluginRegistered)
+            if (!pluginEnabled)
             {
                 SetVaultLockSwitchState(false);
                 if (self)
@@ -1035,9 +1046,18 @@ namespace winrt::PasskeyManager::implementation
                         }
                     }
 
-                    self->vaultRecoveryHintText().Text(L"Plugin is not registered. Run Create Vault Passkey again, then enable tsupasswd_core in Settings if prompted.");
+                    if (!pluginRegistered)
+                    {
+                        self->vaultRecoveryHintText().Text(L"Plugin is not registered. Run Create Vault Passkey again, then enable tsupasswd_core in Settings if prompted.");
+                    }
+                    else
+                    {
+                        self->vaultRecoveryHintText().Text(L"Plugin is registered but disabled. Enable tsupasswd_core in Settings, then retry.");
+                    }
                     self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                    self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_registered trigger=unlock_method_toggle request_id=" + vaultRecoveryRequestId });
+                    std::wstring rejectedReason = pluginRegistered ? L"plugin_not_enabled" : L"plugin_not_registered";
+                    std::wstring stateText = pluginRegistered && pluginState == AuthenticatorState_Disabled ? L"Disabled" : (pluginRegistered ? L"Enabled" : L"Unknown");
+                    self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=" + rejectedReason + L" state=" + stateText + L" trigger=unlock_method_toggle request_id=" + vaultRecoveryRequestId });
                 }
                 co_return;
             }

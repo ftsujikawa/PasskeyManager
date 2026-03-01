@@ -58,8 +58,8 @@ namespace winrt::PasskeyManager::implementation
         {
             this->Content().as<winrt::FrameworkElement>().FlowDirection(FlowDirection::RightToLeft);
         }
-        // Set the window title to "Contoso Passkey Manager"
-        this->Title(L"Contoso Passkey Manager");
+        // Set the window title to "HappyFactory Passkey Manager"
+        this->Title(L"HappyFactory Passkey Manager");
         this->Closed({ this, &MainWindow::OnClosed });
     }
 

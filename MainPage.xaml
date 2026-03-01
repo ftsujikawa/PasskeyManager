@@ -42,7 +42,7 @@
             <TextBlock
                 VerticalAlignment="Center"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Contoso Passkey Manager" />
+                Text="HappyFactory Passkey Manager" />
         </StackPanel>
         <Grid
             Grid.Row="1"
@@ -264,7 +264,7 @@
                             x:Name="syncUserIdTextBox"
                             Grid.Row="2"
                             Grid.Column="1"
-                            PlaceholderText="ContosoUserId"
+                            PlaceholderText="HappyFactoryUserId"
                             TextWrapping="NoWrap" />
 
                         <TextBlock

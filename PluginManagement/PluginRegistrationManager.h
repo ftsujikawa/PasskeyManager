@@ -6,13 +6,13 @@
 #include <PluginAuthenticator/PluginAuthenticatorImpl.h>
 
 constexpr wchar_t c_pluginName[] = L"tsupasswd_core";
-constexpr wchar_t c_pluginRpId[] = L"contoso.com";
+constexpr wchar_t c_pluginRpId[] = L"HappyFactory.dev";
 constexpr wchar_t c_pluginRpIdWebAuthnIo[] = L"webauthn.io";
 constexpr wchar_t c_pluginRpIdWebAuthnIoWww[] = L"www.webauthn.io";
-constexpr wchar_t c_rpName[] = L"Contoso";
-constexpr wchar_t c_userName[] = L"ContosoUser";
-constexpr wchar_t c_userDisplayName[] = L"Contoso User";
-constexpr wchar_t c_userId[] = L"ContosoUserId";
+constexpr wchar_t c_rpName[] = L"HappyFactory";
+constexpr wchar_t c_userName[] = L"HappyFactoryUser";
+constexpr wchar_t c_userDisplayName[] = L"HappyFactory User";
+constexpr wchar_t c_userId[] = L"HappyFactoryUserId";
 constexpr wchar_t c_dummySecretVault[] = L"DummySecretVault";
 
 /* The AAGUID is a unique identifier for the FIDO authenticator model.
@@ -25,7 +25,7 @@ constexpr BYTE c_pluginAaguidBytes[] = { 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x5
 static_assert(c_pluginAaguidBytes[0] != '#', "Please replace the AAGUID values c_pluginAaguid and c_pluginAaguidBytes above with your AAGUID");
 
 constexpr wchar_t c_pluginSigningKeyName[] = L"TestAppPluginIdKey";
-constexpr wchar_t c_pluginRegistryPath[] = L"Software\\Contoso\\PasskeyManager";
+constexpr wchar_t c_pluginRegistryPath[] = L"Software\\HappyFactory\\PasskeyManager";
 constexpr wchar_t c_windowsPluginRequestSigningKeyRegKeyName[] = L"RequestSigningKeyBlob";
 constexpr wchar_t c_windowsPluginVaultLockedRegKeyName[] = L"VaultLocked";
 constexpr wchar_t c_windowsPluginSilentOperationRegKeyName[] = L"SilentOperation";

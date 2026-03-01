@@ -36,7 +36,7 @@
                 Grid.ColumnSpan="2"
                 HorizontalTextAlignment="Center"
                 Style="{StaticResource SubtitleTextBlockStyle}"
-                Text="Contoso Passkey Manager" />
+                Text="HappyFactory Passkey Manager" />
         </StackPanel>
         <Grid
             Grid.Row="1"

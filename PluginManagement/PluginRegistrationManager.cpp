@@ -24,7 +24,7 @@ namespace
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
-    constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
+    constexpr wchar_t kDefaultSyncUserId[] = L"HappyFactoryUserId";
     constexpr size_t kAuthenticatorDataFlagsOffset = 32;
     constexpr size_t kAuthenticatorDataAttestedDataOffset = 37;
     constexpr BYTE kAuthenticatorDataAttestedCredentialFlag = 0x40;
@@ -1003,7 +1003,7 @@ namespace winrt::PasskeyManager::implementation {
         std::string clientDataJson =
             "{\"type\":\"webauthn.create\","
             "\"challenge\":\"" + challenge + "\"," 
-            "\"origin\":\"https://contoso.com\"," 
+            "\"origin\":\"https://HappyFactory.dev\"," 
             "\"crossOrigin\":false}";
         clientData.pbClientDataJSON = reinterpret_cast<BYTE*>(clientDataJson.data());
         clientData.cbClientDataJSON = static_cast<DWORD>(clientDataJson.size());

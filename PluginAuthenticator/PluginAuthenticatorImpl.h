@@ -21,7 +21,7 @@ namespace winrt::PasskeyManager::implementation
         GetAssertion = 1
     };
 
-    struct ContosoPlugin : winrt::implements<ContosoPlugin, IPluginAuthenticator>
+    struct HappyFactoryPlugin : winrt::implements<HappyFactoryPlugin, IPluginAuthenticator>
     {
         HRESULT __stdcall MakeCredential(__RPC__in PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginMakeCredentialRequest, __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept;
         HRESULT __stdcall GetAssertion(__RPC__in PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginGetAssertionRequest, __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept;
@@ -39,9 +39,9 @@ namespace winrt::PasskeyManager::implementation
         wil::shared_event m_hPluginOpCompletedEvent;
         wil::shared_event m_hAppReadyForPluginOpEvent;
         wil::shared_event m_hPluginCancelOperationEvent;
-        ContosoPlugin() = delete;
+        HappyFactoryPlugin() = delete;
         // Contructor that takes in the event that set hPluginOpCompletedEvent
-        ContosoPlugin(wil::shared_event hPluginOpCompletedEvent,
+        HappyFactoryPlugin(wil::shared_event hPluginOpCompletedEvent,
             wil::shared_event hAppReadyForPluginOpEvent,
             wil::shared_event hPluginUserCancelEvent) :
             m_hPluginOpCompletedEvent(hPluginOpCompletedEvent),
@@ -51,15 +51,15 @@ namespace winrt::PasskeyManager::implementation
         }
     };
 
-    struct ContosoPluginFactory : implements<ContosoPluginFactory, IClassFactory>
+    struct HappyFactoryPluginFactory : implements<HappyFactoryPluginFactory, IClassFactory>
     {
         HRESULT __stdcall CreateInstance(::IUnknown* outer, GUID const& iid, void** result) noexcept;
         HRESULT __stdcall LockServer(BOOL) noexcept;
         wil::shared_event m_hPluginOpCompletedEvent;
         wil::shared_event m_hAppReadyForPluginOpEvent;
         wil::shared_event m_hPluginCancelOperationEvent;
-        ContosoPluginFactory() = delete;
-        ContosoPluginFactory(wil::shared_event hPluginOpCompletedEvent,
+        HappyFactoryPluginFactory() = delete;
+        HappyFactoryPluginFactory(wil::shared_event hPluginOpCompletedEvent,
             wil::shared_event hAppReadyForPluginOpEvent,
             wil::shared_event hPluginUserCancelEvent) :
             m_hPluginOpCompletedEvent(hPluginOpCompletedEvent),

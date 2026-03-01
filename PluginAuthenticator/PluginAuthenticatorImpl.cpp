@@ -234,7 +234,7 @@ namespace winrt::PasskeyManager::implementation
         }
     } // anonymous namespace
 
-    HRESULT ContosoPlugin::PerformUserVerification(
+    HRESULT HappyFactoryPlugin::PerformUserVerification(
         HWND hWnd,
         GUID transactionId,
         PluginOperationType operationType,
@@ -587,7 +587,7 @@ namespace winrt::PasskeyManager::implementation
     * This function is invoked by the platform to request the plugin to handle a make credential operation.
     * Refer: pluginauthenticator.h/pluginauthenticator.idl
     */
-    HRESULT STDMETHODCALLTYPE ContosoPlugin::MakeCredential(
+    HRESULT STDMETHODCALLTYPE HappyFactoryPlugin::MakeCredential(
         /* [in] */ __RPC__in PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginMakeCredentialRequest,
         /* [out] */ __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
     {
@@ -854,7 +854,7 @@ namespace winrt::PasskeyManager::implementation
     * This function is invoked by the platform to request the plugin to handle a get assertion operation.
     * Refer: pluginauthenticator.h/pluginauthenticator.idl
     */
-    HRESULT STDMETHODCALLTYPE ContosoPlugin::GetAssertion(
+    HRESULT STDMETHODCALLTYPE HappyFactoryPlugin::GetAssertion(
         /* [in] */ __RPC__in PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginGetAssertionRequest,
         /* [out] */ __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
     {
@@ -1248,7 +1248,7 @@ namespace winrt::PasskeyManager::implementation
     /*
     * This function is invoked by the platform to fetch the state of the plugin's vault
     */
-    HRESULT STDMETHODCALLTYPE ContosoPlugin::GetLockStatus(
+    HRESULT STDMETHODCALLTYPE HappyFactoryPlugin::GetLockStatus(
         /* [out] */ __RPC__out PLUGIN_LOCK_STATUS* vaultState) noexcept
     {
         auto& credManager = PluginCredentialManager::getInstance();
@@ -1260,7 +1260,7 @@ namespace winrt::PasskeyManager::implementation
     /*
     * This function is invoked by the platform to request the plugin to cancel an ongoing operation.
     */
-    HRESULT STDMETHODCALLTYPE ContosoPlugin::CancelOperation(
+    HRESULT STDMETHODCALLTYPE HappyFactoryPlugin::CancelOperation(
         /* [out] */ __RPC__in PCWEBAUTHN_PLUGIN_CANCEL_OPERATION_REQUEST pCancelRequest)
     {
         try
@@ -1294,7 +1294,7 @@ namespace winrt::PasskeyManager::implementation
     * cancellation requests.
     * Refer: pluginauthenticator.h/pluginauthenticator.idl for the interface definition.
     */
-    HRESULT __stdcall ContosoPluginFactory::CreateInstance(
+    HRESULT __stdcall HappyFactoryPluginFactory::CreateInstance(
         ::IUnknown* outer,
         GUID const& iid,
         void** result) noexcept
@@ -1309,7 +1309,7 @@ namespace winrt::PasskeyManager::implementation
                 return CLASS_E_NOAGGREGATION;
             }
 
-            return make<ContosoPlugin>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent)->QueryInterface(iid, result);
+            return make<HappyFactoryPlugin>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent)->QueryInterface(iid, result);
         }
         catch (...)
         {
@@ -1317,7 +1317,7 @@ namespace winrt::PasskeyManager::implementation
         }
     }
 
-    HRESULT __stdcall ContosoPluginFactory::LockServer(BOOL) noexcept
+    HRESULT __stdcall HappyFactoryPluginFactory::LockServer(BOOL) noexcept
     {
         return S_OK;
     }

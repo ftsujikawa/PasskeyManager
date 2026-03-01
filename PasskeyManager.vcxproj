@@ -25,7 +25,7 @@
       have a name that matches the .winmd
     -->
     <TargetName>tsupasswd_core</TargetName>
-    <DefaultLanguage>en-US</DefaultLanguage>
+    <DefaultLanguage>ja-JP</DefaultLanguage>
     <MinimumVisualStudioVersion>16.0</MinimumVisualStudioVersion>
     <AppContainerApplication>false</AppContainerApplication>
     <AppxPackage>true</AppxPackage>
@@ -117,7 +117,7 @@
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
     <!-- writeable location -->
     <AppInstallerUri>C:\AppPackages\PasskeyManager\AppPackages</AppInstallerUri>
-    <PackageCertificateThumbprint>0D32447717ADDC216667C9821BD9D64958B489AD</PackageCertificateThumbprint>
+    <PackageCertificateKeyFile>tsupasswd_core_TemporaryKey.pfx</PackageCertificateKeyFile>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

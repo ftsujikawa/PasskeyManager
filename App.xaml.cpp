@@ -36,7 +36,7 @@ void App::RegisterPluginClassFactory()
 {
     winrt::check_hresult(::CoRegisterClassObject(
         contosoplugin_guid,
-        make<ContosoPluginFactory>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent).get(),
+        make<HappyFactoryPluginFactory>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent).get(),
         CLSCTX_LOCAL_SERVER,
         REGCLS_MULTIPLEUSE,
         &m_registration));
@@ -94,7 +94,7 @@ void App::InitializeAppWindTitleBar()
     titleBar.ButtonBackgroundColor(winrt::Microsoft::UI::Colors::Transparent());
     titleBar.ExtendsContentIntoTitleBar(true);
     titleBar.PreferredHeightOption(winrt::Microsoft::UI::Windowing::TitleBarHeightOption::Tall);
-    appWind.Title(L"Contoso Passkey Manager");
+    appWind.Title(L"HappyFactory Passkey Manager");
     appWind.SetIcon(L"Assets\\icon.ico");
     appWind.Title(L"");
 }
@@ -417,7 +417,7 @@ winrt::fire_and_forget App::SimulateUnLockVault()
     auto vaultUnlockMethod = PluginCredentialManager::getInstance().GetVaultUnlockMethod();
     if (vaultUnlockMethod == VaultUnlockMethod::Consent)
     {
-        consentResult = co_await mainWindow->RequestConsent(L"Unlock Contoso Passkey Manager Vault");
+        consentResult = co_await mainWindow->RequestConsent(L"Unlock HappyFactory Passkey Manager Vault");
     }
     else if (vaultUnlockMethod == VaultUnlockMethod::Passkey)
     {

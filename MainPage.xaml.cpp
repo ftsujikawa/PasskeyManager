@@ -26,6 +26,7 @@
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.ApplicationModel.h>
 
 namespace winrt {
     using namespace winrt::Microsoft::UI::Xaml;
@@ -39,6 +40,7 @@ namespace {
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
+    constexpr wchar_t kLastSeenPackageVersionRegKeyName[] = L"LastSeenPackageVersion";
 
     std::wstring DescribeCredentialOperationFailure(HRESULT hr)
     {
@@ -109,6 +111,86 @@ namespace {
 
         value.resize(written);
         return value;
+    }
+
+    std::wstring ReadPluginRegistryStringValue(wchar_t const* valueName)
+    {
+        DWORD type = 0;
+        DWORD sizeBytes = 0;
+        LONG status = RegGetValueW(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            valueName,
+            RRF_RT_REG_SZ,
+            &type,
+            nullptr,
+            &sizeBytes);
+        if (status != ERROR_SUCCESS || sizeBytes < sizeof(wchar_t))
+        {
+            return L"";
+        }
+
+        std::wstring value;
+        value.resize(sizeBytes / sizeof(wchar_t));
+        status = RegGetValueW(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            valueName,
+            RRF_RT_REG_SZ,
+            &type,
+            value.data(),
+            &sizeBytes);
+        if (status != ERROR_SUCCESS)
+        {
+            return L"";
+        }
+
+        while (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    HRESULT WritePluginRegistryStringValue(wchar_t const* valueName, std::wstring const& value)
+    {
+        wil::unique_hkey hKey;
+        RETURN_IF_WIN32_ERROR(RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            0,
+            nullptr,
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            nullptr,
+            &hKey,
+            nullptr));
+
+        auto bytes = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
+        RETURN_IF_WIN32_ERROR(RegSetValueExW(
+            hKey.get(),
+            valueName,
+            0,
+            REG_SZ,
+            reinterpret_cast<BYTE const*>(value.c_str()),
+            bytes));
+        return S_OK;
+    }
+
+    std::wstring GetCurrentPackageVersionTag()
+    {
+        try
+        {
+            auto version = winrt::Windows::ApplicationModel::Package::Current().Id().Version();
+            return std::to_wstring(version.Major) + L"." +
+                std::to_wstring(version.Minor) + L"." +
+                std::to_wstring(version.Build) + L"." +
+                std::to_wstring(version.Revision);
+        }
+        catch (...)
+        {
+            return L"";
+        }
     }
 
     std::wstring InferHistoryResult(std::wstring const& rawLine)
@@ -736,6 +818,7 @@ namespace winrt::PasskeyManager::implementation
         co_await winrt::resume_background();
         bool pluginRegistrationAttempted = true;
         HRESULT hrRegisterPlugin = S_OK;
+        HRESULT hrUpdatePlugin = S_OK;
         HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
         if (hrState == NTE_NOT_FOUND)
         {
@@ -748,6 +831,14 @@ namespace winrt::PasskeyManager::implementation
             else if (hrState == NTE_NOT_FOUND)
             {
                 hrState = hrRegisterPlugin;
+            }
+        }
+        else if (SUCCEEDED(hrState))
+        {
+            hrUpdatePlugin = PluginRegistrationManager::getInstance().UpdatePlugin();
+            if (SUCCEEDED(hrUpdatePlugin))
+            {
+                hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
             }
         }
         AUTHENTICATOR_STATE pluginState = PluginRegistrationManager::getInstance().GetPluginState();
@@ -782,6 +873,11 @@ namespace winrt::PasskeyManager::implementation
                     {
                         self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=register_plugin_for_passkey_selection request_id=" + requestId }, hrRegisterPlugin);
                     }
+                }
+
+                if (FAILED(hrUpdatePlugin))
+                {
+                    self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=update_plugin_for_rp_sync hr=" + std::to_wstring(static_cast<int>(hrUpdatePlugin)) + L" request_id=" + requestId });
                 }
 
                 std::wstring stateText = L"Unknown";
@@ -1010,6 +1106,7 @@ namespace winrt::PasskeyManager::implementation
             co_await winrt::resume_background();
             bool pluginRegistrationAttempted = true;
             HRESULT hrRegisterPlugin = S_OK;
+            HRESULT hrUpdatePlugin = S_OK;
             HRESULT hrPluginState = PluginRegistrationManager::getInstance().RefreshPluginState();
             if (hrPluginState == NTE_NOT_FOUND)
             {
@@ -1022,6 +1119,14 @@ namespace winrt::PasskeyManager::implementation
                 else if (hrPluginState == NTE_NOT_FOUND)
                 {
                     hrPluginState = hrRegisterPlugin;
+                }
+            }
+            else if (SUCCEEDED(hrPluginState))
+            {
+                hrUpdatePlugin = PluginRegistrationManager::getInstance().UpdatePlugin();
+                if (SUCCEEDED(hrUpdatePlugin))
+                {
+                    hrPluginState = PluginRegistrationManager::getInstance().RefreshPluginState();
                 }
             }
             bool pluginRegistered = SUCCEEDED(hrPluginState);
@@ -1055,6 +1160,10 @@ namespace winrt::PasskeyManager::implementation
                         self->vaultRecoveryHintText().Text(L"Plugin is registered but disabled. Enable tsupasswd_core in Settings, then retry.");
                     }
                     self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                    if (FAILED(hrUpdatePlugin))
+                    {
+                        self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=update_plugin_for_rp_sync hr=" + std::to_wstring(static_cast<int>(hrUpdatePlugin)) + L" request_id=" + vaultRecoveryRequestId });
+                    }
                     std::wstring rejectedReason = pluginRegistered ? L"plugin_not_enabled" : L"plugin_not_registered";
                     std::wstring stateText = pluginRegistered && pluginState == AuthenticatorState_Disabled ? L"Disabled" : (pluginRegistered ? L"Enabled" : L"Unknown");
                     self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=" + rejectedReason + L" state=" + stateText + L" trigger=unlock_method_toggle request_id=" + vaultRecoveryRequestId });
@@ -1190,30 +1299,106 @@ namespace winrt::PasskeyManager::implementation
                     }
                     self->UpdatePluginEnableState();
 
+                    ULONGLONG pluginLastSequence = 0;
+                    DWORD pluginLastSequenceSize = sizeof(pluginLastSequence);
+                    bool hasPluginLastSequence =
+                        RegGetValueW(
+                            HKEY_CURRENT_USER,
+                            c_pluginRegistryPath,
+                            c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                            RRF_RT_REG_QWORD,
+                            nullptr,
+                            &pluginLastSequence,
+                            &pluginLastSequenceSize) == ERROR_SUCCESS;
+
                     auto pluginLastStatus = wil::reg::try_get_value_dword(
                         HKEY_CURRENT_USER,
                         c_pluginRegistryPath,
                         c_windowsPluginLastMakeCredentialStatusRegKeyName);
                     if (pluginLastStatus.has_value())
                     {
-                        bool shouldLogStatus =
-                            !self->m_lastObservedMakeCredentialStatus.has_value() ||
-                            self->m_lastObservedMakeCredentialStatus.value() != pluginLastStatus.value();
+                        bool shouldLogStatus = false;
+                        if (hasPluginLastSequence)
+                        {
+                            shouldLogStatus =
+                                !self->m_lastObservedMakeCredentialSequence.has_value() ||
+                                self->m_lastObservedMakeCredentialSequence.value() != pluginLastSequence;
+                            self->m_lastObservedMakeCredentialSequence = pluginLastSequence;
+                        }
+                        else
+                        {
+                            shouldLogStatus =
+                                !self->m_lastObservedMakeCredentialStatus.has_value() ||
+                                self->m_lastObservedMakeCredentialStatus.value() != pluginLastStatus.value();
+                        }
+
                         self->m_lastObservedMakeCredentialStatus = pluginLastStatus.value();
                         if (shouldLogStatus)
                         {
                             std::wstring statusOperation = L"vault_recovery";
                             std::wstring statusRequestId = BuildRequestId(L"plugin_last_make_credential_status_watch");
-                            self->LogInfo(winrt::hstring{
-                                L"summary state=observed operation=" + statusOperation +
-                                L" step=plugin_last_make_credential_status hr=" +
-                                std::to_wstring(static_cast<int>(static_cast<HRESULT>(pluginLastStatus.value()))) +
-                                L" source=registry_watcher request_id=" + statusRequestId });
+                            HRESULT currentStatus = static_cast<HRESULT>(pluginLastStatus.value());
+                            if (currentStatus == S_FALSE)
+                            {
+                                self->LogInfo(winrt::hstring{
+                                    L"summary state=started operation=" + statusOperation +
+                                    L" step=plugin_last_make_credential_status hr=" +
+                                    std::to_wstring(static_cast<int>(currentStatus)) +
+                                    L" source=registry_watcher request_id=" + statusRequestId });
+
+                                co_await winrt::resume_background();
+                                std::this_thread::sleep_for(std::chrono::seconds(2));
+
+                                ULONGLONG followupSequence = 0;
+                                DWORD followupSequenceSize = sizeof(followupSequence);
+                                bool hasFollowupSequence =
+                                    RegGetValueW(
+                                        HKEY_CURRENT_USER,
+                                        c_pluginRegistryPath,
+                                        c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                                        RRF_RT_REG_QWORD,
+                                        nullptr,
+                                        &followupSequence,
+                                        &followupSequenceSize) == ERROR_SUCCESS;
+                                auto followupStatus = wil::reg::try_get_value_dword(
+                                    HKEY_CURRENT_USER,
+                                    c_pluginRegistryPath,
+                                    c_windowsPluginLastMakeCredentialStatusRegKeyName);
+
+                                co_await wil::resume_foreground(self->DispatcherQueue());
+                                std::wstring followupRequestId = BuildRequestId(L"plugin_last_make_credential_status_followup");
+                                if (followupStatus.has_value())
+                                {
+                                    std::wstring followupSequenceText = hasFollowupSequence ? std::to_wstring(followupSequence) : L"missing";
+                                    self->LogInfo(winrt::hstring{
+                                        L"summary state=observed operation=" + statusOperation +
+                                        L" step=plugin_last_make_credential_status_followup hr=" +
+                                        std::to_wstring(static_cast<int>(static_cast<HRESULT>(followupStatus.value()))) +
+                                        L" sequence=" + followupSequenceText +
+                                        L" source=registry_watcher request_id=" + followupRequestId });
+                                }
+                                else
+                                {
+                                    self->LogInfo(winrt::hstring{
+                                        L"summary state=observed operation=" + statusOperation +
+                                        L" step=plugin_last_make_credential_status_followup status=not_written source=registry_watcher request_id=" +
+                                        followupRequestId });
+                                }
+                            }
+                            else
+                            {
+                                self->LogInfo(winrt::hstring{
+                                    L"summary state=observed operation=" + statusOperation +
+                                    L" step=plugin_last_make_credential_status hr=" +
+                                    std::to_wstring(static_cast<int>(currentStatus)) +
+                                    L" source=registry_watcher request_id=" + statusRequestId });
+                            }
                         }
                     }
                     else
                     {
                         self->m_lastObservedMakeCredentialStatus = std::nullopt;
+                        self->m_lastObservedMakeCredentialSequence = std::nullopt;
                     }
                 }
             });
@@ -1300,9 +1485,29 @@ namespace winrt::PasskeyManager::implementation
     {
         std::wstring operation = L"ensure_plugin_registration";
         std::wstring requestId = BuildRequestId(operation);
+        auto toStateText = [](AUTHENTICATOR_STATE state) -> std::wstring
+        {
+            switch (state)
+            {
+            case AuthenticatorState_Enabled:
+                return L"Enabled";
+            case AuthenticatorState_Disabled:
+                return L"Disabled";
+            default:
+                return L"Unknown";
+            }
+        };
 
         co_await winrt::resume_background();
+        std::wstring currentPackageVersion = GetCurrentPackageVersionTag();
+        std::wstring previousPackageVersion = ReadPluginRegistryStringValue(kLastSeenPackageVersionRegKeyName);
+        bool deploymentVersionChanged =
+            !currentPackageVersion.empty() &&
+            !previousPackageVersion.empty() &&
+            currentPackageVersion != previousPackageVersion;
+
         HRESULT hrEnsurePlugin = PluginRegistrationManager::getInstance().RefreshPluginState();
+        AUTHENTICATOR_STATE stateBefore = PluginRegistrationManager::getInstance().GetPluginState();
         if (hrEnsurePlugin == NTE_NOT_FOUND)
         {
             hrEnsurePlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
@@ -1311,11 +1516,73 @@ namespace winrt::PasskeyManager::implementation
         {
             hrEnsurePlugin = PluginRegistrationManager::getInstance().UpdatePlugin();
         }
+        AUTHENTICATOR_STATE stateAfter = PluginRegistrationManager::getInstance().GetPluginState();
+        if (SUCCEEDED(hrEnsurePlugin))
+        {
+            (void)PluginRegistrationManager::getInstance().RefreshPluginState();
+            stateAfter = PluginRegistrationManager::getInstance().GetPluginState();
+        }
+
+        HRESULT hrPersistPackageVersion = S_OK;
+        if (!currentPackageVersion.empty())
+        {
+            hrPersistPackageVersion = WritePluginRegistryStringValue(kLastSeenPackageVersionRegKeyName, currentPackageVersion);
+        }
 
         co_await wil::resume_foreground(DispatcherQueue());
         if (FAILED(hrEnsurePlugin) && hrEnsurePlugin != NTE_EXISTS)
         {
             LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=register_or_update_plugin hr=" + std::to_wstring(static_cast<int>(hrEnsurePlugin)) + L" request_id=" + requestId });
+        }
+        if (deploymentVersionChanged)
+        {
+            LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=deployment_version_changed previous=" + (previousPackageVersion.empty() ? L"none" : previousPackageVersion) + L" current=" + currentPackageVersion + L" request_id=" + requestId });
+        }
+        if (FAILED(hrPersistPackageVersion))
+        {
+            LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=persist_deployment_version hr=" + std::to_wstring(static_cast<int>(hrPersistPackageVersion)) + L" request_id=" + requestId });
+        }
+        LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=registration_state_sync before=" + toStateText(stateBefore) + L" after=" + toStateText(stateAfter) + L" hr=" + std::to_wstring(static_cast<int>(hrEnsurePlugin)) + L" request_id=" + requestId });
+
+        ULONGLONG startupSequence = 0;
+        DWORD startupSequenceSize = sizeof(startupSequence);
+        bool hasStartupSequence =
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                RRF_RT_REG_QWORD,
+                nullptr,
+                &startupSequence,
+                &startupSequenceSize) == ERROR_SUCCESS;
+        auto startupStatus = wil::reg::try_get_value_dword(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            c_windowsPluginLastMakeCredentialStatusRegKeyName);
+        if (startupStatus.has_value())
+        {
+            std::wstring sequenceText = hasStartupSequence ? std::to_wstring(startupSequence) : L"missing";
+            LogInfo(winrt::hstring{
+                L"summary state=observed operation=" + operation +
+                L" step=plugin_last_make_credential_status_snapshot hr=" +
+                std::to_wstring(static_cast<int>(static_cast<HRESULT>(startupStatus.value()))) +
+                L" sequence=" + sequenceText +
+                L" request_id=" + requestId });
+        }
+        else
+        {
+            LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_last_make_credential_status_snapshot status=not_written request_id=" + requestId });
+        }
+
+        if (stateAfter != AuthenticatorState_Enabled)
+        {
+            std::wstring hintMessage = deploymentVersionChanged
+                ? L"Deployment detected. Open Windows Settings and enable tsupasswd_core again."
+                : L"Plugin is disabled in Windows Settings. Open Settings and enable tsupasswd_core.";
+            pluginActivationHintText().Text(winrt::hstring{ hintMessage });
+            pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+            activatePluginButton().IsEnabled(true);
+            LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=plugin_not_enabled_after_sync state=" + toStateText(stateAfter) + L" recovery=open_settings_enable_plugin request_id=" + requestId });
         }
 
         UpdatePluginEnableState();
@@ -1731,10 +1998,43 @@ namespace winrt::PasskeyManager::implementation
     {
         std::wstring operation = L"update_plugin";
         std::wstring requestId = BuildRequestId(operation);
+        auto toStateText = [](AUTHENTICATOR_STATE state) -> std::wstring
+        {
+            switch (state)
+            {
+            case AuthenticatorState_Enabled:
+                return L"Enabled";
+            case AuthenticatorState_Disabled:
+                return L"Disabled";
+            default:
+                return L"Unknown";
+            }
+        };
         LogInProgress(winrt::hstring{ BuildSummaryStateLog(L"running", operation, requestId) });
         auto weakThis = get_weak();
         co_await winrt::resume_background();
+
+        HRESULT hrStateBefore = PluginRegistrationManager::getInstance().RefreshPluginState();
+        AUTHENTICATOR_STATE stateBefore = PluginRegistrationManager::getInstance().GetPluginState();
         HRESULT hr = PluginRegistrationManager::getInstance().UpdatePlugin();
+        HRESULT hrStateAfter = PluginRegistrationManager::getInstance().RefreshPluginState();
+        AUTHENTICATOR_STATE stateAfter = PluginRegistrationManager::getInstance().GetPluginState();
+
+        ULONGLONG snapshotSequence = 0;
+        DWORD snapshotSequenceSize = sizeof(snapshotSequence);
+        bool hasSnapshotSequence =
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                RRF_RT_REG_QWORD,
+                nullptr,
+                &snapshotSequence,
+                &snapshotSequenceSize) == ERROR_SUCCESS;
+        auto snapshotStatus = wil::reg::try_get_value_dword(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            c_windowsPluginLastMakeCredentialStatusRegKeyName);
 
         co_await wil::resume_foreground(DispatcherQueue());
 
@@ -1745,6 +2045,36 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->UpdatePluginEnableState();
+        self->LogInfo(winrt::hstring{
+            L"summary state=observed operation=" + operation +
+            L" step=registration_state_sync before=" + toStateText(stateBefore) +
+            L" after=" + toStateText(stateAfter) +
+            L" refresh_before_hr=" + std::to_wstring(static_cast<int>(hrStateBefore)) +
+            L" refresh_after_hr=" + std::to_wstring(static_cast<int>(hrStateAfter)) +
+            L" request_id=" + requestId });
+
+        if (snapshotStatus.has_value())
+        {
+            std::wstring seqText = hasSnapshotSequence ? std::to_wstring(snapshotSequence) : L"missing";
+            self->LogInfo(winrt::hstring{
+                L"summary state=observed operation=" + operation +
+                L" step=plugin_last_make_credential_status_snapshot hr=" +
+                std::to_wstring(static_cast<int>(static_cast<HRESULT>(snapshotStatus.value()))) +
+                L" sequence=" + seqText +
+                L" request_id=" + requestId });
+        }
+        else
+        {
+            self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_last_make_credential_status_snapshot status=not_written request_id=" + requestId });
+        }
+
+        if (stateAfter != AuthenticatorState_Enabled)
+        {
+            self->pluginActivationHintText().Text(L"Plugin is disabled in Windows Settings. Click Enable, then retry webauthn.io registration.");
+            self->pluginActivationHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+            self->activatePluginButton().IsEnabled(true);
+            self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=plugin_not_enabled_after_update state=" + toStateText(stateAfter) + L" recovery=open_settings_enable_plugin request_id=" + requestId });
+        }
 
         if (FAILED(hr))
         {

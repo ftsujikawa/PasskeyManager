@@ -244,6 +244,7 @@ namespace winrt::PasskeyManager::implementation
         bool m_isDeleteEverywhereInProgress = false;
         uint64_t m_deleteEverywhereRunCounter = 0;
         uint64_t m_deleteEverywhereActiveRunId = 0;
+        std::optional<DWORD> m_lastObservedMakeCredentialStatus{};
         std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};
         void UpdateVaultUnlockControlText(bool isLocked);
         void SetVaultLockSwitchState(bool isOn);

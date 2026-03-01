@@ -25,6 +25,9 @@ namespace
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
     constexpr wchar_t kDefaultSyncUserId[] = L"ContosoUserId";
+    constexpr size_t kAuthenticatorDataFlagsOffset = 32;
+    constexpr size_t kAuthenticatorDataAttestedDataOffset = 37;
+    constexpr BYTE kAuthenticatorDataAttestedCredentialFlag = 0x40;
 
     enum class VaultBlobParseResult
     {
@@ -237,6 +240,66 @@ namespace
     std::wstring BuildRequestId(std::wstring const& operation)
     {
         return tsupasswd::BuildRequestId(operation);
+    }
+
+    std::wstring HexEncodeLower(BYTE const* bytes, size_t length)
+    {
+        static constexpr wchar_t kHex[] = L"0123456789abcdef";
+        std::wstring encoded;
+        encoded.resize(length * 2);
+        for (size_t i = 0; i < length; ++i)
+        {
+            encoded[(i * 2)] = kHex[(bytes[i] >> 4) & 0x0F];
+            encoded[(i * 2) + 1] = kHex[bytes[i] & 0x0F];
+        }
+        return encoded;
+    }
+
+    std::wstring FormatAaguid(BYTE const* aaguidBytes, size_t length)
+    {
+        if (aaguidBytes == nullptr || length != 16)
+        {
+            return L"";
+        }
+
+        std::wstring hex = HexEncodeLower(aaguidBytes, length);
+        if (hex.size() != 32)
+        {
+            return L"";
+        }
+
+        return
+            hex.substr(0, 8) + L"-" +
+            hex.substr(8, 4) + L"-" +
+            hex.substr(12, 4) + L"-" +
+            hex.substr(16, 4) + L"-" +
+            hex.substr(20, 12);
+    }
+
+    bool TryExtractAttestationAaguid(
+        WEBAUTHN_CREDENTIAL_ATTESTATION const* attestation,
+        std::array<BYTE, 16>& outAaguid)
+    {
+        if (attestation == nullptr || attestation->pbAuthenticatorData == nullptr)
+        {
+            return false;
+        }
+        if (attestation->cbAuthenticatorData < (kAuthenticatorDataAttestedDataOffset + outAaguid.size()))
+        {
+            return false;
+        }
+
+        BYTE flags = attestation->pbAuthenticatorData[kAuthenticatorDataFlagsOffset];
+        if ((flags & kAuthenticatorDataAttestedCredentialFlag) == 0)
+        {
+            return false;
+        }
+
+        std::copy_n(
+            attestation->pbAuthenticatorData + kAuthenticatorDataAttestedDataOffset,
+            outAaguid.size(),
+            outAaguid.begin());
+        return true;
     }
 
     std::string Base64UrlEncode(const uint8_t* data, DWORD dataSize)
@@ -736,7 +799,7 @@ namespace winrt::PasskeyManager::implementation {
         // WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS: Structure containing options for registering a plugin authenticator
         // with the Windows platform. This includes authenticator name, class ID, supported RP IDs, logo data, and
         // CBOR-encoded authenticator information for FIDO compliance.
-        PCWSTR supportedRpIds[] = { c_pluginRpId };
+        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo };
         WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS addOptions{
             .pwszAuthenticatorName = c_pluginName,
             .rclsid = contosoplugin_guid,
@@ -821,7 +884,7 @@ namespace winrt::PasskeyManager::implementation {
         std::string fullAuthenticatorInfoStr = authenticatorInfoStrPart1 + tempAaguidStr + authenticatorInfoStrPart2;
         std::vector<BYTE> authenticatorInfo = hexStringToBytes(fullAuthenticatorInfoStr);
 
-        PCWSTR supportedRpIds[] = { c_pluginRpId };
+        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo };
 
         // WEBAUTHN_PLUGIN_UPDATE_AUTHENTICATOR_DETAILS: Structure containing updated plugin information for an already
         // registered authenticator, including potentially new class IDs, names, logos, and authenticator information.
@@ -975,6 +1038,34 @@ namespace winrt::PasskeyManager::implementation {
 
         std::wstring makeCredentialResult = L"INFO: summary state=observed operation=" + operation + L" step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + localRequestId + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ makeCredentialResult });
+
+        if (SUCCEEDED(hr) && pCredentialAttestation)
+        {
+            std::array<BYTE, 16> observedAaguidBytes{};
+            if (TryExtractAttestationAaguid(pCredentialAttestation.get(), observedAaguidBytes))
+            {
+                std::wstring observedAaguid = FormatAaguid(observedAaguidBytes.data(), observedAaguidBytes.size());
+                std::string expectedAaguidNarrow{ c_pluginAaguidString };
+                std::wstring expectedAaguid(expectedAaguidNarrow.begin(), expectedAaguidNarrow.end());
+                std::wstring provider = (observedAaguid == expectedAaguid) ? L"tsupasswd_core" : L"other";
+
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: summary state=observed operation=" + operation +
+                        L" step=credential_attestation_aaguid value=" + observedAaguid +
+                        L" expected=" + expectedAaguid +
+                        L" provider=" + provider +
+                        L" request_id=" + localRequestId + L"ℹ" });
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: summary state=observed operation=" + operation +
+                        L" step=credential_attestation_aaguid status=unavailable request_id=" +
+                        localRequestId + L"ℹ" });
+            }
+        }
 
         auto pluginLastStatus = wil::reg::try_get_value_dword(
             HKEY_CURRENT_USER,

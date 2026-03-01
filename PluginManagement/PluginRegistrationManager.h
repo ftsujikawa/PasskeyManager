@@ -7,6 +7,7 @@
 
 constexpr wchar_t c_pluginName[] = L"tsupasswd_core";
 constexpr wchar_t c_pluginRpId[] = L"contoso.com";
+constexpr wchar_t c_pluginRpIdWebAuthnIo[] = L"webauthn.io";
 constexpr wchar_t c_rpName[] = L"Contoso";
 constexpr wchar_t c_userName[] = L"ContosoUser";
 constexpr wchar_t c_userDisplayName[] = L"Contoso User";

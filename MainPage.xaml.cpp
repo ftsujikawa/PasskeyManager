@@ -76,6 +76,21 @@ namespace {
         return value.substr(first, last - first + 1);
     }
 
+    bool HasDwordRegistryValue(HKEY root, wchar_t const* subKey, wchar_t const* valueName)
+    {
+        DWORD value = 0;
+        DWORD valueSize = sizeof(value);
+        LONG status = RegGetValueW(
+            root,
+            subKey,
+            valueName,
+            RRF_RT_REG_DWORD,
+            nullptr,
+            &value,
+            &valueSize);
+        return status == ERROR_SUCCESS;
+    }
+
     std::wstring GetProcessEnvironmentValue(wchar_t const* name)
     {
         DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
@@ -719,28 +734,55 @@ namespace winrt::PasskeyManager::implementation
         HWND hwnd = curApp->GetNativeWindowHandle();
 
         co_await winrt::resume_background();
+        bool pluginRegistrationAttempted = true;
+        HRESULT hrRegisterPlugin = S_OK;
         HRESULT hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+        if (SUCCEEDED(hrState) || hrState == NTE_NOT_FOUND)
+        {
+            hrRegisterPlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
+            if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
+            }
+            else if (hrState == NTE_NOT_FOUND)
+            {
+                hrState = hrRegisterPlugin;
+            }
+        }
         AUTHENTICATOR_STATE pluginState = PluginRegistrationManager::getInstance().GetPluginState();
-        bool pluginEnabled = SUCCEEDED(hrState) && pluginState == AuthenticatorState_Enabled;
-        for (int attempt = 0; attempt < 5 && !pluginEnabled; ++attempt)
+        bool pluginRegistered = SUCCEEDED(hrState);
+        for (int attempt = 0; attempt < 5 && !pluginRegistered; ++attempt)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             hrState = PluginRegistrationManager::getInstance().RefreshPluginState();
             pluginState = PluginRegistrationManager::getInstance().GetPluginState();
-            pluginEnabled = SUCCEEDED(hrState) && pluginState == AuthenticatorState_Enabled;
+            pluginRegistered = SUCCEEDED(hrState);
         }
-        HRESULT hrSetMethod = pluginEnabled
+        HRESULT hrSetMethod = pluginRegistered
             ? PluginCredentialManager::getInstance().SetVaultUnlockMethod(VaultUnlockMethod::Passkey)
             : HRESULT_FROM_WIN32(ERROR_NOT_READY);
-        HRESULT hrSetSilent = pluginEnabled
+        HRESULT hrSetSilent = pluginRegistered
             ? PluginCredentialManager::getInstance().SetSilentOperation(false)
             : HRESULT_FROM_WIN32(ERROR_NOT_READY);
 
         co_await wil::resume_foreground(DispatcherQueue());
-        if (!pluginEnabled)
+        if (!pluginRegistered)
         {
             if (auto self{ weakThis.get() })
             {
+                if (pluginRegistrationAttempted)
+                {
+                    if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
+                    {
+                        self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" step=register_plugin_for_passkey_selection request_id=" + requestId });
+                    }
+                    else
+                    {
+                        self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=register_plugin_for_passkey_selection request_id=" + requestId }, hrRegisterPlugin);
+                    }
+                }
+
                 std::wstring stateText = L"Unknown";
                 if (SUCCEEDED(hrState))
                 {
@@ -757,9 +799,16 @@ namespace winrt::PasskeyManager::implementation
                 self->runVaultRecoveryButton().IsEnabled(true);
                 self->quickCreateVaultPasskeyButton().IsEnabled(true);
                 self->SetVaultLockSwitchState(false);
-                self->vaultRecoveryHintText().Text(L"Plugin is not enabled. Click 'Enable in Settings', then run Create Vault Passkey again.");
+                if (FAILED(hrRegisterPlugin) && hrRegisterPlugin != NTE_EXISTS)
+                {
+                    self->vaultRecoveryHintText().Text(L"Failed to register tsupasswd_core. Open Settings and enable tsupasswd_core, then run Create Vault Passkey again.");
+                }
+                else
+                {
+                    self->vaultRecoveryHintText().Text(L"Plugin is not registered yet. Run Create Vault Passkey again. If prompted, open Settings and enable tsupasswd_core.");
+                }
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_enabled state=" + stateText + L" action=open_settings request_id=" + requestId });
+                self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_registered state=" + stateText + L" action=open_settings request_id=" + requestId });
 
                 auto uri = Windows::Foundation::Uri(L"ms-settings:passkeys-advancedoptions");
                 bool launched = co_await Windows::System::Launcher::LaunchUriAsync(uri);
@@ -835,20 +884,37 @@ namespace winrt::PasskeyManager::implementation
                 self->LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=plugin_request_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginRequestSignStatus)) + L" request_id=" + requestId });
             }
 
+            bool pluginLastStatusWritten = HasDwordRegistryValue(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                c_windowsPluginLastMakeCredentialStatusRegKeyName);
+            if ((SUCCEEDED(hrCreatePasskey) || hrCreatePasskey == NTE_EXISTS) && !pluginLastStatusWritten)
+            {
+                self->vaultRecoveryHintText().Text(L"Passkey was created, but tsupasswd_core may not have been selected. Retry and choose tsupasswd_core in storage selection.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=plugin_last_make_credential_status status=not_written hint=select_tsupasswd_core request_id=" + requestId });
+            }
+
             if (SUCCEEDED(hrCreatePasskey))
             {
-                self->vaultRecoveryHintText().Text(L"");
-                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                if (pluginLastStatusWritten)
+                {
+                    self->vaultRecoveryHintText().Text(L"");
+                    self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                    self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                }
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_created request_id=" + requestId });
                 co_return;
             }
 
             if (hrCreatePasskey == NTE_EXISTS)
             {
-                self->vaultRecoveryHintText().Text(L"");
-                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
-                self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                if (pluginLastStatusWritten)
+                {
+                    self->vaultRecoveryHintText().Text(L"");
+                    self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                    self->runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+                }
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" outcome=passkey_already_exists request_id=" + requestId });
                 co_return;
             }
@@ -932,6 +998,50 @@ namespace winrt::PasskeyManager::implementation
 
         if (unlockMethod == VaultUnlockMethod::Passkey)
         {
+            co_await winrt::resume_background();
+            bool pluginRegistrationAttempted = true;
+            HRESULT hrRegisterPlugin = S_OK;
+            HRESULT hrPluginState = PluginRegistrationManager::getInstance().RefreshPluginState();
+            if (SUCCEEDED(hrPluginState) || hrPluginState == NTE_NOT_FOUND)
+            {
+                hrRegisterPlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
+                if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    hrPluginState = PluginRegistrationManager::getInstance().RefreshPluginState();
+                }
+                else if (hrPluginState == NTE_NOT_FOUND)
+                {
+                    hrPluginState = hrRegisterPlugin;
+                }
+            }
+            bool pluginRegistered = SUCCEEDED(hrPluginState);
+            co_await wil::resume_foreground(DispatcherQueue());
+            self = weakThis.get();
+            if (!pluginRegistered)
+            {
+                SetVaultLockSwitchState(false);
+                if (self)
+                {
+                    if (pluginRegistrationAttempted)
+                    {
+                        if (SUCCEEDED(hrRegisterPlugin) || hrRegisterPlugin == NTE_EXISTS)
+                        {
+                            self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" step=register_plugin_for_passkey_selection request_id=" + vaultRecoveryRequestId });
+                        }
+                        else
+                        {
+                            self->LogFailure(winrt::hstring{ L"summary result=failed operation=" + operation + L" step=register_plugin_for_passkey_selection request_id=" + vaultRecoveryRequestId }, hrRegisterPlugin);
+                        }
+                    }
+
+                    self->vaultRecoveryHintText().Text(L"Plugin is not registered. Run Create Vault Passkey again, then enable tsupasswd_core in Settings if prompted.");
+                    self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                    self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=plugin_not_registered trigger=unlock_method_toggle request_id=" + vaultRecoveryRequestId });
+                }
+                co_return;
+            }
+
             if (self)
             {
                 self->LogInfo(winrt::hstring{ L"summary state=running operation=" + operation + L" trigger=unlock_method_toggle step=create_vault_passkey_start request_id=" + vaultRecoveryRequestId });
@@ -957,6 +1067,16 @@ namespace winrt::PasskeyManager::implementation
             }
 
             self = weakThis.get();
+            bool pluginLastStatusWritten = HasDwordRegistryValue(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                c_windowsPluginLastMakeCredentialStatusRegKeyName);
+            if ((SUCCEEDED(hr) || hr == NTE_EXISTS) && self && !pluginLastStatusWritten)
+            {
+                self->vaultRecoveryHintText().Text(L"Passkey was created, but tsupasswd_core may not have been selected. Retry and choose tsupasswd_core in storage selection.");
+                self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+                self->LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=plugin_last_make_credential_status status=not_written trigger=unlock_method_toggle hint=select_tsupasswd_core request_id=" + vaultRecoveryRequestId });
+            }
             if (SUCCEEDED(hr) || hr == NTE_EXISTS)
             {
                 if (self)
@@ -1049,6 +1169,32 @@ namespace winrt::PasskeyManager::implementation
                         self->LogWarning(winrt::hstring{ L"summary result=rejected operation=" + operation + L" reason=ui_required hr=" + std::to_wstring(static_cast<int>(E_NOT_VALID_STATE)) + L" request_id=" + requestId });
                     }
                     self->UpdatePluginEnableState();
+
+                    auto pluginLastStatus = wil::reg::try_get_value_dword(
+                        HKEY_CURRENT_USER,
+                        c_pluginRegistryPath,
+                        c_windowsPluginLastMakeCredentialStatusRegKeyName);
+                    if (pluginLastStatus.has_value())
+                    {
+                        bool shouldLogStatus =
+                            !self->m_lastObservedMakeCredentialStatus.has_value() ||
+                            self->m_lastObservedMakeCredentialStatus.value() != pluginLastStatus.value();
+                        self->m_lastObservedMakeCredentialStatus = pluginLastStatus.value();
+                        if (shouldLogStatus)
+                        {
+                            std::wstring statusOperation = L"vault_recovery";
+                            std::wstring statusRequestId = BuildRequestId(L"plugin_last_make_credential_status_watch");
+                            self->LogInfo(winrt::hstring{
+                                L"summary state=observed operation=" + statusOperation +
+                                L" step=plugin_last_make_credential_status hr=" +
+                                std::to_wstring(static_cast<int>(static_cast<HRESULT>(pluginLastStatus.value()))) +
+                                L" source=registry_watcher request_id=" + statusRequestId });
+                        }
+                    }
+                    else
+                    {
+                        self->m_lastObservedMakeCredentialStatus = std::nullopt;
+                    }
                 }
             });
         std::wstring mockDBfilePath;
@@ -1132,6 +1278,18 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::OnNavigatedTo(Navigation::NavigationEventArgs e)
     {
+        std::wstring operation = L"ensure_plugin_registration";
+        std::wstring requestId = BuildRequestId(operation);
+
+        co_await winrt::resume_background();
+        HRESULT hrEnsurePlugin = PluginRegistrationManager::getInstance().RegisterPlugin();
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (FAILED(hrEnsurePlugin) && hrEnsurePlugin != NTE_EXISTS)
+        {
+            LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=register_or_update_plugin hr=" + std::to_wstring(static_cast<int>(hrEnsurePlugin)) + L" request_id=" + requestId });
+        }
+
         UpdatePluginEnableState();
         UpdateCredentialList();
         LoadSyncHistory();

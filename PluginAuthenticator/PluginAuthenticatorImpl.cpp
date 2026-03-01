@@ -623,6 +623,9 @@ namespace winrt::PasskeyManager::implementation
                 WebAuthNFreeDecodedMakeCredentialRequest(pDecodedMakeCredentialRequest);
             });
 
+            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pRpInformation);
+            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pUserInformation);
+
             std::string rpIdFromRequest;
             if (pDecodedMakeCredentialRequest->pbRpId != nullptr && pDecodedMakeCredentialRequest->cbRpId > 0)
             {
@@ -633,10 +636,23 @@ namespace winrt::PasskeyManager::implementation
             THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
 
             std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
-            THROW_HR_IF(NTE_NOT_SUPPORTED, _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) != 0);
-            auto rpName = wil::make_cotaskmem_string(pDecodedMakeCredentialRequest->pRpInformation->pwszName);
+            bool rpSupported =
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0;
+            THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
+            wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
+            if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
+            {
+                rpNameSource = L"Unknown RP";
+            }
+            auto rpName = wil::make_cotaskmem_string(rpNameSource);
 
-            auto userName = wil::make_cotaskmem_string(pDecodedMakeCredentialRequest->pUserInformation->pwszName);
+            wchar_t const* userNameSource = pDecodedMakeCredentialRequest->pUserInformation->pwszName;
+            if (userNameSource == nullptr || userNameSource[0] == L'\0')
+            {
+                userNameSource = L"Unknown User";
+            }
+            auto userName = wil::make_cotaskmem_string(userNameSource);
             std::vector<BYTE> requestBuffer(
                 pPluginMakeCredentialRequest->pbEncodedRequest,
                 pPluginMakeCredentialRequest->pbEncodedRequest + pPluginMakeCredentialRequest->cbEncodedRequest);
@@ -677,6 +693,9 @@ namespace winrt::PasskeyManager::implementation
             // get the user handle as a string
             std::wstring keyNameStr = contosoplugin_key_domain;
             std::wstringstream keyNameStream;
+            THROW_HR_IF(E_INVALIDARG,
+                pDecodedMakeCredentialRequest->pUserInformation->cbId > 0 &&
+                pDecodedMakeCredentialRequest->pUserInformation->pbId == nullptr);
             for (DWORD idx = 0; idx < pDecodedMakeCredentialRequest->pUserInformation->cbId; idx++)
             {
                 keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<

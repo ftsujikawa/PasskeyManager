@@ -5,13 +5,13 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <vector>
 
-static constexpr GUID contosoplugin_guid
+static constexpr GUID happyfactoryplugin_guid
 {
     0x7fa07696, 0xe94e, 0x4a72, { 0xb8, 0xfd, 0x68, 0x90, 0xc5, 0x89, 0x7a, 0x35 }
 };
-static_assert(contosoplugin_guid.Data1 != 0x12345678, "{5DE9572F-EA2C-4178-9CA5-8C957B874E98}");
+static_assert(happyfactoryplugin_guid.Data1 != 0x12345678, "{5DE9572F-EA2C-4178-9CA5-8C957B874E98}");
 
-static constexpr wchar_t contosoplugin_key_domain[] = L"contoso/";
+static constexpr wchar_t happyfactoryplugin_key_domain[] = L"happyfactory/";
 
 namespace winrt::PasskeyManager::implementation
 {

@@ -86,7 +86,7 @@ namespace winrt::PasskeyManager::implementation
             DWORD cbKeyData = 0;
             unique_plugin_public_key pbKeyData = nullptr;
             HRESULT hr = WebAuthNPluginGetOperationSigningPublicKey(
-                contosoplugin_guid,
+                happyfactoryplugin_guid,
                 &cbKeyData,
                 &pbKeyData);
 
@@ -314,13 +314,13 @@ namespace winrt::PasskeyManager::implementation
 
             // Optional Step: Get the UV count. The UV count tracks the number of times the user has performed a gesture to unlock the vault.
             DWORD uvCount = 0;
-            RETURN_IF_FAILED(WebAuthNPluginGetUserVerificationCount(contosoplugin_guid, &uvCount));
+            RETURN_IF_FAILED(WebAuthNPluginGetUserVerificationCount(happyfactoryplugin_guid, &uvCount));
 
             // Step 1: Get the public key.
             DWORD cbPubKeyData = 0;
             unique_plugin_public_key pbPubKeyData = nullptr;
             RETURN_IF_FAILED(WebAuthNPluginGetUserVerificationPublicKey(
-                contosoplugin_guid,
+                happyfactoryplugin_guid,
                 &cbPubKeyData,
                 &pbPubKeyData));
             RETURN_HR_IF_NULL(E_FAIL, pbPubKeyData);
@@ -714,7 +714,7 @@ namespace winrt::PasskeyManager::implementation
             THROW_IF_FAILED(NCryptOpenStorageProvider(&hProvider, nullptr, 0));
 
             // get the user handle as a string
-            std::wstring keyNameStr = contosoplugin_key_domain;
+            std::wstring keyNameStr = happyfactoryplugin_key_domain;
             std::wstringstream keyNameStream;
             THROW_HR_IF(E_INVALIDARG,
                 pDecodedMakeCredentialRequest->pUserInformation->cbId > 0 &&
@@ -1017,7 +1017,7 @@ namespace winrt::PasskeyManager::implementation
             THROW_IF_FAILED(hr);
 
             // convert user handle to a string
-            std::wstring keyNameStr = contosoplugin_key_domain;
+            std::wstring keyNameStr = happyfactoryplugin_key_domain;
             std::wstringstream keyNameStream;
             for (DWORD idx = 0; idx < selectedCredential->pUserInformation->cbId; idx++)
             {

@@ -98,7 +98,7 @@ namespace winrt::PasskeyManager::implementation
 
         // Call the API to add credentials to the platform database
         RETURN_IF_FAILED(WebAuthNPluginAuthenticatorAddCredentials(
-            contosoplugin_guid,
+            happyfactoryplugin_guid,
             static_cast<DWORD>(credentialDetailList.size()),
             credentialDetailList.data()));
 
@@ -147,7 +147,7 @@ namespace winrt::PasskeyManager::implementation
 
         // Use API to add selected credentials to platform database
         RETURN_IF_FAILED(WebAuthNPluginAuthenticatorAddCredentials(
-            contosoplugin_guid,
+            happyfactoryplugin_guid,
             static_cast<DWORD>(credentialDetailList.size()),
             credentialDetailList.data()));
 
@@ -157,7 +157,7 @@ namespace winrt::PasskeyManager::implementation
     HRESULT PluginCredentialManager::DeleteAllPluginCredentials()
     {
         // Call API to remove all credentials from platform database
-        RETURN_IF_FAILED(WebAuthNPluginAuthenticatorRemoveAllCredentials(contosoplugin_guid));
+        RETURN_IF_FAILED(WebAuthNPluginAuthenticatorRemoveAllCredentials(happyfactoryplugin_guid));
 
         {
             std::lock_guard<std::mutex> lock(m_pluginCachedCredentialsOperationMutex);
@@ -207,7 +207,7 @@ namespace winrt::PasskeyManager::implementation
 
         // Use API to remove specified credentials from platform database
         RETURN_IF_FAILED(WebAuthNPluginAuthenticatorRemoveCredentials(
-            contosoplugin_guid,
+            happyfactoryplugin_guid,
             static_cast<DWORD>(credentialDetailList.size()),
             credentialDetailList.data()));
 
@@ -252,7 +252,7 @@ namespace winrt::PasskeyManager::implementation
         PWEBAUTHN_PLUGIN_CREDENTIAL_DETAILS ppCredentialDetailsArray = nullptr;
 
         // Call API to retrieve all credentials from platform database
-        HRESULT hr = WebAuthNPluginAuthenticatorGetAllCredentials(contosoplugin_guid, &cCredentialDetails, &ppCredentialDetailsArray);
+        HRESULT hr = WebAuthNPluginAuthenticatorGetAllCredentials(happyfactoryplugin_guid, &cCredentialDetails, &ppCredentialDetailsArray);
         RETURN_HR_IF_EXPECTED(S_OK, hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND));
         RETURN_IF_FAILED(hr);
 

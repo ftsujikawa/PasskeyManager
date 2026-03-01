@@ -5,8 +5,8 @@
 #include <MainPage.xaml.h>
 #include <PluginAuthenticator/PluginAuthenticatorImpl.h>
 
-constexpr wchar_t c_pluginName[] = L"tsupasswd_core";
-constexpr wchar_t c_pluginRpId[] = L"HappyFactory.dev";
+constexpr wchar_t c_pluginName[] = L"HappyFactory";
+constexpr wchar_t c_pluginRpId[] = L"happyfactory.dev";
 constexpr wchar_t c_pluginRpIdWebAuthnIo[] = L"webauthn.io";
 constexpr wchar_t c_pluginRpIdWebAuthnIoWww[] = L"www.webauthn.io";
 constexpr wchar_t c_rpName[] = L"HappyFactory";

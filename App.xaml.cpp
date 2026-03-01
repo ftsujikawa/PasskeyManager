@@ -35,7 +35,7 @@ namespace winrt::PasskeyManager::implementation
 void App::RegisterPluginClassFactory()
 {
     winrt::check_hresult(::CoRegisterClassObject(
-        contosoplugin_guid,
+        happyfactoryplugin_guid,
         make<HappyFactoryPluginFactory>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent).get(),
         CLSCTX_LOCAL_SERVER,
         REGCLS_MULTIPLEUSE,

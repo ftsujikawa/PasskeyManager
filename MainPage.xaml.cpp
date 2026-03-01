@@ -642,7 +642,7 @@ namespace {
         THROW_IF_FAILED(WebAuthNPluginRegisterStatusChangeCallback(
             &WebAuthNStatusChangeCallback,
             context,
-            contosoplugin_guid,
+            happyfactoryplugin_guid,
             &cookie));
         return cookie;
     }

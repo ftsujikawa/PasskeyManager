@@ -53,6 +53,29 @@ namespace winrt::PasskeyManager::implementation
                 REG_DWORD,
                 reinterpret_cast<const BYTE*>(&status),
                 sizeof(status));
+
+            ULONGLONG sequence = 0;
+            DWORD sequenceSize = sizeof(sequence);
+            if (RegGetValueW(
+                hKey.get(),
+                nullptr,
+                c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                RRF_RT_REG_QWORD,
+                nullptr,
+                &sequence,
+                &sequenceSize) != ERROR_SUCCESS)
+            {
+                sequence = 0;
+            }
+            ++sequence;
+
+            (void)RegSetValueEx(
+                hKey.get(),
+                c_windowsPluginLastMakeCredentialSequenceRegKeyName,
+                0,
+                REG_QWORD,
+                reinterpret_cast<const BYTE*>(&sequence),
+                sizeof(sequence));
         }
 
         // Helper function to get request signing public key with proper error handling

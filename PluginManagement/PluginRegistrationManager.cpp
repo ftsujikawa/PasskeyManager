@@ -789,17 +789,17 @@ namespace winrt::PasskeyManager::implementation {
         tempAaguidStr.erase(std::remove(tempAaguidStr.begin(), tempAaguidStr.end(), L'-'), tempAaguidStr.end());
         std::transform(tempAaguidStr.begin(), tempAaguidStr.end(), tempAaguidStr.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         // The following hex strings represent the encoding of
-        // {1: ["FIDO_2_0", "FIDO_2_1"], 2: ["prf", "hmac-secret"], 3: h'/* AAGUID */', 4: {"rk": true, "up": true, "uv": true}, 
-        // 9: ["internal"], 10: [{"alg": -7, "type": "public-key"}]}
+        // {1: ["FIDO_2_0", "FIDO_2_1"], 2: ["prf", "hmac-secret"], 3: h'/* AAGUID */', 4: {"rk": true, "up": true, "uv": true},
+        // 9: ["usb", "nfc", "ble", "internal", "hybrid"], 10: [{"alg": -7, "type": "public-key"}]}
         std::string authenticatorInfoStrPart1 = "A60182684649444F5F325F30684649444F5F325F310282637072666B686D61632D7365637265740350";
-        std::string authenticatorInfoStrPart2 = "04A362726BF5627570F5627576F5098168696E7465726E616C0A81A263616C672664747970656A7075626C69632D6B6579";
+        std::string authenticatorInfoStrPart2 = "04A362726BF5627570F5627576F5098563757362636E666363626C6568696E7465726E616C666879627269640A81A263616C672664747970656A7075626C69632D6B6579";
         std::string fullAuthenticatorInfoStr = authenticatorInfoStrPart1 + tempAaguidStr + authenticatorInfoStrPart2;
         std::vector<BYTE> authenticatorInfo = hexStringToBytes(fullAuthenticatorInfoStr);
 
         // WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS: Structure containing options for registering a plugin authenticator
         // with the Windows platform. This includes authenticator name, class ID, supported RP IDs, logo data, and
         // CBOR-encoded authenticator information for FIDO compliance.
-        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo };
+        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo, c_pluginRpIdWebAuthnIoWww };
         WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS addOptions{
             .pwszAuthenticatorName = c_pluginName,
             .rclsid = contosoplugin_guid,
@@ -877,14 +877,14 @@ namespace winrt::PasskeyManager::implementation {
         tempAaguidStr.erase(std::remove(tempAaguidStr.begin(), tempAaguidStr.end(), L'-'), tempAaguidStr.end());
         std::transform(tempAaguidStr.begin(), tempAaguidStr.end(), tempAaguidStr.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         // The following hex strings represent the encoding of
-        // {1: ["FIDO_2_0", "FIDO_2_1"], 2: ["prf", "hmac-secret"], 3: h'/* AAGUID */', 4: {"rk": true, "up": true, "uv": true}, 
-        // 9: ["internal"], 10: [{"alg": -7, "type": "public-key"}]}
+        // {1: ["FIDO_2_0", "FIDO_2_1"], 2: ["prf", "hmac-secret"], 3: h'/* AAGUID */', 4: {"rk": true, "up": true, "uv": true},
+        // 9: ["usb", "nfc", "ble", "internal", "hybrid"], 10: [{"alg": -7, "type": "public-key"}]}
         std::string authenticatorInfoStrPart1 = "A60182684649444F5F325F30684649444F5F325F310282637072666B686D61632D7365637265740350";
-        std::string authenticatorInfoStrPart2 = "04A362726BF5627570F5627576F5098168696E7465726E616C0A81A263616C672664747970656A7075626C69632D6B6579";
+        std::string authenticatorInfoStrPart2 = "04A362726BF5627570F5627576F5098563757362636E666363626C6568696E7465726E616C666879627269640A81A263616C672664747970656A7075626C69632D6B6579";
         std::string fullAuthenticatorInfoStr = authenticatorInfoStrPart1 + tempAaguidStr + authenticatorInfoStrPart2;
         std::vector<BYTE> authenticatorInfo = hexStringToBytes(fullAuthenticatorInfoStr);
 
-        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo };
+        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo, c_pluginRpIdWebAuthnIoWww };
 
         // WEBAUTHN_PLUGIN_UPDATE_AUTHENTICATOR_DETAILS: Structure containing updated plugin information for an already
         // registered authenticator, including potentially new class IDs, names, logos, and authenticator information.

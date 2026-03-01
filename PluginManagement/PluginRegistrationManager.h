@@ -8,6 +8,7 @@
 constexpr wchar_t c_pluginName[] = L"tsupasswd_core";
 constexpr wchar_t c_pluginRpId[] = L"contoso.com";
 constexpr wchar_t c_pluginRpIdWebAuthnIo[] = L"webauthn.io";
+constexpr wchar_t c_pluginRpIdWebAuthnIoWww[] = L"www.webauthn.io";
 constexpr wchar_t c_rpName[] = L"Contoso";
 constexpr wchar_t c_userName[] = L"ContosoUser";
 constexpr wchar_t c_userDisplayName[] = L"Contoso User";
@@ -34,6 +35,7 @@ constexpr wchar_t c_pluginProtectedHMACSecretInput[] = L"HMACSecretInputProtecte
 constexpr wchar_t c_pluginEncryptedVaultData[] = L"EncryptedVaultData";
 constexpr wchar_t c_windowsPluginVaultUnlockMethodRegKeyName[] = L"VaultUnlockMethod";
 constexpr wchar_t c_windowsPluginLastMakeCredentialStatusRegKeyName[] = L"LastMakeCredentialStatus";
+constexpr wchar_t c_windowsPluginLastMakeCredentialSequenceRegKeyName[] = L"LastMakeCredentialSequence";
 
 namespace winrt::PasskeyManager::implementation
 {

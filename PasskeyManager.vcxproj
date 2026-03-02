@@ -385,6 +385,9 @@
     <None Include="tsupasswd_core_HappyFactory.cer" />
     <None Include="tsupasswd_core_HappyFactory.pfx" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
+    <None Include="AppPackages\index.html" />
+    <None Include="AppPackages\tsupasswd_core.appinstaller" />
+    <None Include="AppPackages\tsupasswd_core_x64.appinstaller" />
   </ItemGroup>
   <ItemGroup>
     <SDKReference Include="WindowsDesktop, Version=10.0.22621.0" />

@@ -806,7 +806,9 @@ namespace winrt::PasskeyManager::implementation {
             c_pluginRpIdPasskeysIo,
             c_pluginRpIdPasskeysIoWww,
             c_pluginRpIdPasskeysGuru,
-            c_pluginRpIdPasskeysGuruWww
+            c_pluginRpIdPasskeysGuruWww,
+            c_pluginRpIdWebAuthnPasswordlessId,
+            c_pluginRpIdWebAuthnPasswordlessIdWww
         };
         WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS addOptions{
             .pwszAuthenticatorName = c_pluginName,
@@ -899,7 +901,9 @@ namespace winrt::PasskeyManager::implementation {
             c_pluginRpIdPasskeysIo,
             c_pluginRpIdPasskeysIoWww,
             c_pluginRpIdPasskeysGuru,
-            c_pluginRpIdPasskeysGuruWww
+            c_pluginRpIdPasskeysGuruWww,
+            c_pluginRpIdWebAuthnPasswordlessId,
+            c_pluginRpIdWebAuthnPasswordlessIdWww
         };
 
         // WEBAUTHN_PLUGIN_UPDATE_AUTHENTICATOR_DETAILS: Structure containing updated plugin information for an already

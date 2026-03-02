@@ -666,7 +666,9 @@ namespace winrt::PasskeyManager::implementation
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0;
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessId) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessIdWww) == 0;
             THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
             wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
             if (rpNameSource == nullptr || rpNameSource[0] == L'\0')

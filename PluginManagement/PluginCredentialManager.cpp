@@ -694,7 +694,15 @@ namespace winrt::PasskeyManager::implementation
             bool passkeysGuruAlias =
                 (_wcsicmp(left, c_pluginRpIdPasskeysGuru) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysGuruWww) == 0) ||
                 (_wcsicmp(left, c_pluginRpIdPasskeysGuruWww) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysGuru) == 0);
-            return passkeysGuruAlias;
+            if (passkeysGuruAlias)
+            {
+                return true;
+            }
+
+            bool passwordlessAlias =
+                (_wcsicmp(left, c_pluginRpIdWebAuthnPasswordlessId) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnPasswordlessIdWww) == 0) ||
+                (_wcsicmp(left, c_pluginRpIdWebAuthnPasswordlessIdWww) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnPasswordlessId) == 0);
+            return passwordlessAlias;
         };
 
         for (const auto& mapItem : m_pluginLocalCredentialMetadataMap)

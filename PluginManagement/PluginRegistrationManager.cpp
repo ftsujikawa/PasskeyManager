@@ -799,7 +799,15 @@ namespace winrt::PasskeyManager::implementation {
         // WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS: Structure containing options for registering a plugin authenticator
         // with the Windows platform. This includes authenticator name, class ID, supported RP IDs, logo data, and
         // CBOR-encoded authenticator information for FIDO compliance.
-        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo, c_pluginRpIdWebAuthnIoWww };
+        PCWSTR supportedRpIds[] = {
+            c_pluginRpId,
+            c_pluginRpIdWebAuthnIo,
+            c_pluginRpIdWebAuthnIoWww,
+            c_pluginRpIdPasskeysIo,
+            c_pluginRpIdPasskeysIoWww,
+            c_pluginRpIdPasskeysGuru,
+            c_pluginRpIdPasskeysGuruWww
+        };
         WEBAUTHN_PLUGIN_ADD_AUTHENTICATOR_OPTIONS addOptions{
             .pwszAuthenticatorName = c_pluginName,
             .rclsid = happyfactoryplugin_guid,
@@ -884,7 +892,15 @@ namespace winrt::PasskeyManager::implementation {
         std::string fullAuthenticatorInfoStr = authenticatorInfoStrPart1 + tempAaguidStr + authenticatorInfoStrPart2;
         std::vector<BYTE> authenticatorInfo = hexStringToBytes(fullAuthenticatorInfoStr);
 
-        PCWSTR supportedRpIds[] = { c_pluginRpId, c_pluginRpIdWebAuthnIo, c_pluginRpIdWebAuthnIoWww };
+        PCWSTR supportedRpIds[] = {
+            c_pluginRpId,
+            c_pluginRpIdWebAuthnIo,
+            c_pluginRpIdWebAuthnIoWww,
+            c_pluginRpIdPasskeysIo,
+            c_pluginRpIdPasskeysIoWww,
+            c_pluginRpIdPasskeysGuru,
+            c_pluginRpIdPasskeysGuruWww
+        };
 
         // WEBAUTHN_PLUGIN_UPDATE_AUTHENTICATOR_DETAILS: Structure containing updated plugin information for an already
         // registered authenticator, including potentially new class IDs, names, logos, and authenticator information.

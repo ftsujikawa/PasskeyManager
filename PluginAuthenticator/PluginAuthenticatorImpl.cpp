@@ -268,7 +268,7 @@ namespace winrt::PasskeyManager::implementation
                 SetEvent(curApp->m_hVaultConsentComplete.get());
             }
 
-            if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
+            if ((operationType == PluginOperationType::MakeCredential || operationType == PluginOperationType::GetAssertion) && !vaultLocked)
             {
                 // For local Vault passkey creation, do not depend on plugin window button clicks.
                 // Immediate cancel events can otherwise race and end up as ERROR_CANCELLED.
@@ -301,7 +301,7 @@ namespace winrt::PasskeyManager::implementation
 
             // For local Vault passkey creation, rely on the WebAuthN MakeCredential ceremony itself and
             // skip the plugin-specific UV prompt to avoid cancellation races and duplicate prompts.
-            if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
+            if ((operationType == PluginOperationType::MakeCredential || operationType == PluginOperationType::GetAssertion) && !vaultLocked)
             {
                 return S_OK;
             }
@@ -661,7 +661,12 @@ namespace winrt::PasskeyManager::implementation
             std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
             bool rpSupported =
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0;
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0;
             THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
             wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
             if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
@@ -941,7 +946,7 @@ namespace winrt::PasskeyManager::implementation
                 }
                 THROW_HR(NTE_NOT_FOUND);
             }
-            else if (selectedCredentials.size() == 1 && credManager.GetSilentOperation())
+            else if (selectedCredentials.size() == 1)
             {
                 selectedCredential = selectedCredentials[0];
             }
@@ -957,16 +962,30 @@ namespace winrt::PasskeyManager::implementation
                 }));
 
                 hIndex = 0;
-                THROW_IF_FAILED(CoWaitForMultipleHandles(
+                constexpr DWORD kCredentialSelectionWaitTimeoutMs = 15000;
+                HRESULT hrSelection = CoWaitForMultipleHandles(
                     COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS, 
-                    INFINITE, 
+                    kCredentialSelectionWaitTimeoutMs,
                     1, 
                     curApp->m_hPluginCredentialSelected.addressof(), 
-                    &hIndex));
+                    &hIndex);
 
+                bool selectionTimedOut =
+                    hrSelection == RPC_S_CALLPENDING ||
+                    hrSelection == HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+
+                if (selectionTimedOut)
                 {
-                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                    selectedCredential = curApp->m_pluginOperationOptions.selectedCredential;
+                    selectedCredential = selectedCredentials[0];
+                }
+                else
+                {
+                    THROW_IF_FAILED(hrSelection);
+
+                    {
+                        std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                        selectedCredential = curApp->m_pluginOperationOptions.selectedCredential;
+                    }
                 }
 
                 // Failed to select a credential

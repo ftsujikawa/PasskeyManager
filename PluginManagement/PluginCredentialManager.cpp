@@ -664,10 +664,43 @@ namespace winrt::PasskeyManager::implementation
     void PluginCredentialManager::GetLocalCredsByRpIdAndAllowList(PCWSTR rpId, PWEBAUTHN_CREDENTIAL_EX* ppCredentialList, DWORD pcCredentials, std::vector<const WEBAUTHN_CREDENTIAL_DETAILS *>& matchingCredentials)
     {
         std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
+        auto rpIdsEquivalent = [](PCWSTR left, PCWSTR right) -> bool
+        {
+            if (left == nullptr || right == nullptr)
+            {
+                return false;
+            }
+            if (_wcsicmp(left, right) == 0)
+            {
+                return true;
+            }
+
+            bool webauthnAlias =
+                (_wcsicmp(left, c_pluginRpIdWebAuthnIo) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIoWww) == 0) ||
+                (_wcsicmp(left, c_pluginRpIdWebAuthnIoWww) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIo) == 0);
+            if (webauthnAlias)
+            {
+                return true;
+            }
+
+            bool passkeysAlias =
+                (_wcsicmp(left, c_pluginRpIdPasskeysIo) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysIoWww) == 0) ||
+                (_wcsicmp(left, c_pluginRpIdPasskeysIoWww) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysIo) == 0);
+            if (passkeysAlias)
+            {
+                return true;
+            }
+
+            bool passkeysGuruAlias =
+                (_wcsicmp(left, c_pluginRpIdPasskeysGuru) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysGuruWww) == 0) ||
+                (_wcsicmp(left, c_pluginRpIdPasskeysGuruWww) == 0 && _wcsicmp(right, c_pluginRpIdPasskeysGuru) == 0);
+            return passkeysGuruAlias;
+        };
+
         for (const auto& mapItem : m_pluginLocalCredentialMetadataMap)
         {
             auto& cred = mapItem.second;
-            if (lstrcmpW(cred->pRpInformation->pwszId, rpId) == 0)
+            if (rpIdsEquivalent(cred->pRpInformation->pwszId, rpId))
             {
                 if (pcCredentials > 0)
                 {

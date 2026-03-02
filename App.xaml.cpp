@@ -329,11 +329,13 @@ bool App::SetPluginPerformOperationOptions(HWND hWnd,
         m_pluginOperationOptions.operationType = operationType;
         m_pluginOperationOptions.rpName = rpName;
         m_pluginOperationOptions.userName = userName;
+        m_pluginOperationOptions.matchingCredentials.clear();
+        m_pluginOperationOptions.selectedCredential = nullptr;
         m_pluginOperationOptions.silentMode = credMgr.GetSilentOperation();
 
-        // Local make-credential for Vault recovery should not show plugin-owned UI.
+        // Local ceremonies should not show plugin-owned UI when the vault is already unlocked.
         // Keep the operation in silent mode and let the WebAuthN platform prompt drive UX.
-        if (operationType == PluginOperationType::MakeCredential && !vaultLocked)
+        if ((operationType == PluginOperationType::MakeCredential || operationType == PluginOperationType::GetAssertion) && !vaultLocked)
         {
             m_pluginOperationOptions.silentMode = true;
         }

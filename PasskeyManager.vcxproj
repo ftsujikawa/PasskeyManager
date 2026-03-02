@@ -117,7 +117,7 @@
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
     <!-- writeable location -->
     <AppInstallerUri>C:\AppPackages\PasskeyManager\AppPackages</AppInstallerUri>
-    <PackageCertificateKeyFile>tsupasswd_core_TemporaryKey.pfx</PackageCertificateKeyFile>
+    <PackageCertificateThumbprint>C66F3733AF4B3BC999CD16F6A4F0CCC2D3F9D058</PackageCertificateThumbprint>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

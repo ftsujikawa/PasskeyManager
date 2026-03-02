@@ -626,6 +626,8 @@
     <None Include="sync-mvp-api\SyncMvpApi.sln">
       <Filter>sync-mvp-api</Filter>
     </None>
+    <None Include="tsupasswd_core_HappyFactory.cer" />
+    <None Include="tsupasswd_core_HappyFactory.pfx" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="PasskeyManager.rc" />

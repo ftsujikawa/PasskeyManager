@@ -382,6 +382,8 @@
     <None Include="sync-mvp-api\scripts\sync-mvp-api-maintenance.timer.example" />
     <None Include="sync-mvp-api\scripts\sync-mvp-api.service.example" />
     <None Include="sync-mvp-api\sync-mvp-api-publish.tar.gz" />
+    <None Include="tsupasswd_core_HappyFactory.cer" />
+    <None Include="tsupasswd_core_HappyFactory.pfx" />
     <None Include="tsupasswd_core_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>

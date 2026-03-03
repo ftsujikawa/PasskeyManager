@@ -5,6 +5,11 @@ VisualStudioVersion = 18.3.11520.95 d18.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BridgeHost", "..\tsupasswd_js\native-host\BridgeHost\BridgeHost.csproj", "{0BEDF04E-C336-C8D1-9F95-C3BEE55E2891}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ソリューション項目", "ソリューション項目", "{2169AA17-886B-4A38-AF51-13072787C943}"
+	ProjectSection(SolutionItems) = preProject
+		PasskeyManager.sln = PasskeyManager.sln
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

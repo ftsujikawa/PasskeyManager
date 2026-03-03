@@ -12,12 +12,145 @@
 #include <windows.storage.h>
 #include <algorithm>
 #include <memory>
+#include <cstdlib>
 
 namespace winrt::PasskeyManager::implementation
 {
     namespace
     {
         constexpr wchar_t kVaultUnlockOperation[] = L"vault_unlock";
+
+        struct BridgeCorePasskeyItem
+        {
+            std::string id;
+            std::string title;
+            std::string rpId;
+            std::string user;
+            std::string displayName;
+            std::string source;
+            bool backedUp = false;
+            bool removable = false;
+        };
+
+        std::string ToUtf8(PCWSTR value)
+        {
+            if (value == nullptr)
+            {
+                return std::string{};
+            }
+            return winrt::to_string(std::wstring{ value });
+        }
+
+        std::string EscapeJsonString(std::string_view value)
+        {
+            std::string escaped;
+            escaped.reserve(value.size() + 8);
+            for (char ch : value)
+            {
+                switch (ch)
+                {
+                case '\\': escaped += "\\\\"; break;
+                case '"': escaped += "\\\""; break;
+                case '\b': escaped += "\\b"; break;
+                case '\f': escaped += "\\f"; break;
+                case '\n': escaped += "\\n"; break;
+                case '\r': escaped += "\\r"; break;
+                case '\t': escaped += "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(ch) < 0x20)
+                    {
+                        char buffer[7] = {};
+                        sprintf_s(buffer, "\\u%04x", static_cast<unsigned char>(ch));
+                        escaped += buffer;
+                    }
+                    else
+                    {
+                        escaped += ch;
+                    }
+                    break;
+                }
+            }
+            return escaped;
+        }
+
+        std::string Base64Encode(std::span<const UINT8> bytes)
+        {
+            static constexpr char kTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            if (bytes.empty())
+            {
+                return std::string{};
+            }
+
+            std::string output;
+            output.reserve(((bytes.size() + 2) / 3) * 4);
+
+            size_t i = 0;
+            for (; i + 3 <= bytes.size(); i += 3)
+            {
+                const uint32_t value =
+                    (static_cast<uint32_t>(bytes[i]) << 16) |
+                    (static_cast<uint32_t>(bytes[i + 1]) << 8) |
+                    static_cast<uint32_t>(bytes[i + 2]);
+
+                output.push_back(kTable[(value >> 18) & 0x3F]);
+                output.push_back(kTable[(value >> 12) & 0x3F]);
+                output.push_back(kTable[(value >> 6) & 0x3F]);
+                output.push_back(kTable[value & 0x3F]);
+            }
+
+            const size_t remain = bytes.size() - i;
+            if (remain == 1)
+            {
+                const uint32_t value = static_cast<uint32_t>(bytes[i]) << 16;
+                output.push_back(kTable[(value >> 18) & 0x3F]);
+                output.push_back(kTable[(value >> 12) & 0x3F]);
+                output.push_back('=');
+                output.push_back('=');
+            }
+            else if (remain == 2)
+            {
+                const uint32_t value =
+                    (static_cast<uint32_t>(bytes[i]) << 16) |
+                    (static_cast<uint32_t>(bytes[i + 1]) << 8);
+                output.push_back(kTable[(value >> 18) & 0x3F]);
+                output.push_back(kTable[(value >> 12) & 0x3F]);
+                output.push_back(kTable[(value >> 6) & 0x3F]);
+                output.push_back('=');
+            }
+
+            return output;
+        }
+
+        std::wstring ResolveBridgeCorePasskeysPath()
+        {
+            wchar_t* envPath = nullptr;
+            size_t envLen = 0;
+            if (_wdupenv_s(&envPath, &envLen, L"TSUPASSWD_CORE_PASSKEYS_PATH") == 0 && envPath && envLen > 0)
+            {
+                std::wstring path{ envPath };
+                free(envPath);
+                return path;
+            }
+            if (envPath)
+            {
+                free(envPath);
+            }
+
+            wchar_t* localAppData = nullptr;
+            size_t localLen = 0;
+            if (_wdupenv_s(&localAppData, &localLen, L"LOCALAPPDATA") != 0 || !localAppData || localLen == 0)
+            {
+                if (localAppData)
+                {
+                    free(localAppData);
+                }
+                return std::wstring{};
+            }
+
+            std::wstring path = std::wstring{ localAppData } + L"\\tsupasswd\\core-passkeys.json";
+            free(localAppData);
+            return path;
+        }
 
         std::wstring BuildRequestId(std::wstring const& operation)
         {
@@ -48,6 +181,12 @@ namespace winrt::PasskeyManager::implementation
             std::wstring operation = L"unlock_credential_vault_with_passkey";
             UpdateVaultStatusText(winrt::hstring{ L"WARNING: " + normalized + L"⚠" });
             std::wstring debug = L"DEBUG: summary result=warning operation=" + operation + L" detail=" + normalized + L"\n";
+            OutputDebugStringW(debug.c_str());
+        }
+
+        void LogBridgeExportFailure(std::wstring const& detail)
+        {
+            std::wstring debug = L"DEBUG: bridge core-passkeys export failed detail=" + detail + L"\n";
             OutputDebugStringW(debug.c_str());
         }
     }
@@ -164,6 +303,9 @@ namespace winrt::PasskeyManager::implementation
             m_pluginCachedCredentialMetadataMap.clear();
         }
 
+        // Keep bridge snapshot in sync after cache mutation.
+        ExportBridgeCorePasskeysJson();
+
         return S_OK;
     }
 
@@ -234,6 +376,9 @@ namespace winrt::PasskeyManager::implementation
                 return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
             }
         }
+
+        // Keep bridge snapshot in sync after deletion from cache/local maps.
+        ExportBridgeCorePasskeysJson();
 
         return S_OK;
     }
@@ -569,6 +714,143 @@ namespace winrt::PasskeyManager::implementation
         return true;
     }
 
+    bool PluginCredentialManager::ExportBridgeCorePasskeysJson()
+    {
+        std::map<std::vector<UINT8>, BridgeCorePasskeyItem> merged;
+
+        {
+            std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
+            for (const auto& [credentialId, savedCred] : m_pluginLocalCredentialMetadataMap)
+            {
+                if (!savedCred || !savedCred->pRpInformation || !savedCred->pUserInformation)
+                {
+                    continue;
+                }
+
+                BridgeCorePasskeyItem item;
+                item.id = Base64Encode(std::span<const UINT8>(credentialId.data(), credentialId.size()));
+                item.rpId = ToUtf8(savedCred->pRpInformation->pwszId);
+                item.title = ToUtf8(savedCred->pRpInformation->pwszName);
+                if (item.title.empty())
+                {
+                    item.title = item.rpId;
+                }
+                item.user = ToUtf8(savedCred->pUserInformation->pwszName);
+                item.displayName = ToUtf8(savedCred->pUserInformation->pwszDisplayName);
+                item.source = "tsupasswd_core_local";
+                item.backedUp = false;
+                item.removable = true;
+
+                merged.emplace(credentialId, std::move(item));
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_pluginCachedCredentialsOperationMutex);
+            for (const auto& [credentialId, cachedCred] : m_pluginCachedCredentialMetadataMap)
+            {
+                if (!cachedCred)
+                {
+                    continue;
+                }
+                if (merged.find(credentialId) != merged.end())
+                {
+                    continue;
+                }
+
+                BridgeCorePasskeyItem item;
+                item.id = Base64Encode(std::span<const UINT8>(credentialId.data(), credentialId.size()));
+                item.rpId = ToUtf8(cachedCred->pwszRpId);
+                item.title = ToUtf8(cachedCred->pwszRpName);
+                if (item.title.empty())
+                {
+                    item.title = item.rpId;
+                }
+                item.user = ToUtf8(cachedCred->pwszUserName);
+                item.displayName = ToUtf8(cachedCred->pwszUserDisplayName);
+                item.source = "tsupasswd_core_cached";
+                item.backedUp = false;
+                item.removable = false;
+
+                merged.emplace(credentialId, std::move(item));
+            }
+        }
+
+        const std::wstring outputPath = ResolveBridgeCorePasskeysPath();
+        if (outputPath.empty())
+        {
+            LogBridgeExportFailure(L"resolve_output_path_empty");
+            return false;
+        }
+
+        std::error_code ec;
+        std::filesystem::path path(outputPath);
+        auto parent = path.parent_path();
+        if (!parent.empty())
+        {
+            std::filesystem::create_directories(parent, ec);
+            if (ec)
+            {
+                LogBridgeExportFailure(L"create_directories_failed path=" + parent.wstring() + L" ec=" + std::to_wstring(ec.value()));
+                return false;
+            }
+        }
+
+        std::filesystem::path tempPath = path;
+        tempPath += L".tmp." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetCurrentThreadId()) + L"." + std::to_wstring(GetTickCount64());
+
+        std::ofstream out(tempPath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+        if (!out.is_open())
+        {
+            LogBridgeExportFailure(L"open_temp_file_failed path=" + tempPath.wstring());
+            return false;
+        }
+
+        out << "{\n  \"passkeys\": [\n";
+        size_t index = 0;
+        for (const auto& [_, item] : merged)
+        {
+            out << "    {\n";
+            out << "      \"id\": \"" << EscapeJsonString(item.id) << "\",\n";
+            out << "      \"title\": \"" << EscapeJsonString(item.title) << "\",\n";
+            out << "      \"rpId\": \"" << EscapeJsonString(item.rpId) << "\",\n";
+            out << "      \"user\": \"" << EscapeJsonString(item.user) << "\",\n";
+            out << "      \"displayName\": \"" << EscapeJsonString(item.displayName) << "\",\n";
+            out << "      \"backedUp\": " << (item.backedUp ? "true" : "false") << ",\n";
+            out << "      \"removable\": " << (item.removable ? "true" : "false") << ",\n";
+            out << "      \"source\": \"" << EscapeJsonString(item.source) << "\"\n";
+            out << "    }";
+            index += 1;
+            if (index < merged.size())
+            {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ]\n}\n";
+
+        if (!out.good())
+        {
+            out.close();
+            std::filesystem::remove(tempPath, ec);
+            LogBridgeExportFailure(L"write_temp_file_failed path=" + tempPath.wstring());
+            return false;
+        }
+
+        out.flush();
+        out.close();
+
+        if (!MoveFileExW(tempPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            DWORD moveError = GetLastError();
+            std::filesystem::remove(tempPath, ec);
+            LogBridgeExportFailure(L"replace_file_failed from=" + tempPath.wstring() + L" to=" + path.wstring() + L" error=" + std::to_wstring(moveError));
+            return false;
+        }
+
+        return true;
+    }
+
     bool PluginCredentialManager::GetCredentialStorageFilePath(std::wstring& filePath)
     {
         try
@@ -753,7 +1035,10 @@ namespace winrt::PasskeyManager::implementation
         // iterating over all the saved credentials and writing them to the file
         for (const auto& credEntry : m_pluginLocalCredentialMetadataMap)
         {
-            SaveCredentialMetadataToMockDB(*credEntry.second.get());
+            if (!SaveCredentialMetadataToMockDB(*credEntry.second.get()))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -764,7 +1049,14 @@ namespace winrt::PasskeyManager::implementation
             std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
             m_pluginLocalCredentialMetadataMap.clear();
         }
-        return RecreateCredentialMetadataFile();
+        if (!RecreateCredentialMetadataFile())
+        {
+            return false;
+        }
+
+        // Keep bridge snapshot in sync after local store reset.
+        ExportBridgeCorePasskeysJson();
+        return true;
     }
 
     HRESULT PluginCredentialManager::SetVaultLock(bool lock)

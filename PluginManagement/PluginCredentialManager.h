@@ -139,6 +139,7 @@ namespace winrt::PasskeyManager::implementation
         {
             LoadSavedCredentialsFromMockDatabase();
             RefreshAutofillPluginCredentialsList();
+            ExportBridgeCorePasskeysJson();
         }
         bool GetCredentialStorageFolderPath(std::wstring& outPath)
         {
@@ -170,6 +171,7 @@ namespace winrt::PasskeyManager::implementation
         //Local Credential Metadata Management
         bool LoadSavedCredentialsFromMockDatabase();
         bool RecreateCredentialMetadataFile();
+        bool ExportBridgeCorePasskeysJson();
         std::mutex m_pluginLocalCredentialsOperationMutex;
         _Guarded_by_(m_pluginLocalCredentialsOperationMutex) bool m_localCredentialsLoaded = false;
         _Guarded_by_(m_pluginLocalCredentialsOperationMutex) std::map<std::vector<UINT8>, unique_credential_details> m_pluginLocalCredentialMetadataMap;

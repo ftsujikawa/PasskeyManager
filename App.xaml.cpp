@@ -146,6 +146,19 @@ void App::OnLaunched(LaunchActivatedEventArgs const&)
     std::wstring argsString{ m_args };
     if (argsString.find(L"-PluginActivated") != std::wstring::npos)
     {
+        // Ensure registration details are up-to-date even when the app is launched only by WebAuthN plugin activation.
+        // Without this, supported RP ID changes (e.g., passkeys.guru) may not be reflected until interactive launch.
+        auto& registrationManager = PluginRegistrationManager::getInstance();
+        HRESULT hrEnsurePlugin = registrationManager.RefreshPluginState();
+        if (hrEnsurePlugin == NTE_NOT_FOUND)
+        {
+            (void)registrationManager.RegisterPlugin();
+        }
+        else if (SUCCEEDED(hrEnsurePlugin))
+        {
+            (void)registrationManager.UpdatePlugin();
+        }
+
         // Background Mode: The app is being activated by the OS to handle a passkey operation. It runs in the background.
         RegisterPluginClassFactory();
         // Start the plugin operation handling loop

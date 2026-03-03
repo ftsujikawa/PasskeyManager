@@ -1194,8 +1194,8 @@ namespace winrt::PasskeyManager::implementation
 
             // [1] Credential (optional)
             assertionResponse->Credential.dwVersion = WEBAUTHN_CREDENTIAL_CURRENT_VERSION;
-            assertionResponse->Credential.cbId = static_cast<DWORD>(vCredentialIdBuffer.size());
-            assertionResponse->Credential.pbId = vCredentialIdBuffer.data();
+            assertionResponse->Credential.cbId = selectedCredential->cbCredentialID;
+            assertionResponse->Credential.pbId = selectedCredential->pbCredentialID;
             assertionResponse->Credential.pwszCredentialType = WEBAUTHN_CREDENTIAL_TYPE_PUBLIC_KEY;
 
             // [2] AuthenticatorData

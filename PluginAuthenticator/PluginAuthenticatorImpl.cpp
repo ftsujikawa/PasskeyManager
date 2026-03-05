@@ -663,6 +663,8 @@ namespace winrt::PasskeyManager::implementation
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrg) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrgWww) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
@@ -886,7 +888,13 @@ namespace winrt::PasskeyManager::implementation
             bool expected = false;
             if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
             {
-                return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
+                // Recover once from a potentially stale in-progress flag left by a previous failed flow.
+                curApp->m_isOperationInProgress = false;
+                expected = false;
+                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+                {
+                    return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
+                }
             }
             // Ensure the flag is cleared when the function exits, for any reason.
             auto clearOperationInProgress = wil::scope_exit([&]

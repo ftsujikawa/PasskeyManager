@@ -118,6 +118,14 @@ namespace winrt::PasskeyManager::implementation
                 output.push_back('=');
             }
 
+            // Bridge output is consumed by web contexts, so normalize to base64url.
+            std::replace(output.begin(), output.end(), '+', '-');
+            std::replace(output.begin(), output.end(), '/', '_');
+            while (!output.empty() && output.back() == '=')
+            {
+                output.pop_back();
+            }
+
             return output;
         }
 
@@ -164,6 +172,37 @@ namespace winrt::PasskeyManager::implementation
                 message += L" operation=" + std::wstring{ kVaultUnlockOperation };
             }
             return message;
+        }
+
+        PCWSTR NormalizeBridgeRpId(PCWSTR rpId)
+        {
+            if (rpId == nullptr)
+            {
+                return nullptr;
+            }
+
+            if (_wcsicmp(rpId, c_pluginRpIdWebAuthnIoWww) == 0)
+            {
+                return c_pluginRpIdWebAuthnIo;
+            }
+            if (_wcsicmp(rpId, c_pluginRpIdPasskeyOrgWww) == 0)
+            {
+                return c_pluginRpIdPasskeyOrg;
+            }
+            if (_wcsicmp(rpId, c_pluginRpIdPasskeysIoWww) == 0)
+            {
+                return c_pluginRpIdPasskeysIo;
+            }
+            if (_wcsicmp(rpId, c_pluginRpIdPasskeysGuruWww) == 0)
+            {
+                return c_pluginRpIdPasskeysGuru;
+            }
+            if (_wcsicmp(rpId, c_pluginRpIdWebAuthnPasswordlessIdWww) == 0)
+            {
+                return c_pluginRpIdWebAuthnPasswordlessId;
+            }
+
+            return rpId;
         }
 
         void UpdateVaultStatusText(hstring const& statusText)
@@ -729,7 +768,7 @@ namespace winrt::PasskeyManager::implementation
 
                 BridgeCorePasskeyItem item;
                 item.id = Base64Encode(std::span<const UINT8>(credentialId.data(), credentialId.size()));
-                item.rpId = ToUtf8(savedCred->pRpInformation->pwszId);
+                item.rpId = ToUtf8(NormalizeBridgeRpId(savedCred->pRpInformation->pwszId));
                 item.title = ToUtf8(savedCred->pRpInformation->pwszName);
                 if (item.title.empty())
                 {
@@ -745,36 +784,9 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        {
-            std::lock_guard<std::mutex> lock(m_pluginCachedCredentialsOperationMutex);
-            for (const auto& [credentialId, cachedCred] : m_pluginCachedCredentialMetadataMap)
-            {
-                if (!cachedCred)
-                {
-                    continue;
-                }
-                if (merged.find(credentialId) != merged.end())
-                {
-                    continue;
-                }
-
-                BridgeCorePasskeyItem item;
-                item.id = Base64Encode(std::span<const UINT8>(credentialId.data(), credentialId.size()));
-                item.rpId = ToUtf8(cachedCred->pwszRpId);
-                item.title = ToUtf8(cachedCred->pwszRpName);
-                if (item.title.empty())
-                {
-                    item.title = item.rpId;
-                }
-                item.user = ToUtf8(cachedCred->pwszUserName);
-                item.displayName = ToUtf8(cachedCred->pwszUserDisplayName);
-                item.source = "tsupasswd_core_cached";
-                item.backedUp = false;
-                item.removable = false;
-
-                merged.emplace(credentialId, std::move(item));
-            }
-        }
+        // Export only local credentials to the bridge snapshot.
+        // Cached credentials can include entries not signable by this plugin,
+        // which may cause downstream selection to fail with NotAllowedError.
 
         const std::wstring outputPath = ResolveBridgeCorePasskeysPath();
         if (outputPath.empty())
@@ -961,6 +973,14 @@ namespace winrt::PasskeyManager::implementation
                 (_wcsicmp(left, c_pluginRpIdWebAuthnIo) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIoWww) == 0) ||
                 (_wcsicmp(left, c_pluginRpIdWebAuthnIoWww) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIo) == 0);
             if (webauthnAlias)
+            {
+                return true;
+            }
+
+            bool passkeyOrgAlias =
+                (_wcsicmp(left, c_pluginRpIdPasskeyOrg) == 0 && _wcsicmp(right, c_pluginRpIdPasskeyOrgWww) == 0) ||
+                (_wcsicmp(left, c_pluginRpIdPasskeyOrgWww) == 0 && _wcsicmp(right, c_pluginRpIdPasskeyOrg) == 0);
+            if (passkeyOrgAlias)
             {
                 return true;
             }

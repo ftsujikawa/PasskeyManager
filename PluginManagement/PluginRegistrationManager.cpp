@@ -803,6 +803,8 @@ namespace winrt::PasskeyManager::implementation {
             c_pluginRpId,
             c_pluginRpIdWebAuthnIo,
             c_pluginRpIdWebAuthnIoWww,
+            c_pluginRpIdPasskeyOrg,
+            c_pluginRpIdPasskeyOrgWww,
             c_pluginRpIdPasskeysIo,
             c_pluginRpIdPasskeysIoWww,
             c_pluginRpIdPasskeysGuru,
@@ -898,6 +900,8 @@ namespace winrt::PasskeyManager::implementation {
             c_pluginRpId,
             c_pluginRpIdWebAuthnIo,
             c_pluginRpIdWebAuthnIoWww,
+            c_pluginRpIdPasskeyOrg,
+            c_pluginRpIdPasskeyOrgWww,
             c_pluginRpIdPasskeysIo,
             c_pluginRpIdPasskeysIoWww,
             c_pluginRpIdPasskeysGuru,
@@ -1406,7 +1410,33 @@ namespace winrt::PasskeyManager::implementation {
         }
 
         std::vector<BYTE> encryptedVaultData;
-        RETURN_IF_FAILED(ReadEncryptedVaultData(encryptedVaultData, localRequestId));
+        HRESULT hrReadVault = ReadEncryptedVaultData(encryptedVaultData, localRequestId);
+        if (FAILED(hrReadVault))
+        {
+            bool canAttemptRestore =
+                hrReadVault == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+                hrReadVault == HRESULT_FROM_WIN32(ERROR_INVALID_DATA) ||
+                hrReadVault == HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+
+            if (canAttemptRestore)
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: sync state=auto_recover operation=" + operation +
+                        L" step=restore_snapshot_then_retry reason=local_vault_missing_or_invalid request_id=" +
+                        localRequestId +
+                        L"ℹ" });
+
+                HRESULT hrRestore = RestoreSelfHostedVaultSnapshot(localRequestId);
+                if (SUCCEEDED(hrRestore))
+                {
+                    encryptedVaultData.clear();
+                    hrReadVault = ReadEncryptedVaultData(encryptedVaultData, localRequestId);
+                }
+            }
+        }
+
+        RETURN_IF_FAILED(hrReadVault);
 
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" request_id=" + localRequestId + L"ℹ" });
         auto hrSync = SyncEncryptedVaultWithRetry(

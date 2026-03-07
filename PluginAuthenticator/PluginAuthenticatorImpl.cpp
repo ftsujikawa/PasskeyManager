@@ -1,9 +1,11 @@
 #include "pch.h"
 #include "PluginAuthenticatorImpl.h"
-#include <App.xaml.h>
-#include <PluginManagement/PluginRegistrationManager.h>
-#include <PluginManagement/PluginCredentialManager.h>
-#include <include/cbor-lite/codec.h>
+#include "PluginManagement/PluginCredentialManager.h"
+#include "DelayLoad.h"
+
+#include "../include/cbor-lite/codec.h"
+
+#include <wincrypt.h>
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -12,6 +14,7 @@
 #include <wil/resource.h>
 #include <algorithm>
 #include <memory>
+#include <type_traits>
 
 namespace winrt
 {
@@ -27,9 +30,146 @@ namespace winrt
 
 namespace winrt::PasskeyManager::implementation
 {
+    constexpr wchar_t c_pluginRegistryPath[] = L"Software\\HappyFactory\\PasskeyManager";
+    constexpr wchar_t c_windowsPluginLastMakeCredentialStatusRegKeyName[] = L"LastMakeCredentialStatus";
+    constexpr wchar_t c_windowsPluginLastMakeCredentialSequenceRegKeyName[] = L"LastMakeCredentialSequence";
+    constexpr wchar_t c_pluginProtectedHMACSecretInput[] = L"HMACSecretInputProtected";
+
     namespace {
+        HRESULT ComputeHmacSha256(
+            std::span<const BYTE> key,
+            std::span<const BYTE> data,
+            std::array<BYTE, 32>& out) noexcept
+        {
+            try
+            {
+                wil::unique_bcrypt_algorithm hAlg;
+                RETURN_IF_NTSTATUS_FAILED(BCryptOpenAlgorithmProvider(
+                    wil::out_param(hAlg),
+                    BCRYPT_SHA256_ALGORITHM,
+                    nullptr,
+                    BCRYPT_ALG_HANDLE_HMAC_FLAG));
+
+                DWORD objLen = 0;
+                DWORD cbResult = 0;
+                RETURN_IF_NTSTATUS_FAILED(BCryptGetProperty(
+                    hAlg.get(),
+                    BCRYPT_OBJECT_LENGTH,
+                    reinterpret_cast<PBYTE>(&objLen),
+                    sizeof(objLen),
+                    &cbResult,
+                    0));
+
+                auto hashObject = wil::make_unique_hlocal<BYTE[]>(objLen);
+                RETURN_HR_IF_NULL(E_OUTOFMEMORY, hashObject);
+
+                wil::unique_bcrypt_hash hHash;
+                RETURN_IF_NTSTATUS_FAILED(BCryptCreateHash(
+                    hAlg.get(),
+                    wil::out_param(hHash),
+                    hashObject.get(),
+                    objLen,
+                    const_cast<PUCHAR>(key.data()),
+                    static_cast<ULONG>(key.size()),
+                    0));
+
+                RETURN_IF_NTSTATUS_FAILED(BCryptHashData(
+                    hHash.get(),
+                    const_cast<PUCHAR>(data.data()),
+                    static_cast<ULONG>(data.size()),
+                    0));
+
+                RETURN_IF_NTSTATUS_FAILED(BCryptFinishHash(
+                    hHash.get(),
+                    out.data(),
+                    static_cast<ULONG>(out.size()),
+                    0));
+
+                return S_OK;
+            }
+            catch (...)
+            {
+                return wil::ResultFromCaughtException();
+            }
+        }
+
+        void PersistProtectedHmacSecret(std::span<const BYTE> secret) noexcept
+        {
+            if (secret.empty())
+            {
+                return;
+            }
+
+            DATA_BLOB inBlob{};
+            if (secret.size() > MAXDWORD)
+            {
+                return;
+            }
+            inBlob.cbData = static_cast<DWORD>(secret.size());
+            inBlob.pbData = const_cast<BYTE*>(secret.data());
+
+            DATA_BLOB outBlob{};
+            if (!CryptProtectData(&inBlob, nullptr, nullptr, nullptr, nullptr, 0, &outBlob))
+            {
+                return;
+            }
+
+            auto freeOut = wil::scope_exit([&]
+            {
+                if (outBlob.pbData)
+                {
+                    LocalFree(outBlob.pbData);
+                    outBlob.pbData = nullptr;
+                    outBlob.cbData = 0;
+                }
+            });
+
+            wil::unique_hkey hKey;
+            if (RegCreateKeyEx(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                0,
+                nullptr,
+                REG_OPTION_NON_VOLATILE,
+                KEY_WRITE,
+                nullptr,
+                &hKey,
+                nullptr) != ERROR_SUCCESS)
+            {
+                return;
+            }
+
+            (void)RegSetValueEx(
+                hKey.get(),
+                c_pluginProtectedHMACSecretInput,
+                0,
+                REG_BINARY,
+                outBlob.pbData,
+                outBlob.cbData);
+        }
+
         void PersistLastMakeCredentialStatus(HRESULT hr) noexcept
         {
+            wchar_t tempPath[MAX_PATH]{};
+            DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen > 0 && tempLen < std::size(tempPath))
+            {
+                std::wstring filePath(tempPath);
+                filePath += L"tsupasswd_core_make_credential_status.log";
+                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    wchar_t line[96]{};
+                    const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
+                    if (cch > 0)
+                    {
+                        DWORD cb = 0;
+                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
+                    }
+                    (void)CloseHandle(hFile);
+                }
+            }
+
             wil::unique_hkey hKey;
             if (RegCreateKeyEx(
                 HKEY_CURRENT_USER,
@@ -78,11 +218,63 @@ namespace winrt::PasskeyManager::implementation
                 sizeof(sequence));
         }
 
+        void PersistLastGetAssertionStatus(HRESULT hr) noexcept
+        {
+            wchar_t tempPath[MAX_PATH]{};
+            DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen > 0 && tempLen < std::size(tempPath))
+            {
+                std::wstring filePath(tempPath);
+                filePath += L"tsupasswd_core_get_assertion_status.log";
+                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    wchar_t line[128]{};
+                    const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
+                    if (cch > 0)
+                    {
+                        DWORD cb = 0;
+                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
+                    }
+                    (void)CloseHandle(hFile);
+                }
+            }
+        }
+
+        void PersistGetAssertionInfo(PCWSTR rpId, DWORD credentialIdLen, DWORD userIdLen) noexcept
+        {
+            wchar_t tempPath[MAX_PATH]{};
+            DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen > 0 && tempLen < std::size(tempPath))
+            {
+                std::wstring filePath(tempPath);
+                filePath += L"tsupasswd_core_get_assertion_info.log";
+                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    const wchar_t* rp = (rpId && rpId[0] != L'\0') ? rpId : L"(null)";
+                    wchar_t line[512]{};
+                    const int cch = swprintf_s(line, L"rpId=%s credIdLen=%lu userIdLen=%lu\r\n", rp, credentialIdLen, userIdLen);
+                    if (cch > 0)
+                    {
+                        DWORD cb = 0;
+                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
+                    }
+                    (void)CloseHandle(hFile);
+                }
+            }
+        }
+
+        static volatile DWORD g_makeCredentialStage = 0;
+
+        static __forceinline void SetMakeCredentialStage(DWORD stage) noexcept
+        {
+            InterlockedExchange(reinterpret_cast<volatile LONG*>(&g_makeCredentialStage), static_cast<LONG>(stage));
+        }
+
         // Helper function to get request signing public key with proper error handling
         std::vector<uint8_t> GetRequestSigningPubKey()
         {
-            auto curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-
             DWORD cbKeyData = 0;
             unique_plugin_public_key pbKeyData = nullptr;
             HRESULT hr = WebAuthNPluginGetOperationSigningPublicKey(
@@ -201,12 +393,10 @@ namespace winrt::PasskeyManager::implementation
             return S_OK;
         }
 
-        HRESULT WaitAndCheckVaultUnlockCompleted()
+        HRESULT WaitAndCheckVaultUnlockCompleted(const winrt::com_ptr<App>& curApp)
         {
             try
             {
-                winrt::com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-
                 HANDLE handles[2] = { 
                     curApp->m_hVaultConsentComplete.get(), 
                     curApp->m_hVaultConsentFailed.get() 
@@ -243,7 +433,8 @@ namespace winrt::PasskeyManager::implementation
         wil::shared_cotaskmem_string userName)
     {
         RETURN_HR_IF(E_INVALIDARG, requestBuffer.empty());
-        winrt::com_ptr<winrt::PasskeyManager::implementation::App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<winrt::PasskeyManager::implementation::App>();
+        winrt::com_ptr<winrt::PasskeyManager::implementation::App> curApp = m_app;
+        RETURN_HR_IF(E_UNEXPECTED, !curApp);
         bool vaultLocked = PluginCredentialManager::getInstance().GetVaultLock();
 
         try
@@ -261,7 +452,7 @@ namespace winrt::PasskeyManager::implementation
                 {
                     curApp->SimulateUnLockVault();
                 }));
-                RETURN_IF_FAILED(WaitAndCheckVaultUnlockCompleted());
+                RETURN_IF_FAILED(WaitAndCheckVaultUnlockCompleted(curApp));
             }
             else
             {
@@ -387,6 +578,412 @@ namespace winrt::PasskeyManager::implementation
         }
     }
 
+    HRESULT CreateAuthenticatorData(
+        const NCRYPT_KEY_HANDLE hKey,
+        const PluginOperationType operationType,
+        DWORD cbRpId,
+        PBYTE pbRpId,
+        DWORD& pcbPackedAuthenticatorData,
+        wil::unique_hlocal_ptr<BYTE[]>& ppbpackedAuthenticatorData,
+        std::vector<uint8_t>& vCredentialIdBuffer);
+
+    HRESULT GetAssertionNoSeh(
+        HappyFactoryPlugin* self,
+        PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginGetAssertionRequest,
+        PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept;
+
+    static HRESULT MakeCredentialNoSeh(
+        HappyFactoryPlugin* self,
+        PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginMakeCredentialRequest,
+        PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
+    {
+        HRESULT hr = S_OK;
+        try
+        {
+            g_makeCredentialStage = 0x0001;
+
+            // Marker to confirm this binary is executing and the registry sequence advances.
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D433001));
+
+            // WebAuthn can invoke plugin callbacks on arbitrary threads.
+            // Avoid winrt::init_apartment here (can hang depending on thread/COM state).
+            // Ensure COM is initialized; tolerate mode mismatch.
+            const HRESULT hrCoInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D433002));
+            PersistLastMakeCredentialStatus(hrCoInit);
+            if (hrCoInit != RPC_E_CHANGED_MODE)
+            {
+                RETURN_IF_FAILED(hrCoInit);
+            }
+
+            RETURN_HR_IF_NULL(E_INVALIDARG, response);
+            *response = {};
+            RETURN_HR_IF_NULL(E_INVALIDARG, pPluginMakeCredentialRequest);
+
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D433003));
+
+            g_makeCredentialStage = 0x0002;
+
+            DWORD hIndex = 0;
+            g_makeCredentialStage = 0x0010;
+
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430010));
+            THROW_IF_FAILED(CoWaitForMultipleHandles(
+                COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS,
+                INFINITE,
+                1,
+                self->m_hAppReadyForPluginOpEvent.addressof(),
+                &hIndex));
+
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430011));
+
+            SetMakeCredentialStage(0x0011);
+
+            // Split stages further to pinpoint AV around m_app access.
+            SetMakeCredentialStage(0x0121);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430121));
+            App* curApp = nullptr;
+
+            SetMakeCredentialStage(0x0122);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430122));
+            curApp = self->m_app.get();
+
+            SetMakeCredentialStage(0x0123);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430123));
+
+            SetMakeCredentialStage(0x0124);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430124));
+            if (!curApp)
+            {
+                PersistLastMakeCredentialStatus(E_UNEXPECTED);
+                return E_UNEXPECTED;
+            }
+
+            SetMakeCredentialStage(0x0015);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430015));
+
+            SetMakeCredentialStage(0x0016);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430016));
+
+            bool expected = false;
+            if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+            {
+                SetMakeCredentialStage(0x0017);
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430017));
+                curApp->m_isOperationInProgress = false;
+                expected = false;
+                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+                {
+                    PersistLastMakeCredentialStatus(HRESULT_FROM_WIN32(ERROR_BUSY));
+                    return HRESULT_FROM_WIN32(ERROR_BUSY);
+                }
+            }
+
+            SetMakeCredentialStage(0x0018);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430018));
+
+            SetMakeCredentialStage(0x0181);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430181));
+            const HWND appHwnd = curApp->GetPluginOperationHwnd();
+
+            SetMakeCredentialStage(0x0182);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430182));
+            const bool isAppCaller = pPluginMakeCredentialRequest->hWnd != nullptr &&
+                pPluginMakeCredentialRequest->hWnd == appHwnd;
+
+            SetMakeCredentialStage(0x0183);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430183));
+            const bool silent = curApp->GetSilentMode();
+
+            SetMakeCredentialStage(0x0184);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430184));
+            if (silent || isAppCaller)
+            {
+                PersistLastMakeCredentialStatus(S_FALSE);
+            }
+
+            SetMakeCredentialStage(0x0185);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430185));
+
+            auto clearOperationInProgress = wil::scope_exit([&]
+            {
+                curApp->m_isOperationInProgress = false;
+            });
+
+            SetMakeCredentialStage(0x0186);
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430186));
+
+            curApp->SetPluginTransactionId(pPluginMakeCredentialRequest->transactionId);
+            auto completePluginOperation = wil::SetEvent_scope_exit(self->m_hPluginOpCompletedEvent.get());
+
+            g_makeCredentialStage = 0x0013;
+
+            PWEBAUTHN_CTAPCBOR_MAKE_CREDENTIAL_REQUEST pDecodedMakeCredentialRequest;
+
+            THROW_IF_FAILED(WebAuthNDecodeMakeCredentialRequest(
+                pPluginMakeCredentialRequest->cbEncodedRequest,
+                pPluginMakeCredentialRequest->pbEncodedRequest,
+                &pDecodedMakeCredentialRequest));
+
+            g_makeCredentialStage = 0x0020;
+
+            auto cleanup = wil::scope_exit([&] {
+                WebAuthNFreeDecodedMakeCredentialRequest(pDecodedMakeCredentialRequest);
+            });
+
+            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pRpInformation);
+            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pUserInformation);
+
+            std::string rpIdFromRequest;
+            if (pDecodedMakeCredentialRequest->pbRpId != nullptr && pDecodedMakeCredentialRequest->cbRpId > 0)
+            {
+                rpIdFromRequest.assign(
+                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId),
+                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId) + pDecodedMakeCredentialRequest->cbRpId);
+            }
+            THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
+
+            std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
+            const bool isWebAuthnIoRp =
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0;
+            bool rpSupported =
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrg) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrgWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessId) == 0 ||
+                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessIdWww) == 0;
+            THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
+            wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
+            if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
+            {
+                rpNameSource = L"Unknown RP";
+            }
+            auto rpName = wil::make_cotaskmem_string(rpNameSource);
+
+            wchar_t const* userNameSource = pDecodedMakeCredentialRequest->pUserInformation->pwszName;
+            if (userNameSource == nullptr || userNameSource[0] == L'\0')
+            {
+                userNameSource = L"Unknown User";
+            }
+            auto userName = wil::make_cotaskmem_string(userNameSource);
+            std::vector<BYTE> requestBuffer(
+                pPluginMakeCredentialRequest->pbEncodedRequest,
+                pPluginMakeCredentialRequest->pbEncodedRequest + pPluginMakeCredentialRequest->cbEncodedRequest);
+
+            auto pubKeyData = GetRequestSigningPubKey();
+            HRESULT requestSignResult = E_FAIL;
+            if (!pubKeyData.empty())
+            {
+                requestSignResult = VerifySignatureHelper(
+                    requestBuffer,
+                    pubKeyData.data(),
+                    static_cast<DWORD>(pubKeyData.size()),
+                    pPluginMakeCredentialRequest->pbRequestSignature,
+                    pPluginMakeCredentialRequest->cbRequestSignature);
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                curApp->m_pluginOperationStatus.requestSignatureVerificationStatus = requestSignResult;
+            }
+
+            hr = self->PerformUserVerification(
+                pPluginMakeCredentialRequest->hWnd,
+                pPluginMakeCredentialRequest->transactionId,
+                PluginOperationType::MakeCredential,
+                requestBuffer,
+                std::move(rpName),
+                std::move(userName));
+            THROW_IF_FAILED(hr);
+
+            g_makeCredentialStage = 0x0003;
+
+            wil::unique_ncrypt_prov hProvider;
+            wil::unique_ncrypt_key hKey;
+
+            THROW_IF_FAILED(NCryptOpenStorageProvider(&hProvider, nullptr, 0));
+
+            std::wstring keyNameStr = happyfactoryplugin_key_domain;
+            std::wstringstream keyNameStream;
+            THROW_HR_IF(E_INVALIDARG,
+                pDecodedMakeCredentialRequest->pUserInformation->cbId > 0 &&
+                pDecodedMakeCredentialRequest->pUserInformation->pbId == nullptr);
+            for (DWORD idx = 0; idx < pDecodedMakeCredentialRequest->pUserInformation->cbId; idx++)
+            {
+                keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<
+                    static_cast<int>(pDecodedMakeCredentialRequest->pUserInformation->pbId[idx]);
+            }
+            keyNameStr += keyNameStream.str();
+
+            THROW_IF_FAILED(NCryptCreatePersistedKey(
+                hProvider.get(),
+                &hKey,
+                BCRYPT_ECDSA_P256_ALGORITHM,
+                keyNameStr.c_str(),
+                0,
+                NCRYPT_OVERWRITE_KEY_FLAG));
+
+            g_makeCredentialStage = 0x0004;
+
+            DWORD exportPolicy = NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG;
+            THROW_IF_FAILED(NCryptSetProperty(
+                hKey.get(),
+                NCRYPT_EXPORT_POLICY_PROPERTY,
+                reinterpret_cast<PBYTE>(&exportPolicy),
+                sizeof(exportPolicy),
+                NCRYPT_PERSIST_FLAG));
+
+            DWORD keyUsage = NCRYPT_ALLOW_SIGNING_FLAG | NCRYPT_ALLOW_DECRYPT_FLAG;
+            THROW_IF_FAILED(NCryptSetProperty(
+                hKey.get(),
+                NCRYPT_KEY_USAGE_PROPERTY,
+                reinterpret_cast<PBYTE>(&keyUsage),
+                sizeof(keyUsage),
+                NCRYPT_PERSIST_FLAG));
+
+            HWND hWnd;
+            if (curApp->GetSilentMode())
+            {
+                hWnd = curApp->GetPluginOperationHwnd();
+            }
+            else
+            {
+                hWnd = curApp->GetNativeWindowHandle();
+            }
+
+            THROW_IF_FAILED(NCryptSetProperty(
+                hKey.get(),
+                NCRYPT_WINDOW_HANDLE_PROPERTY,
+                reinterpret_cast<PBYTE>(&hWnd),
+                sizeof(HWND),
+                0));
+
+            THROW_IF_FAILED(NCryptFinalizeKey(hKey.get(), 0));
+
+            g_makeCredentialStage = 0x0005;
+
+            DWORD cbPackedAuthenticatorData = 0;
+            wil::unique_hlocal_ptr<BYTE[]> packedAuthenticatorData;
+            std::vector<uint8_t> vCredentialIdBuffer;
+            THROW_IF_FAILED(CreateAuthenticatorData(
+                hKey.get(),
+                PluginOperationType::MakeCredential,
+                pDecodedMakeCredentialRequest->cbRpId,
+                pDecodedMakeCredentialRequest->pbRpId,
+                cbPackedAuthenticatorData,
+                packedAuthenticatorData,
+                vCredentialIdBuffer));
+
+            g_makeCredentialStage = 0x0006;
+
+            WEBAUTHN_CREDENTIAL_ATTESTATION attestationResponse = {};
+            attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5;
+            attestationResponse.pwszFormatType = WEBAUTHN_ATTESTATION_TYPE_NONE;
+            attestationResponse.cbAttestation = 0;
+            attestationResponse.pbAttestation = nullptr;
+            attestationResponse.cbAuthenticatorData = 0;
+            attestationResponse.pbAuthenticatorData = nullptr;
+            const bool advertisePrfAndHmacSecret = !isWebAuthnIoRp;
+            attestationResponse.bPrfEnabled = advertisePrfAndHmacSecret ? TRUE : FALSE;
+            BOOL hmacSecretExtensionValue = TRUE;
+            WEBAUTHN_EXTENSION hmacSecretExtension = {};
+            hmacSecretExtension.pwszExtensionIdentifier = WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET;
+            hmacSecretExtension.cbExtension = sizeof(BOOL);
+            hmacSecretExtension.pvExtension = &hmacSecretExtensionValue;
+            attestationResponse.Extensions.cExtensions = advertisePrfAndHmacSecret ? 1 : 0;
+            attestationResponse.Extensions.pExtensions = advertisePrfAndHmacSecret ? &hmacSecretExtension : nullptr;
+            attestationResponse.pbAuthenticatorData = packedAuthenticatorData.get();
+            attestationResponse.cbAuthenticatorData = cbPackedAuthenticatorData;
+
+            DWORD cbAttestationBuffer = 0;
+            wil::unique_cotaskmem_ptr<BYTE[]> pbAttestationBuffer;
+
+            HRESULT encodeHr = E_FAIL;
+            // Prefer EXPERIMENTAL encoder so VERSION_5 fields (e.g. bPrfEnabled) are preserved.
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E001));
+            encodeHr = EXPERIMENTAL_WebAuthNEncodeMakeCredentialResponse(
+                &attestationResponse,
+                &cbAttestationBuffer,
+                wil::out_param(pbAttestationBuffer));
+            PersistLastMakeCredentialStatus(encodeHr);
+
+            if (encodeHr == E_NOTIMPL || FAILED(encodeHr))
+            {
+                // Fallback to the stable encoder for older platforms.
+                // In that case PRF enablement cannot be advertised via bPrfEnabled.
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E002));
+                attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION;
+                attestationResponse.bPrfEnabled = FALSE;
+
+                encodeHr = WebAuthNEncodeMakeCredentialResponse(
+                    &attestationResponse,
+                    &cbAttestationBuffer,
+                    wil::out_param(pbAttestationBuffer));
+                PersistLastMakeCredentialStatus(encodeHr);
+            }
+            THROW_IF_FAILED(encodeHr);
+
+            g_makeCredentialStage = 0x0007;
+
+            WEBAUTHN_CREDENTIAL_DETAILS credentialDetails = {};
+            credentialDetails.dwVersion = WEBAUTHN_CREDENTIAL_DETAILS_CURRENT_VERSION;
+            credentialDetails.pUserInformation = const_cast<PWEBAUTHN_USER_ENTITY_INFORMATION>(pDecodedMakeCredentialRequest->pUserInformation);
+            credentialDetails.pRpInformation = const_cast<PWEBAUTHN_RP_ENTITY_INFORMATION>(pDecodedMakeCredentialRequest->pRpInformation);
+            credentialDetails.cbCredentialID = static_cast<DWORD>(vCredentialIdBuffer.size());
+            credentialDetails.pbCredentialID = vCredentialIdBuffer.data();
+
+            auto& credManager = PluginCredentialManager::getInstance();
+
+            if (!credManager.SaveCredentialMetadataToMockDB(credentialDetails))
+            {
+                std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                curApp->m_pluginOperationStatus.performOperationStatus = E_FAIL;
+            }
+
+            credManager.ReloadCredentialManager();
+            std::vector<std::vector<UINT8>> credentialIdList{ vCredentialIdBuffer };
+            credManager.AddPluginCredentialById(credentialIdList);
+
+            response->cbEncodedResponse = cbAttestationBuffer;
+            response->pbEncodedResponse = nullptr;
+            if (cbAttestationBuffer > 0)
+            {
+                response->pbEncodedResponse = reinterpret_cast<byte*>(CoTaskMemAlloc(cbAttestationBuffer));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, response->pbEncodedResponse);
+                memcpy_s(response->pbEncodedResponse, cbAttestationBuffer, pbAttestationBuffer.get(), cbAttestationBuffer);
+            }
+
+            g_makeCredentialStage = 0x0008;
+            PersistLastMakeCredentialStatus(S_OK);
+            return S_OK;
+        }
+        catch (...)
+        {
+            hr = wil::ResultFromCaughtException();
+            PersistLastMakeCredentialStatus(hr);
+            try
+            {
+                com_ptr<App> curApp = self->m_app;
+                if (curApp)
+                {
+                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                    curApp->m_pluginOperationStatus.performOperationStatus = hr;
+                }
+            }
+            catch (...)
+            {
+            }
+            return hr;
+        }
+    }
+
     /*
     * This function is used to create a simplified version of authenticator data for the webauthn authenticator operations.
     * Refer: https://www.w3.org/TR/webauthn-3/#authenticator-data for more details.
@@ -472,7 +1069,7 @@ namespace winrt::PasskeyManager::implementation
             wil::unique_bcrypt_hash hashHandle;
             THROW_IF_NTSTATUS_FAILED(BCryptCreateHash(
                 BCRYPT_SHA256_ALG_HANDLE,
-                &hashHandle,
+                wil::out_param(hashHandle),
                 nullptr,
                 0,
                 nullptr,
@@ -515,12 +1112,20 @@ namespace winrt::PasskeyManager::implementation
             constexpr DWORD signCountSize = 4; // signCount
             DWORD cbPackedAuthenticatorData = rpidsha256Size + flagsSize + signCountSize;
 
+            std::vector<BYTE> extensionsCbor;
+            const bool includeMakeCredentialExtensions = false;
+            if (includeMakeCredentialExtensions && operationType == PluginOperationType::MakeCredential)
+            {
+                (void)CborLite::encodeMapSize(extensionsCbor, 0u);
+            }
+
             if (operationType == PluginOperationType::MakeCredential)
             {
                 cbPackedAuthenticatorData += sizeof(GUID); // aaGuid
                 cbPackedAuthenticatorData += sizeof(WORD); // credentialId length
                 cbPackedAuthenticatorData += cbHash; // credentialId
                 cbPackedAuthenticatorData += static_cast<DWORD>(buffer.size()); // public key
+                cbPackedAuthenticatorData += static_cast<DWORD>(extensionsCbor.size()); // extensions
             }
 
             std::vector<BYTE> vPackedAuthenticatorData(cbPackedAuthenticatorData);
@@ -541,18 +1146,27 @@ namespace winrt::PasskeyManager::implementation
             if (operationType == PluginOperationType::GetAssertion)
             {
                 // Refer https://www.w3.org/TR/webauthn-3/#authdata-flags
-                *writer.reserve_space<uint8_t>() = 0x1d; // credential data flags of size 1 byte
+                // Minimal flags: UP + UV (do not claim BE/BS backup state bits).
+                *writer.reserve_space<uint8_t>() = 0x05; // UP(0x01) | UV(0x04)
 
-                *writer.reserve_space<uint32_t>() = 0u; // Sign count of size 4 bytes is set to 0
+                // signCount (4 bytes, big-endian)
+                writer.add(std::span<const BYTE>({ 0x00, 0x00, 0x00, 0x00 }));
 
                 vCredentialIdBuffer.assign(pbCredentialId.get(), pbCredentialId.get() + cbHash);
             }
             else
             {
                 // Refer https://www.w3.org/TR/webauthn-3/#authdata-flags
-                *writer.reserve_space<uint8_t>() = 0x5d; // credential data flags of size 1 byte
+                // Minimal flags: UP + UV + AT (+ED if extensions are present)
+                uint8_t flags = 0x45; // UP(0x01) | UV(0x04) | AT(0x40)
+                if (!extensionsCbor.empty())
+                {
+                    flags = static_cast<uint8_t>(flags | 0x80); // ED
+                }
+                *writer.reserve_space<uint8_t>() = flags;
 
-                *writer.reserve_space<uint32_t>() = 0u; // Sign count of size 4 bytes is set to 0
+                // signCount (4 bytes, big-endian)
+                writer.add(std::span<const BYTE>({ 0x00, 0x00, 0x00, 0x00 }));
 
                 // aaGuid of size 16 bytes is set to predefined bytes in big-endian. Refer https://www.w3.org/TR/webauthn-3/#aaguid
                 writer.add(std::span<const BYTE>(c_pluginAaguidBytes, sizeof(c_pluginAaguidBytes)));
@@ -568,6 +1182,9 @@ namespace winrt::PasskeyManager::implementation
                 vCredentialIdBuffer.assign(pbCredentialId.get(), pbCredentialId.get() + cbHash);
 
                 writer.add(std::span<BYTE>(buffer.data(), buffer.size())); // Set CBOR encoded public key
+
+                // Append extensions (ED flag set above)
+                writer.add(std::span<BYTE>(extensionsCbor.data(), extensionsCbor.size()));
             }
 
             pcbPackedAuthenticatorData = static_cast<DWORD>(vPackedAuthenticatorData.size());
@@ -591,271 +1208,21 @@ namespace winrt::PasskeyManager::implementation
         /* [in] */ __RPC__in PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginMakeCredentialRequest,
         /* [out] */ __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
     {
-        HRESULT hr = S_OK;
-        try
+        // Entry marker: helps determine whether the plugin is invoked at all in browser flows.
+        PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D434D01));
+        __try
         {
-            RETURN_HR_IF_NULL(E_INVALIDARG, response);
-            *response = {};
-            RETURN_HR_IF_NULL(E_INVALIDARG, pPluginMakeCredentialRequest);
-
-            DWORD hIndex = 0;
-            THROW_IF_FAILED(CoWaitForMultipleHandles( // wait for app to be ready
-                COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS,
-                INFINITE,
-                1,
-                m_hAppReadyForPluginOpEvent.addressof(),
-                &hIndex));
-
-            com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-
-            // Atomically check if an operation is already in progress.
-            bool expected = false;
-            if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
-            {
-                // Recover once from a potentially stale in-progress flag left by a previous failed flow.
-                curApp->m_isOperationInProgress = false;
-                expected = false;
-                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
-                {
-                    PersistLastMakeCredentialStatus(HRESULT_FROM_WIN32(ERROR_BUSY));
-                    return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
-                }
-            }
-
-            PersistLastMakeCredentialStatus(S_FALSE);
-
-            // Ensure the flag is cleared when the function exits, for any reason.
-            auto clearOperationInProgress = wil::scope_exit([&]
-            {
-                curApp->m_isOperationInProgress = false;
-            });
-
-            curApp->SetPluginTransactionId(pPluginMakeCredentialRequest->transactionId);
-            auto completePluginOperation = wil::SetEvent_scope_exit(m_hPluginOpCompletedEvent.get());
-
-            // WEBAUTHN_CTAPCBOR_MAKE_CREDENTIAL_REQUEST: This structure represents the decoded CTAP make credential request.
-            // Provides structured access to CBOR-encoded operation parameters for third-party plugin implementations.
-            PWEBAUTHN_CTAPCBOR_MAKE_CREDENTIAL_REQUEST pDecodedMakeCredentialRequest;
-
-            THROW_IF_FAILED(WebAuthNDecodeMakeCredentialRequest(
-                pPluginMakeCredentialRequest->cbEncodedRequest,
-                pPluginMakeCredentialRequest->pbEncodedRequest,
-                &pDecodedMakeCredentialRequest));
-
-            auto cleanup = wil::scope_exit([&] {
-                WebAuthNFreeDecodedMakeCredentialRequest(pDecodedMakeCredentialRequest);
-            });
-
-            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pRpInformation);
-            THROW_HR_IF_NULL(E_INVALIDARG, pDecodedMakeCredentialRequest->pUserInformation);
-
-            std::string rpIdFromRequest;
-            if (pDecodedMakeCredentialRequest->pbRpId != nullptr && pDecodedMakeCredentialRequest->cbRpId > 0)
-            {
-                rpIdFromRequest.assign(
-                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId),
-                    reinterpret_cast<const char*>(pDecodedMakeCredentialRequest->pbRpId) + pDecodedMakeCredentialRequest->cbRpId);
-            }
-            THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
-
-            std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
-            bool rpSupported =
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrg) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrgWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessId) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessIdWww) == 0;
-            THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
-            wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
-            if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
-            {
-                rpNameSource = L"Unknown RP";
-            }
-            auto rpName = wil::make_cotaskmem_string(rpNameSource);
-
-            wchar_t const* userNameSource = pDecodedMakeCredentialRequest->pUserInformation->pwszName;
-            if (userNameSource == nullptr || userNameSource[0] == L'\0')
-            {
-                userNameSource = L"Unknown User";
-            }
-            auto userName = wil::make_cotaskmem_string(userNameSource);
-            std::vector<BYTE> requestBuffer(
-                pPluginMakeCredentialRequest->pbEncodedRequest,
-                pPluginMakeCredentialRequest->pbEncodedRequest + pPluginMakeCredentialRequest->cbEncodedRequest);
-
-            auto pubKeyData = GetRequestSigningPubKey();
-            HRESULT requestSignResult = E_FAIL;
-            if (!pubKeyData.empty())
-            {
-                requestSignResult = VerifySignatureHelper(
-                    requestBuffer,
-                    pubKeyData.data(),
-                    static_cast<DWORD>(pubKeyData.size()),
-                    pPluginMakeCredentialRequest->pbRequestSignature,
-                    pPluginMakeCredentialRequest->cbRequestSignature);
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                curApp->m_pluginOperationStatus.requestSignatureVerificationStatus = requestSignResult;
-            }
-
-            hr = PerformUserVerification(
-                pPluginMakeCredentialRequest->hWnd,
-                pPluginMakeCredentialRequest->transactionId,
-                PluginOperationType::MakeCredential,
-                requestBuffer,
-                std::move(rpName),
-                std::move(userName));
-            THROW_IF_FAILED(hr);
-
-            // create a persisted key using ncrypt
-            wil::unique_ncrypt_prov hProvider;
-            wil::unique_ncrypt_key hKey;
-
-            // get the provider
-            THROW_IF_FAILED(NCryptOpenStorageProvider(&hProvider, nullptr, 0));
-
-            // get the user handle as a string
-            std::wstring keyNameStr = happyfactoryplugin_key_domain;
-            std::wstringstream keyNameStream;
-            THROW_HR_IF(E_INVALIDARG,
-                pDecodedMakeCredentialRequest->pUserInformation->cbId > 0 &&
-                pDecodedMakeCredentialRequest->pUserInformation->pbId == nullptr);
-            for (DWORD idx = 0; idx < pDecodedMakeCredentialRequest->pUserInformation->cbId; idx++)
-            {
-                keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<
-                    static_cast<int>(pDecodedMakeCredentialRequest->pUserInformation->pbId[idx]);
-            }
-            keyNameStr += keyNameStream.str();
-
-            // create the key
-            THROW_IF_FAILED(NCryptCreatePersistedKey(
-                hProvider.get(),
-                &hKey,
-                BCRYPT_ECDH_P256_ALGORITHM,
-                keyNameStr.c_str(),
-                0,
-                NCRYPT_OVERWRITE_KEY_FLAG));
-
-            // set the export policy
-            DWORD exportPolicy = NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG;
-            THROW_IF_FAILED(NCryptSetProperty(
-                hKey.get(),
-                NCRYPT_EXPORT_POLICY_PROPERTY,
-                reinterpret_cast<PBYTE>(&exportPolicy),
-                sizeof(exportPolicy),
-                NCRYPT_PERSIST_FLAG));
-
-            // allow both signing and encryption
-            DWORD keyUsage = NCRYPT_ALLOW_SIGNING_FLAG | NCRYPT_ALLOW_DECRYPT_FLAG;
-            THROW_IF_FAILED(NCryptSetProperty(
-                hKey.get(),
-                NCRYPT_KEY_USAGE_PROPERTY,
-                reinterpret_cast<PBYTE>(&keyUsage),
-                sizeof(keyUsage),
-                NCRYPT_PERSIST_FLAG));
-
-            HWND hWnd;
-            if (curApp->GetSilentMode())
-            {
-                hWnd = curApp->m_pluginOperationOptions.hWnd;
-            }
-            else
-            {
-                hWnd = curApp->GetNativeWindowHandle();
-            }
-
-            THROW_IF_FAILED(NCryptSetProperty(
-                hKey.get(),
-                NCRYPT_WINDOW_HANDLE_PROPERTY,
-                reinterpret_cast<PBYTE>(&hWnd),
-                sizeof(HWND),
-                0));
-
-            // finalize the key
-            THROW_IF_FAILED(NCryptFinalizeKey(hKey.get(), 0));
-
-            DWORD cbPackedAuthenticatorData = 0;
-            wil::unique_hlocal_ptr<BYTE[]> packedAuthenticatorData;
-            std::vector<uint8_t> vCredentialIdBuffer;
-            THROW_IF_FAILED(CreateAuthenticatorData(
-                hKey.get(),
-                PluginOperationType::MakeCredential,
-                pDecodedMakeCredentialRequest->cbRpId,
-                pDecodedMakeCredentialRequest->pbRpId,
-                cbPackedAuthenticatorData,
-                packedAuthenticatorData,
-                vCredentialIdBuffer));
-
-            WEBAUTHN_CREDENTIAL_ATTESTATION attestationResponse = {};
-            attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION;
-            attestationResponse.pwszFormatType = WEBAUTHN_ATTESTATION_TYPE_NONE;
-            attestationResponse.cbAttestation = 0;
-            attestationResponse.pbAttestation = nullptr;
-            attestationResponse.cbAuthenticatorData = 0;
-            attestationResponse.pbAuthenticatorData = nullptr;
-
-            attestationResponse.pbAuthenticatorData = packedAuthenticatorData.get();
-            attestationResponse.cbAuthenticatorData = cbPackedAuthenticatorData;
-
-            DWORD cbAttestationBuffer = 0;
-            wil::unique_cotaskmem_ptr<BYTE[]> pbAttestationBuffer;
-
-            THROW_IF_FAILED(WebAuthNEncodeMakeCredentialResponse(
-                &attestationResponse,
-                &cbAttestationBuffer,
-                wil::out_param(pbAttestationBuffer)));
-
-            WEBAUTHN_CREDENTIAL_DETAILS credentialDetails = {};
-            credentialDetails.dwVersion = WEBAUTHN_CREDENTIAL_DETAILS_CURRENT_VERSION;
-            credentialDetails.pUserInformation = const_cast<PWEBAUTHN_USER_ENTITY_INFORMATION>(pDecodedMakeCredentialRequest->pUserInformation);
-            credentialDetails.pRpInformation = const_cast<PWEBAUTHN_RP_ENTITY_INFORMATION>(pDecodedMakeCredentialRequest->pRpInformation);
-            credentialDetails.cbCredentialID = static_cast<DWORD>(vCredentialIdBuffer.size());
-            credentialDetails.pbCredentialID = vCredentialIdBuffer.data();
-
-            auto& credManager = PluginCredentialManager::getInstance();
-
-            if (!credManager.SaveCredentialMetadataToMockDB(credentialDetails))
-            {
-                std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                curApp->m_pluginOperationStatus.performOperationStatus = E_FAIL;
-            }
-
-            // Add newly created passkey to system cache
-            credManager.ReloadCredentialManager();
-            std::vector<std::vector<UINT8>> credentialIdList{ vCredentialIdBuffer };
-            credManager.AddPluginCredentialById(credentialIdList);
-
-            response->cbEncodedResponse = cbAttestationBuffer;
-            response->pbEncodedResponse = pbAttestationBuffer.release();
-            PersistLastMakeCredentialStatus(S_OK);
-            return S_OK;
+            return MakeCredentialNoSeh(this, pPluginMakeCredentialRequest, response);
         }
-        catch (...)
+        __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            hr = wil::ResultFromCaughtException();
-            PersistLastMakeCredentialStatus(hr);
-            try
+            const DWORD exCode = GetExceptionCode();
+            if (response)
             {
-                com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
-                if (curApp)
-                {
-                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                    curApp->m_pluginOperationStatus.performOperationStatus = hr;
-                }
+                *response = {};
             }
-            catch (...)
-            {
-                // Ignore errors during cleanup
-            }
-            return hr;
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>((exCode & 0xFFFF0000) | (g_makeCredentialStage & 0x0000FFFF)));
+            return E_FAIL;
         }
     }
 
@@ -868,21 +1235,43 @@ namespace winrt::PasskeyManager::implementation
         /* [out] */ __RPC__out PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
     {
         HRESULT hr = S_OK;
+        // Also log to the MakeCredential status file, which we know is observable outside the package.
+        PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D01));
+        PersistLastGetAssertionStatus(static_cast<HRESULT>(0x47410001));
+        __try
+        {
+            // Entry markers are written via PersistLastGetAssertionStatus.
+            return GetAssertionNoSeh(this, pPluginGetAssertionRequest, response);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            hr = wil::ResultFromCaughtException();
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414DFF));
+            PersistLastGetAssertionStatus(hr);
+            return hr;
+        }
+    }
+
+    HRESULT GetAssertionNoSeh(
+        HappyFactoryPlugin* self,
+        PCWEBAUTHN_PLUGIN_OPERATION_REQUEST pPluginGetAssertionRequest,
+        PWEBAUTHN_PLUGIN_OPERATION_RESPONSE response) noexcept
+    {
+        HRESULT hr = S_OK;
         try
         {
             RETURN_HR_IF_NULL(E_INVALIDARG, response);
             *response = {};
             RETURN_HR_IF_NULL(E_INVALIDARG, pPluginGetAssertionRequest);
 
-            DWORD hIndex = 0;
-            THROW_IF_FAILED(CoWaitForMultipleHandles(
-                COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS,
-                INFINITE,
-                1,
-                m_hAppReadyForPluginOpEvent.addressof(),
-                &hIndex));
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D02));
+            PersistLastGetAssertionStatus(static_cast<HRESULT>(0x47410002));
 
-            com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+            com_ptr<App> curApp = self->m_app;
+            if (!curApp)
+            {
+                return E_UNEXPECTED;
+            }
 
             // Atomically check if an operation is already in progress.
             bool expected = false;
@@ -903,16 +1292,13 @@ namespace winrt::PasskeyManager::implementation
             });
 
             curApp->SetPluginTransactionId(pPluginGetAssertionRequest->transactionId);
-            auto completePluginOperation = wil::SetEvent_scope_exit(this->m_hPluginOpCompletedEvent.get());
+            auto completePluginOperation = wil::SetEvent_scope_exit(self->m_hPluginOpCompletedEvent.get());
 
-            // WEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST: This structure represents the decoded CTAP get assertion request.
-            // Provides structured access to authentication parameters including RP ID, allowed credentials, and client
-            // data hash for plugin processing.
             PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST pDecodedAssertionRequest;
 
             THROW_IF_FAILED(WebAuthNDecodeGetAssertionRequest(
-                pPluginGetAssertionRequest->cbEncodedRequest, 
-                pPluginGetAssertionRequest->pbEncodedRequest, 
+                pPluginGetAssertionRequest->cbEncodedRequest,
+                pPluginGetAssertionRequest->pbEncodedRequest,
                 &pDecodedAssertionRequest));
 
             auto cleanup = wil::scope_exit([&] {
@@ -971,7 +1357,7 @@ namespace winrt::PasskeyManager::implementation
                     curApp->SetMatchingCredentials(rpId, selectedCredentials, hWnd);
                 }));
 
-                hIndex = 0;
+                DWORD hIndex = 0;
                 constexpr DWORD kCredentialSelectionWaitTimeoutMs = 15000;
                 HRESULT hrSelection = CoWaitForMultipleHandles(
                     COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS, 
@@ -1036,7 +1422,7 @@ namespace winrt::PasskeyManager::implementation
                 curApp->m_pluginOperationStatus.requestSignatureVerificationStatus = requestSignResult;
             }
 
-            hr = PerformUserVerification(
+            hr = self->PerformUserVerification(
                 pPluginGetAssertionRequest->hWnd,
                 pPluginGetAssertionRequest->transactionId,
                 PluginOperationType::GetAssertion,
@@ -1044,6 +1430,13 @@ namespace winrt::PasskeyManager::implementation
                 rpName,
                 userName);
             THROW_IF_FAILED(hr);
+
+            PersistGetAssertionInfo(
+                pDecodedAssertionRequest->pwszRpId,
+                selectedCredential ? selectedCredential->cbCredentialID : 0,
+                (selectedCredential && selectedCredential->pUserInformation) ? selectedCredential->pUserInformation->cbId : 0);
+
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D03));
 
             // convert user handle to a string
             std::wstring keyNameStr = happyfactoryplugin_key_domain;
@@ -1164,41 +1557,160 @@ namespace winrt::PasskeyManager::implementation
                     &cbSignature, 
                     0));
 
-                auto encodeSignature = [](PBYTE signature, size_t signatureSize) -> std::vector<BYTE>
-                    {
-                        std::vector<BYTE> encodedSignature;
-                        encodedSignature.push_back(0x02);   // ASN integer tag 
-                        encodedSignature.push_back(static_cast<BYTE>(signatureSize)); // length of the signature
-                        if (WI_IsFlagSet(signature[0], 0x80))
+                // CNG ECDSA signature output format can vary by provider/algorithm:
+                // - raw signature: R||S (fixed size)
+                // - DER signature: 0x30 ... (ASN.1 SEQUENCE)
+                // passkey.org expects DER. If we already got DER, do not re-encode.
+                const bool looksLikeDer = (cbSignature >= 2 && pbSignature && pbSignature.get()[0] == 0x30);
+                if (!looksLikeDer)
+                {
+                    RETURN_HR_IF(E_UNEXPECTED, cbSignature < 2);
+                    RETURN_HR_IF(E_UNEXPECTED, (cbSignature % 2) != 0);
+
+                    auto appendDerLength = [](std::vector<BYTE>& out, size_t len)
                         {
-                            encodedSignature[encodedSignature.size() - 1]++;
-                            encodedSignature.push_back(0x00); // add a padding byte if the first byte has the high bit set
-                        }
+                            if (len < 0x80)
+                            {
+                                out.push_back(static_cast<BYTE>(len));
+                                return;
+                            }
 
-                        encodedSignature.insert(encodedSignature.end(), signature, signature + signatureSize);
-                        return encodedSignature;
-                    };
+                            BYTE buf[sizeof(size_t)]{};
+                            size_t n = 0;
+                            size_t v = len;
+                            while (v > 0)
+                            {
+                                buf[n++] = static_cast<BYTE>(v & 0xFF);
+                                v >>= 8;
+                            }
+                            out.push_back(static_cast<BYTE>(0x80 | n));
+                            for (size_t i = 0; i < n; ++i)
+                            {
+                                out.push_back(buf[n - 1 - i]);
+                            }
+                        };
 
-                auto signatureR = encodeSignature(pbSignature.get(), cbSignature / 2);
-                auto signatureS = encodeSignature(pbSignature.get() + cbSignature / 2, cbSignature / 2);
+                    auto encodeDerInteger = [&](PBYTE signature, size_t signatureSize) -> std::vector<BYTE>
+                        {
+                            // Trim leading zeros for minimal DER encoding.
+                            size_t start = 0;
+                            while (start < signatureSize && signature[start] == 0x00)
+                            {
+                                ++start;
+                            }
+                            const bool allZero = (start == signatureSize);
 
-                std::vector<BYTE> encodedSignature;
-                encodedSignature.push_back(0x30); // ASN sequence tag
-                encodedSignature.push_back(static_cast<BYTE>(signatureR.size() + signatureS.size())); // length of the sequence
-                encodedSignature.insert(encodedSignature.end(), signatureR.begin(), signatureR.end());
-                encodedSignature.insert(encodedSignature.end(), signatureS.begin(), signatureS.end());
+                            const BYTE* p = allZero ? signature : (signature + start);
+                            const size_t n = allZero ? 1 : (signatureSize - start);
 
-                cbSignature = static_cast<DWORD>(encodedSignature.size());
-                pbSignature.reset();
-                pbSignature = wil::make_unique_hlocal<BYTE[]>(cbSignature);
+                            const bool needsPad = !allZero && WI_IsFlagSet(p[0], 0x80);
 
-                memcpy_s(pbSignature.get(), cbSignature, encodedSignature.data(), cbSignature);
+                            std::vector<BYTE> out;
+                            out.push_back(0x02); // INTEGER
+                            appendDerLength(out, n + (needsPad ? 1 : 0));
+                            if (needsPad)
+                            {
+                                out.push_back(0x00);
+                            }
+                            if (allZero)
+                            {
+                                out.push_back(0x00);
+                            }
+                            else
+                            {
+                                out.insert(out.end(), p, p + n);
+                            }
+                            return out;
+                        };
+
+                    const size_t half = cbSignature / 2;
+                    auto signatureR = encodeDerInteger(pbSignature.get(), half);
+                    auto signatureS = encodeDerInteger(pbSignature.get() + half, half);
+
+                    std::vector<BYTE> encodedSignature;
+                    encodedSignature.push_back(0x30); // SEQUENCE
+                    appendDerLength(encodedSignature, signatureR.size() + signatureS.size());
+                    encodedSignature.insert(encodedSignature.end(), signatureR.begin(), signatureR.end());
+                    encodedSignature.insert(encodedSignature.end(), signatureS.begin(), signatureS.end());
+
+                    cbSignature = static_cast<DWORD>(encodedSignature.size());
+                    pbSignature.reset();
+                    pbSignature = wil::make_unique_hlocal<BYTE[]>(cbSignature);
+
+                    memcpy_s(pbSignature.get(), cbSignature, encodedSignature.data(), cbSignature);
+                }
             }
 
             auto assertionResponse = wil::make_unique_cotaskmem<WEBAUTHN_ASSERTION>();
             THROW_HR_IF_NULL(E_OUTOFMEMORY, assertionResponse);
 
+            *assertionResponse = {};
+
             assertionResponse->dwVersion = WEBAUTHN_ASSERTION_CURRENT_VERSION;
+
+            // Provide PRF/HMAC-secret output for vault recovery.
+            // For now we derive a stable 32-byte secret from the persisted private key and the fixed salt.
+            const bool wantHmacSecret =
+                pDecodedAssertionRequest->cbHmacSecretSaltValues == WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH &&
+                pDecodedAssertionRequest->pbHmacSecretSaltValues != nullptr;
+
+            std::array<BYTE, 32> prfSecret{};
+            if (wantHmacSecret)
+            {
+                std::span<const BYTE> prfSaltBytes(
+                    pDecodedAssertionRequest->pbHmacSecretSaltValues,
+                    pDecodedAssertionRequest->cbHmacSecretSaltValues);
+
+                DWORD cbPriv = 0;
+                THROW_IF_FAILED(NCryptExportKey(
+                    hKey.get(),
+                    0,
+                    BCRYPT_ECCPRIVATE_BLOB,
+                    nullptr,
+                    nullptr,
+                    0,
+                    &cbPriv,
+                    0));
+
+                std::vector<BYTE> priv(cbPriv);
+                THROW_IF_FAILED(NCryptExportKey(
+                    hKey.get(),
+                    0,
+                    BCRYPT_ECCPRIVATE_BLOB,
+                    nullptr,
+                    priv.data(),
+                    cbPriv,
+                    &cbPriv,
+                    0));
+                priv.resize(cbPriv);
+
+                THROW_IF_FAILED(ComputeHmacSha256(priv, prfSaltBytes, prfSecret));
+
+                PersistProtectedHmacSecret(std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
+
+                using HmacSecretOut = std::remove_pointer_t<decltype(assertionResponse->pHmacSecret)>;
+
+                wil::unique_cotaskmem_ptr<BYTE[]> hmacOutBytes(
+                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(HmacSecretOut))));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacOutBytes);
+                auto hmacOut = reinterpret_cast<decltype(assertionResponse->pHmacSecret)>(hmacOutBytes.get());
+                *hmacOut = {};
+                hmacOut->cbFirst = static_cast<DWORD>(prfSecret.size());
+
+                wil::unique_cotaskmem_ptr<BYTE[]> hmacFirst(
+                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(hmacOut->cbFirst)));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacFirst);
+                memcpy_s(hmacFirst.get(), hmacOut->cbFirst, prfSecret.data(), prfSecret.size());
+
+                hmacOut->pbFirst = hmacFirst.get();
+                hmacOut->cbSecond = 0;
+                hmacOut->pbSecond = nullptr;
+                assertionResponse->pHmacSecret = hmacOut;
+            }
+            else
+            {
+                assertionResponse->pHmacSecret = nullptr;
+            }
 
             // [1] Credential (optional)
             assertionResponse->Credential.dwVersion = WEBAUTHN_CREDENTIAL_CURRENT_VERSION;
@@ -1215,20 +1727,54 @@ namespace winrt::PasskeyManager::implementation
             assertionResponse->pbSignature = pbSignature.get();
 
             // [4] User (optional)
-            assertionResponse->cbUserId = selectedCredential->pUserInformation->cbId;
-            auto userIdBuffer = wil::make_unique_cotaskmem<BYTE[]>(selectedCredential->pUserInformation->cbId);
-            THROW_HR_IF_NULL(E_OUTOFMEMORY, userIdBuffer);
+            wil::unique_cotaskmem_ptr<BYTE[]> userIdBytes;
+            if (selectedCredential &&
+                selectedCredential->pUserInformation != nullptr &&
+                selectedCredential->pUserInformation->cbId > 0 &&
+                selectedCredential->pUserInformation->pbId != nullptr)
+            {
+                userIdBytes.reset(reinterpret_cast<BYTE*>(
+                    CoTaskMemAlloc(selectedCredential->pUserInformation->cbId)));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, userIdBytes);
+                memcpy_s(
+                    userIdBytes.get(),
+                    selectedCredential->pUserInformation->cbId,
+                    selectedCredential->pUserInformation->pbId,
+                    selectedCredential->pUserInformation->cbId);
+                assertionResponse->cbUserId = selectedCredential->pUserInformation->cbId;
+                assertionResponse->pbUserId = userIdBytes.get();
+            }
+            else
+            {
+                assertionResponse->cbUserId = 0;
+                assertionResponse->pbUserId = nullptr;
+            }
 
-            memcpy_s(userIdBuffer.get(),
-                selectedCredential->pUserInformation->cbId,
-                selectedCredential->pUserInformation->pbId,
-                selectedCredential->pUserInformation->cbId);
-            assertionResponse->pbUserId = userIdBuffer.get();
+            wil::unique_cotaskmem_ptr<WEBAUTHN_USER_ENTITY_INFORMATION> userInfo;
+            wil::unique_cotaskmem_string userInfoName;
+            wil::unique_cotaskmem_string userInfoDisplayName;
+            if (selectedCredential && selectedCredential->pUserInformation)
+            {
+                userInfo.reset(reinterpret_cast<WEBAUTHN_USER_ENTITY_INFORMATION*>(
+                    CoTaskMemAlloc(sizeof(WEBAUTHN_USER_ENTITY_INFORMATION))));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, userInfo);
+                *userInfo = {};
+                userInfo->dwVersion = WEBAUTHN_USER_ENTITY_INFORMATION_CURRENT_VERSION;
 
-            WEBAUTHN_USER_ENTITY_INFORMATION userEntityInformation = {};
-            userEntityInformation.dwVersion = WEBAUTHN_USER_ENTITY_INFORMATION_CURRENT_VERSION;
-            userEntityInformation.cbId = assertionResponse->cbUserId;
-            userEntityInformation.pbId = assertionResponse->pbUserId;
+                userInfo->cbId = assertionResponse->cbUserId;
+                userInfo->pbId = assertionResponse->pbUserId;
+
+                if (selectedCredential->pUserInformation->pwszName)
+                {
+                    userInfoName = wil::make_cotaskmem_string(selectedCredential->pUserInformation->pwszName);
+                    userInfo->pwszName = userInfoName.get();
+                }
+                if (selectedCredential->pUserInformation->pwszDisplayName)
+                {
+                    userInfoDisplayName = wil::make_cotaskmem_string(selectedCredential->pUserInformation->pwszDisplayName);
+                    userInfo->pwszDisplayName = userInfoDisplayName.get();
+                }
+            }
 
             // WEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE: This structure represents the complete get assertion
             // response including WebAuthn assertion, user information, and credential count.
@@ -1236,30 +1782,87 @@ namespace winrt::PasskeyManager::implementation
             auto ctapGetAssertionResponse = wil::make_unique_cotaskmem<WEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE>();
             THROW_HR_IF_NULL(E_OUTOFMEMORY, ctapGetAssertionResponse);
 
+            *ctapGetAssertionResponse = {};
+
             ctapGetAssertionResponse->WebAuthNAssertion = *(assertionResponse.get()); // [1] Credential, [2] AuthenticatorData, [3] Signature
-            ctapGetAssertionResponse->pUserInformation = &userEntityInformation; // [4] User
+            ctapGetAssertionResponse->pUserInformation = userInfo.get(); // [4] User
             ctapGetAssertionResponse->dwNumberOfCredentials = 1; // [5] NumberOfCredentials
 
+            std::vector<BYTE> ext;
+            wil::unique_cotaskmem_ptr<BYTE[]> extBytes;
+            if (wantHmacSecret)
+            {
+                // Encode: { "hmac-secret": { 1: <32-byte output> } }
+                (void)CborLite::encodeMapSize(ext, 1u);
+                (void)CborLite::encodeText(ext, std::string("hmac-secret"));
+                (void)CborLite::encodeMapSize(ext, 1u);
+                (void)CborLite::encodeUnsigned(ext, 1u);
+                (void)CborLite::encodeBytes(ext, std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
+
+                extBytes.reset(reinterpret_cast<BYTE*>(
+                    CoTaskMemAlloc(static_cast<SIZE_T>(ext.size()))));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, extBytes);
+                memcpy_s(extBytes.get(), ext.size(), ext.data(), ext.size());
+            }
+
+            // Prefer experimental encoder.
             DWORD cbAssertionBuffer = 0;
             wil::unique_cotaskmem_ptr<BYTE[]> pbAssertionBuffer;
+            HRESULT encodeHr = E_NOTIMPL;
+            {
+                EXPERIMENTAL_WEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE experimentalResponse = {};
+                experimentalResponse.WebAuthNAssertion = *(assertionResponse.get());
+                experimentalResponse.pUserInformation = userInfo.get();
+                experimentalResponse.dwNumberOfCredentials = 1;
+                experimentalResponse.cbUnsignedExtensionOutputs = static_cast<DWORD>(ext.size());
+                experimentalResponse.pbUnsignedExtensionOutputs = extBytes.get();
 
-            // PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE: Pointer to get assertion response
-            // structure used for encoding operations. Provides const access to response data.
-            THROW_IF_FAILED(WebAuthNEncodeGetAssertionResponse(
-                (PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE)(ctapGetAssertionResponse.get()),
-                &cbAssertionBuffer,
-                wil::out_param(pbAssertionBuffer)));
+                encodeHr = EXPERIMENTAL_WebAuthNEncodeGetAssertionResponse(
+                    &experimentalResponse,
+                    &cbAssertionBuffer,
+                    wil::out_param(pbAssertionBuffer));
+            }
+
+            if (encodeHr == E_NOTIMPL || FAILED(encodeHr))
+            {
+                ctapGetAssertionResponse->cbUnsignedExtensionOutputs = static_cast<DWORD>(ext.size());
+                ctapGetAssertionResponse->pbUnsignedExtensionOutputs = extBytes.get();
+
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414E02));
+                encodeHr = WebAuthNEncodeGetAssertionResponse(
+                    (PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE)(ctapGetAssertionResponse.get()),
+                    &cbAssertionBuffer,
+                    wil::out_param(pbAssertionBuffer));
+                PersistLastMakeCredentialStatus(encodeHr);
+            }
+            else
+            {
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414E01));
+                PersistLastMakeCredentialStatus(encodeHr);
+            }
+
+            THROW_IF_FAILED(encodeHr);
 
             response->cbEncodedResponse = cbAssertionBuffer;
-            response->pbEncodedResponse = pbAssertionBuffer.release();
+            response->pbEncodedResponse = nullptr;
+            if (cbAssertionBuffer > 0)
+            {
+                response->pbEncodedResponse = reinterpret_cast<byte*>(CoTaskMemAlloc(cbAssertionBuffer));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, response->pbEncodedResponse);
+                memcpy_s(response->pbEncodedResponse, cbAssertionBuffer, pbAssertionBuffer.get(), cbAssertionBuffer);
+            }
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D04));
+            PersistLastMakeCredentialStatus(S_OK);
             return S_OK;
         }
         catch (...)
         {
             hr = wil::ResultFromCaughtException();
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D04));
+            PersistLastMakeCredentialStatus(hr);
             try
             {
-                winrt::com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+                winrt::com_ptr<App> curApp = self->m_app;
                 if (curApp)
                 {
                     std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
@@ -1296,7 +1899,13 @@ namespace winrt::PasskeyManager::implementation
         {
             RETURN_HR_IF_NULL(E_INVALIDARG, pCancelRequest);
 
-            com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+            com_ptr<App> curApp = m_app;
+            if (!curApp)
+            {
+                return S_OK;
+            }
+
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43CA01));
             if (curApp->GetPluginTransactionId() != pCancelRequest->transactionId)
             {
                 // Cancellation can legitimately arrive after the operation already completed/reset.
@@ -1330,6 +1939,8 @@ namespace winrt::PasskeyManager::implementation
     {
         try
         {
+            // Factory marker: confirms COM activation reached the server and factory.
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D434F01));
             RETURN_HR_IF_NULL(E_INVALIDARG, result);
             *result = nullptr;
 
@@ -1338,7 +1949,7 @@ namespace winrt::PasskeyManager::implementation
                 return CLASS_E_NOAGGREGATION;
             }
 
-            return make<HappyFactoryPlugin>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent)->QueryInterface(iid, result);
+            return make<HappyFactoryPlugin>(m_app, m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent)->QueryInterface(iid, result);
         }
         catch (...)
         {

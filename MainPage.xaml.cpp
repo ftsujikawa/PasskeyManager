@@ -1029,7 +1029,7 @@ namespace winrt::PasskeyManager::implementation
                 self->SetVaultLockSwitchState(false);
                 self->vaultRecoveryHintText().Text(L"Passkey registration is not supported by the selected authenticator. Try selecting tsupasswd_core and retry.");
                 self->vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-                self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" reason=authenticator_not_supported_prf_hmac request_id=" + requestId });
+                self->LogWarning(winrt::hstring{ L"summary result=failed operation=" + operation + L" reason=authenticator_not_supported_prf_hmac hr=" + std::to_wstring(static_cast<int>(hrCreatePasskey)) + L" request_id=" + requestId });
                 co_return;
             }
 

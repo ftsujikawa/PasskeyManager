@@ -4,6 +4,7 @@
 #include "src/RequestId.h"
 #include "src/SyncClient.h"
 #include "src/SyncSnapshotStore.h"
+#include "src/VaultCrypto.h"
 #include "src/VaultSerialization.h"
 #include <CorError.h>
 #include <wil/safecast.h>
@@ -24,6 +25,7 @@ namespace
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
+    constexpr wchar_t kVaultRecoveryCodeEnv[] = L"TSUPASSWD_VAULT_RECOVERY_CODE";
     constexpr wchar_t kDefaultSyncUserId[] = L"HappyFactoryUserId";
     constexpr size_t kAuthenticatorDataFlagsOffset = 32;
     constexpr size_t kAuthenticatorDataAttestedDataOffset = 37;
@@ -955,6 +957,8 @@ namespace winrt::PasskeyManager::implementation {
         HRESULT hr = S_OK;
         std::wstring operation = L"vault_recovery";
         std::wstring localRequestId = requestId;
+
+        DWORD webauthnApiVersion = WebAuthNGetApiVersionNumber();
         if (localRequestId.empty())
         {
             localRequestId = BuildRequestId(operation);
@@ -979,6 +983,12 @@ namespace winrt::PasskeyManager::implementation {
                         L" step=vault_schema_v1_regression_test_passed request_id=" + localRequestId + L"ℹ" });
             }
         }
+
+        UpdatePasskeyOperationStatusText(
+            winrt::hstring{
+                L"INFO: summary state=observed operation=" + operation +
+                L" step=webauthn_api_version value=" + std::to_wstring(static_cast<int>(webauthnApiVersion)) +
+                L" request_id=" + localRequestId + L"ℹ" });
 
         // populate the input structures
         WEBAUTHN_RP_ENTITY_INFORMATION rpEntity = {};
@@ -1037,16 +1047,28 @@ namespace winrt::PasskeyManager::implementation {
         webAuthNCredentialOptions.dwTimeoutMilliseconds = 180 * 1000;
         webAuthNCredentialOptions.CredentialList.cCredentials = 0;
         webAuthNCredentialOptions.CredentialList.pCredentials = nullptr;
-        webAuthNCredentialOptions.Extensions.cExtensions = 0;
-        webAuthNCredentialOptions.Extensions.pExtensions = nullptr;
+        BOOL hmacSecretExtensionValue = TRUE;
+        WEBAUTHN_EXTENSION hmacSecretExtension = {};
+        hmacSecretExtension.pwszExtensionIdentifier = WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET;
+        hmacSecretExtension.cbExtension = sizeof(BOOL);
+        hmacSecretExtension.pvExtension = &hmacSecretExtensionValue;
+        webAuthNCredentialOptions.Extensions.cExtensions = 1;
+        webAuthNCredentialOptions.Extensions.pExtensions = &hmacSecretExtension;
         webAuthNCredentialOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
         webAuthNCredentialOptions.bRequireResidentKey = FALSE;
         webAuthNCredentialOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_PREFERRED;
         webAuthNCredentialOptions.dwAttestationConveyancePreference = WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_ANY;
         webAuthNCredentialOptions.dwFlags = 0;
-        // tsupasswd_core保存先ではまず安定動作を優先し、PRF要求は行わない。
-        webAuthNCredentialOptions.bEnablePrf = false;
-        webAuthNCredentialOptions.pPRFGlobalEval = nullptr;
+        webAuthNCredentialOptions.bEnablePrf = TRUE;
+        std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> prfRawSaltBytes{
+            0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
+            0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
+        WEBAUTHN_HMAC_SECRET_SALT prfGlobalEval = {};
+        prfGlobalEval.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
+        prfGlobalEval.pbFirst = prfRawSaltBytes.data();
+        prfGlobalEval.cbSecond = 0;
+        prfGlobalEval.pbSecond = nullptr;
+        webAuthNCredentialOptions.pPRFGlobalEval = &prfGlobalEval;
 
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=running operation=" + operation + L" step=open_passkey_prompt request_id=" + localRequestId + L"ℹ" });
 
@@ -1060,11 +1082,76 @@ namespace winrt::PasskeyManager::implementation {
             &webAuthNCredentialOptions,
             &pCredentialAttestation);
 
-        std::wstring makeCredentialResult = L"INFO: summary state=observed operation=" + operation + L" step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + localRequestId + L"ℹ";
+        wchar_t makeCredHrHex[11] = {};
+        swprintf_s(makeCredHrHex, L"0x%08X", static_cast<unsigned int>(hr));
+        std::wstring makeCredentialResult =
+            L"INFO: summary state=observed operation=" + operation +
+            L" step=webauthn_make_credential_returned hr=" + std::to_wstring(static_cast<int>(hr)) +
+            L" hr_hex=" + std::wstring(makeCredHrHex) +
+            L" win32=" + std::to_wstring(static_cast<unsigned long>(HRESULT_FACILITY(hr) == FACILITY_WIN32 ? HRESULT_CODE(hr) : 0)) +
+            L" request_id=" + localRequestId + L"ℹ";
         UpdatePasskeyOperationStatusText(winrt::hstring{ makeCredentialResult });
+
+        bool attestationPrfEnabledObserved = false;
+        bool attestationPrfEnabled = false;
+        bool attestationHmacSecretEnabledObserved = false;
+        bool attestationHmacSecretEnabled = false;
+        bool attestationAaguidObserved = false;
+        std::wstring attestationAaguid;
+        std::wstring attestationProvider;
 
         if (SUCCEEDED(hr) && pCredentialAttestation)
         {
+            if (pCredentialAttestation.get()->dwVersion >= WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5)
+            {
+                attestationPrfEnabledObserved = true;
+                attestationPrfEnabled = pCredentialAttestation.get()->bPrfEnabled ? true : false;
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: summary state=observed operation=" + operation +
+                        L" step=credential_attestation_prf_enabled value=" +
+                        std::to_wstring(static_cast<int>(pCredentialAttestation.get()->bPrfEnabled)) +
+                        L" request_id=" + localRequestId + L"ℹ" });
+            }
+
+            {
+                bool found = false;
+                bool enabled = false;
+                auto const& exts = pCredentialAttestation.get()->Extensions;
+                for (DWORD i = 0; i < exts.cExtensions; i++)
+                {
+                    auto const& ext = exts.pExtensions[i];
+                    if (ext.pwszExtensionIdentifier != nullptr &&
+                        wcscmp(ext.pwszExtensionIdentifier, WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET) == 0 &&
+                        ext.cbExtension == sizeof(BOOL) &&
+                        ext.pvExtension != nullptr)
+                    {
+                        found = true;
+                        enabled = (*reinterpret_cast<BOOL*>(ext.pvExtension)) ? true : false;
+                        break;
+                    }
+                }
+                if (found)
+                {
+                    attestationHmacSecretEnabledObserved = true;
+                    attestationHmacSecretEnabled = enabled;
+                    UpdatePasskeyOperationStatusText(
+                        winrt::hstring{
+                            L"INFO: summary state=observed operation=" + operation +
+                            L" step=credential_attestation_hmac_secret_enabled value=" +
+                            std::to_wstring(static_cast<int>(enabled)) +
+                            L" request_id=" + localRequestId + L"ℹ" });
+                }
+                else
+                {
+                    UpdatePasskeyOperationStatusText(
+                        winrt::hstring{
+                            L"INFO: summary state=observed operation=" + operation +
+                            L" step=credential_attestation_hmac_secret_enabled status=unavailable request_id=" +
+                            localRequestId + L"ℹ" });
+                }
+            }
+
             std::array<BYTE, 16> observedAaguidBytes{};
             if (TryExtractAttestationAaguid(pCredentialAttestation.get(), observedAaguidBytes))
             {
@@ -1072,6 +1159,10 @@ namespace winrt::PasskeyManager::implementation {
                 std::string expectedAaguidNarrow{ c_pluginAaguidString };
                 std::wstring expectedAaguid(expectedAaguidNarrow.begin(), expectedAaguidNarrow.end());
                 std::wstring provider = (observedAaguid == expectedAaguid) ? L"tsupasswd_core" : L"other";
+
+                attestationAaguidObserved = true;
+                attestationAaguid = observedAaguid;
+                attestationProvider = provider;
 
                 UpdatePasskeyOperationStatusText(
                     winrt::hstring{
@@ -1112,24 +1203,183 @@ namespace winrt::PasskeyManager::implementation {
 
         if (SUCCEEDED(hr))
         {
-            DATA_BLOB entropy = {};
-            DATA_BLOB* pEntropy = nullptr;
-            if (pCredentialAttestation.get()->pHmacSecret != nullptr)
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (recoveryCode.empty())
             {
-                std::vector<BYTE> hmacSecretInput(
-                    pCredentialAttestation.get()->pHmacSecret->pbFirst,
-                    pCredentialAttestation.get()->pHmacSecret->pbFirst + pCredentialAttestation.get()->pHmacSecret->cbFirst);
-                RETURN_IF_FAILED(SetHMACSecret(hmacSecretInput, localRequestId));
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
-                entropy.cbData = pCredentialAttestation.get()->pHmacSecret->cbFirst;
-                entropy.pbData = pCredentialAttestation.get()->pHmacSecret->pbFirst;
-                pEntropy = &entropy;
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=failed operation=" + operation + L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE request_id=" + localRequestId + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+            }
+
+            WEBAUTHN_CLIENT_DATA assertionClientData = {};
+            assertionClientData.dwVersion = WEBAUTHN_CLIENT_DATA_CURRENT_VERSION;
+            assertionClientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
+            std::string assertionClientDataJson =
+                "{\"type\":\"webauthn.get\","
+                "\"challenge\":\"" + challenge + "\"," 
+                "\"origin\":\"https://happyfactory.dev\"," 
+                "\"crossOrigin\":false}";
+            assertionClientData.pbClientDataJSON = reinterpret_cast<BYTE*>(assertionClientDataJson.data());
+            assertionClientData.cbClientDataJSON = static_cast<DWORD>(assertionClientDataJson.size());
+
+            WEBAUTHN_HMAC_SECRET_SALT prfSalt = {};
+            prfSalt.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
+            prfSalt.pbFirst = prfRawSaltBytes.data();
+            prfSalt.cbSecond = 0;
+            prfSalt.pbSecond = nullptr;
+
+            WEBAUTHN_HMAC_SECRET_SALT_VALUES prfSaltValues = {};
+            prfSaltValues.pGlobalHmacSalt = &prfSalt;
+            prfSaltValues.cCredWithHmacSecretSaltList = 0;
+            prfSaltValues.pCredWithHmacSecretSaltList = nullptr;
+
+            WEBAUTHN_CREDENTIAL_EX allowCredential = {};
+            allowCredential.dwVersion = WEBAUTHN_CREDENTIAL_EX_CURRENT_VERSION;
+            allowCredential.cbId = pCredentialAttestation.get()->cbCredentialId;
+            allowCredential.pbId = pCredentialAttestation.get()->pbCredentialId;
+            allowCredential.pwszCredentialType = WEBAUTHN_CREDENTIAL_TYPE_PUBLIC_KEY;
+            allowCredential.dwTransports = 0;
+
+            if (allowCredential.cbId == 0 || allowCredential.pbId == nullptr)
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"WARNING: summary result=failed operation=" + operation +
+                        L" reason=allow_credential_id_missing cbId=" + std::to_wstring(static_cast<unsigned long>(allowCredential.cbId)) +
+                        L" pbId=" + std::wstring(allowCredential.pbId ? L"non_null" : L"null") +
+                        L" request_id=" + localRequestId + L"⚠" });
+                return E_INVALIDARG;
+            }
+
+            PWEBAUTHN_CREDENTIAL_EX rgAllowCredentials[] = { &allowCredential };
+            WEBAUTHN_CREDENTIAL_LIST allowList = {};
+            allowList.cCredentials = 1;
+            allowList.ppCredentials = rgAllowCredentials;
+
+            WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS getAssertionOptions = {};
+            getAssertionOptions.dwVersion = WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION;
+            getAssertionOptions.dwTimeoutMilliseconds = 180 * 1000;
+            getAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
+            getAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_PREFERRED;
+            getAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
+            getAssertionOptions.pAllowCredentialList = &allowList;
+            getAssertionOptions.pHmacSecretSaltValues = &prfSaltValues;
+
+            UpdatePasskeyOperationStatusText(
+                winrt::hstring{ L"INFO: summary state=running operation=" + operation +
+                L" step=webauthn_get_assertion_start request_id=" + localRequestId + L"ℹ" });
+
+            HRESULT getAssertionHr = S_OK;
+            unique_webauthn_assertion pAssertion = nullptr;
+            hr = WebAuthNAuthenticatorGetAssertion(
+                hWnd,
+                c_pluginRpId,
+                &assertionClientData,
+                &getAssertionOptions,
+                &pAssertion);
+            getAssertionHr = hr;
+
+            {
+                DWORD prfCbFirst = 0;
+                bool prfFirstNonNull = false;
+                if (pAssertion && pAssertion.get()->pHmacSecret)
+                {
+                    prfCbFirst = pAssertion.get()->pHmacSecret->cbFirst;
+                    prfFirstNonNull = pAssertion.get()->pHmacSecret->pbFirst != nullptr;
+                }
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"INFO: summary state=observed operation=" + operation +
+                        L" step=webauthn_get_assertion_hmac_secret "
+                        L" assertion=" + std::wstring(pAssertion ? L"non_null" : L"null") +
+                        L" hmac=" + std::wstring((pAssertion && pAssertion.get()->pHmacSecret) ? L"non_null" : L"null") +
+                        L" cbFirst=" + std::to_wstring(static_cast<unsigned long>(prfCbFirst)) +
+                        L" pbFirst=" + std::wstring(prfFirstNonNull ? L"non_null" : L"null") +
+                        L" request_id=" + localRequestId + L"ℹ" });
+            }
+
+            wchar_t getAssertHrHex[11] = {};
+            swprintf_s(getAssertHrHex, L"0x%08X", static_cast<unsigned int>(hr));
+            UpdatePasskeyOperationStatusText(
+                winrt::hstring{ L"INFO: summary state=observed operation=" + operation +
+                L" step=webauthn_get_assertion_returned hr=" + std::to_wstring(static_cast<int>(hr)) +
+                L" hr_hex=" + std::wstring(getAssertHrHex) +
+                L" win32=" + std::to_wstring(static_cast<unsigned long>(HRESULT_FACILITY(hr) == FACILITY_WIN32 ? HRESULT_CODE(hr) : 0)) +
+                L" flags=" + std::to_wstring(static_cast<unsigned long>(getAssertionOptions.dwFlags)) +
+                L" allow=" + std::to_wstring(static_cast<unsigned long>(allowList.cCredentials)) +
+                L" salt_global_cb=" + std::to_wstring(static_cast<unsigned long>(prfSaltValues.pGlobalHmacSalt ? prfSaltValues.pGlobalHmacSalt->cbFirst : 0)) +
+                L" allow_cbId=" + std::to_wstring(static_cast<unsigned long>(allowCredential.cbId)) +
+                L" allow_pbId=" + std::wstring(allowCredential.pbId ? L"non_null" : L"null") +
+                L" request_id=" + localRequestId + L"ℹ" });
+            RETURN_IF_FAILED(hr);
+
+            std::vector<uint8_t> prfSecret;
+            bool usedRegistryFallback = false;
+            if (pAssertion && pAssertion.get()->pHmacSecret != nullptr &&
+                pAssertion.get()->pHmacSecret->pbFirst != nullptr &&
+                pAssertion.get()->pHmacSecret->cbFirst > 0)
+            {
+                prfSecret.assign(
+                    pAssertion.get()->pHmacSecret->pbFirst,
+                    pAssertion.get()->pHmacSecret->pbFirst + pAssertion.get()->pHmacSecret->cbFirst);
             }
             else
             {
-                // PRF未対応時は、認証成功そのものをVault解除のゲートとして扱うフォールバックに切替える。
-                RETURN_IF_FAILED(SetHMACSecret({}, localRequestId));
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: summary state=observed operation=" + operation + L" step=prf_hmac_secret_missing fallback=non_prf request_id=" + localRequestId + L"ℹ" });
+                // Fallback path for environments where plugin GetAssertion cannot surface pHmacSecret.
+                auto protectedOpt = wil::reg::try_get_value_binary(
+                    HKEY_CURRENT_USER,
+                    c_pluginRegistryPath,
+                    c_pluginProtectedHMACSecretInput,
+                    REG_BINARY);
+                if (protectedOpt.has_value() && !protectedOpt->empty())
+                {
+                    std::vector<BYTE> plainSecret;
+                    if (UnprotectSecretForLocalUser(protectedOpt.value(), plainSecret) && !plainSecret.empty())
+                    {
+                        prfSecret.assign(plainSecret.begin(), plainSecret.end());
+                        usedRegistryFallback = true;
+                        UpdatePasskeyOperationStatusText(
+                            winrt::hstring{
+                                L"INFO: summary state=observed operation=" + operation +
+                                L" step=prf_hmac_secret_fallback source=registry_dpapi request_id=" + localRequestId + L"ℹ" });
+                    }
+                }
+            }
+
+            if (prfSecret.empty())
+            {
+                std::wstring detail =
+                    L" api_version=" + std::to_wstring(static_cast<int>(webauthnApiVersion)) +
+                    L" get_assertion_hr=" + std::to_wstring(static_cast<int>(getAssertionHr)) +
+                    L" att_prf_observed=" + std::to_wstring(static_cast<int>(attestationPrfEnabledObserved)) +
+                    L" att_prf_enabled=" + std::to_wstring(static_cast<int>(attestationPrfEnabled)) +
+                    L" att_hmac_observed=" + std::to_wstring(static_cast<int>(attestationHmacSecretEnabledObserved)) +
+                    L" att_hmac_enabled=" + std::to_wstring(static_cast<int>(attestationHmacSecretEnabled)) +
+                    L" att_aaguid_observed=" + std::to_wstring(static_cast<int>(attestationAaguidObserved)) +
+                    (attestationAaguidObserved ? (L" att_aaguid=" + attestationAaguid) : L"") +
+                    (!attestationProvider.empty() ? (L" att_provider=" + attestationProvider) : L"") +
+                    L" fallback_registry=" + std::to_wstring(static_cast<int>(usedRegistryFallback));
+
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"WARNING: summary result=failed operation=" + operation +
+                        L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator" +
+                        detail +
+                        L" request_id=" + localRequestId + L"⚠" });
+                return NTE_NOT_SUPPORTED;
+            }
+
+            RETURN_IF_FAILED(SetHMACSecret(std::vector<BYTE>(prfSecret.begin(), prfSecret.end()), localRequestId));
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
+
+            std::vector<uint8_t> recoveryBytes;
+            {
+                std::string utf8 = winrt::to_string(recoveryCode);
+                recoveryBytes.assign(utf8.begin(), utf8.end());
+            }
+            if (recoveryBytes.empty())
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=failed operation=" + operation + L" reason=recovery_code_invalid recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE request_id=" + localRequestId + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
             }
 
             std::vector<BYTE> vaultPlaintext;
@@ -1145,36 +1395,21 @@ namespace winrt::PasskeyManager::implementation {
                 }
                 else
                 {
-                    vaultPlaintext.resize(wcslen(c_dummySecretVault) * sizeof(wchar_t));
-                    memcpy(vaultPlaintext.data(), c_dummySecretVault, vaultPlaintext.size());
-                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=warning operation=" + operation + L" step=vault_schema_v1_initialize_failed fallback=legacy_dummy_secret request_id=" + localRequestId + L"⚠" });
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=failed operation=" + operation + L" reason=vault_schema_v1_initialize_failed request_id=" + localRequestId + L"⚠" });
+                    return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
                 }
             }
 
-            DATA_BLOB vaultData = {
-                .cbData = static_cast<DWORD>(vaultPlaintext.size()),
-                .pbData = vaultPlaintext.data()
-            };
-            DATA_BLOB cipherText = {};
-            RETURN_IF_WIN32_BOOL_FALSE(CryptProtectData(
-                &vaultData,
-                nullptr,
-                pEntropy,
-                nullptr,
-                nullptr,
-                CRYPTPROTECT_UI_FORBIDDEN,
-                &cipherText));
+            std::vector<uint8_t> encryptedVaultData;
+            tsupasswd::VaultCryptoError cryptoError{};
+            std::vector<uint8_t> vaultPlaintextBytes(vaultPlaintext.begin(), vaultPlaintext.end());
+            if (!tsupasswd::EncryptVaultV2(vaultPlaintextBytes, prfSecret, recoveryBytes, encryptedVaultData, cryptoError))
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=failed operation=" + operation + L" reason=vault_encrypt_failed code=" + cryptoError.Code + L" detail=" + cryptoError.Detail + L" request_id=" + localRequestId + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
 
-            // Use RAII to ensure cipherText.pbData is always freed, even on early returns
-            auto cipherTextCleanup = wil::scope_exit([&] {
-                if (cipherText.pbData)
-                {
-                    LocalFree(cipherText.pbData);
-                }
-            });
-
-            std::vector<BYTE> encryptedVaultData(cipherText.pbData, cipherText.pbData + cipherText.cbData);
-            RETURN_IF_FAILED(WriteEncryptedVaultData(encryptedVaultData));
+            RETURN_IF_FAILED(WriteEncryptedVaultData(std::vector<BYTE>(encryptedVaultData.begin(), encryptedVaultData.end())));
 
             tsupasswd::SyncSnapshotRecord snapshot{};
             snapshot.SnapshotId = GetNowIsoLikeTimestamp() + L"-local-create";
@@ -1182,7 +1417,7 @@ namespace winrt::PasskeyManager::implementation {
             snapshot.UserId = syncUserId;
             snapshot.ServerVersion = -1;
             snapshot.Source = L"local-create";
-            snapshot.CipherBytes = encryptedVaultData;
+            snapshot.CipherBytes.assign(encryptedVaultData.begin(), encryptedVaultData.end());
             auto hrSnapshot = tsupasswd::SyncSnapshotStore::Append(snapshot);
             if (FAILED(hrSnapshot))
             {
@@ -1192,7 +1427,7 @@ namespace winrt::PasskeyManager::implementation {
 
             // Best-effort self-hosted sync. Local success must not be blocked by remote sync failure.
             SyncEncryptedVaultWithRetry(
-                encryptedVaultData,
+                std::vector<BYTE>(encryptedVaultData.begin(), encryptedVaultData.end()),
                 syncUserId,
                 [this](winrt::hstring const& status)
                 {

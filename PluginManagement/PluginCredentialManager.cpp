@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "PluginCredentialManager.h"
 #include "src/RequestId.h"
+#include "src/VaultCrypto.h"
 #include "src/VaultSerialization.h"
 #include <CorError.h>
 #include <Credential.h>
@@ -18,7 +19,68 @@ namespace winrt::PasskeyManager::implementation
 {
     namespace
     {
+        constexpr wchar_t kVaultRecoveryCodeEnv[] = L"TSUPASSWD_VAULT_RECOVERY_CODE";
         constexpr wchar_t kVaultUnlockOperation[] = L"vault_unlock";
+
+        std::wstring GetEnvironmentVariableValue(wchar_t const* name)
+        {
+            DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
+            if (needed != 0)
+            {
+                std::wstring value;
+                value.resize(needed);
+                DWORD written = GetEnvironmentVariableW(name, value.data(), needed);
+                if (written != 0)
+                {
+                    value.resize(written);
+                    while (!value.empty() && value.back() == L'\0')
+                    {
+                        value.pop_back();
+                    }
+                    return value;
+                }
+            }
+
+            // Fallback for GUI/app-model launch paths where process env does not inherit
+            // latest shell variables. setx writes to HKCU\Environment.
+            HKEY hKey = nullptr;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+            {
+                return L"";
+            }
+
+            auto keyCleanup = wil::scope_exit([&]() {
+                RegCloseKey(hKey);
+            });
+
+            DWORD type = 0;
+            DWORD sizeBytes = 0;
+            LONG queryResult = RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &sizeBytes);
+            if (queryResult != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) || sizeBytes < sizeof(wchar_t))
+            {
+                return L"";
+            }
+
+            std::wstring value;
+            value.resize(sizeBytes / sizeof(wchar_t));
+            queryResult = RegQueryValueExW(
+                hKey,
+                name,
+                nullptr,
+                &type,
+                reinterpret_cast<LPBYTE>(value.data()),
+                &sizeBytes);
+            if (queryResult != ERROR_SUCCESS)
+            {
+                return L"";
+            }
+
+            while (!value.empty() && value.back() == L'\0')
+            {
+                value.pop_back();
+            }
+            return value;
+        }
 
         struct BridgeCorePasskeyItem
         {
@@ -1161,17 +1223,19 @@ namespace winrt::PasskeyManager::implementation
         clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
         // This is a dummy challenge, a real challenge may be randomly generated or
         // is received from the cloud service in case of cloud based authenticators.
-        std::string clientDataStr = "{\"challenge\":\"eyJjaGFsbGVuZ2eciOiEiY2hhbGxlbmdlIn0\"}";
+        std::string clientDataStr = "{\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"}";
         clientData.pbClientDataJSON = reinterpret_cast<PBYTE>(clientDataStr.data());
         clientData.cbClientDataJSON = static_cast<DWORD>(clientDataStr.size());
 
         PluginRegistrationManager::getInstance().ReloadRegistryValues(requestId);
-        std::vector<BYTE> hmacSecretValue = PluginRegistrationManager::getInstance().GetHMACSecret();
-        bool usePrf = !hmacSecretValue.empty();
-
+        std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> prfRawSaltBytes{
+            0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
+            0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
         WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
-        hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(hmacSecretValue.size());
-        hmacSecretSalt.pbFirst = hmacSecretValue.data();
+        hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
+        hmacSecretSalt.pbFirst = prfRawSaltBytes.data();
+        hmacSecretSalt.cbSecond = 0;
+        hmacSecretSalt.pbSecond = nullptr;
 
         WEBAUTHN_HMAC_SECRET_SALT_VALUES hmacSecretSaltValues = {};
         hmacSecretSaltValues.pGlobalHmacSalt = &hmacSecretSalt;
@@ -1181,7 +1245,8 @@ namespace winrt::PasskeyManager::implementation
         webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
         webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
         webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
-        webAuthNGetAssertionOptions.pHmacSecretSaltValues = usePrf ? &hmacSecretSaltValues : nullptr;
+        webAuthNGetAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
+        webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
 
         unique_webauthn_assertion pAssertion = nullptr;
         RETURN_IF_FAILED(WebAuthNAuthenticatorGetAssertion(
@@ -1191,19 +1256,10 @@ namespace winrt::PasskeyManager::implementation
             &webAuthNGetAssertionOptions,
             &pAssertion));
 
-        if (usePrf && pAssertion.get()->pHmacSecret == nullptr)
+        if (pAssertion.get()->pHmacSecret == nullptr)
         {
             logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
             return NTE_NOT_SUPPORTED; // The chosen authenticator does not support PRF.
-        }
-
-        DATA_BLOB entropy = {};
-        DATA_BLOB* pEntropy = nullptr;
-        if (usePrf)
-        {
-            entropy.cbData = pAssertion.get()->pHmacSecret->cbFirst;
-            entropy.pbData = pAssertion.get()->pHmacSecret->pbFirst;
-            pEntropy = &entropy;
         }
 
         std::vector<uint8_t> cipherText;
@@ -1213,48 +1269,49 @@ namespace winrt::PasskeyManager::implementation
             logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");
             return hrReadVaultData;
         }
-        DATA_BLOB cipherTextBlob = {
-            .cbData = static_cast<DWORD>(cipherText.size()),
-            .pbData = cipherText.data()
-        };
 
-        DATA_BLOB decryptedData = {};
-
-        if (!CryptUnprotectData(
-            &cipherTextBlob,
-            nullptr,
-            pEntropy,
-            nullptr,
-            nullptr,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &decryptedData))
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
         {
-            HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
-            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=decrypt_failed recovery=run_vault_recovery_and_recreate_passkey");
-            return hr;
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE");
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
         }
 
-        // scope exit for freeing the decrypted data
-        auto decryptedDataCleanup = wil::scope_exit([&] {
-            if (decryptedData.pbData)
-            {
-                LocalFree(decryptedData.pbData);
-            }
-        });
-
-        bool legacyDummyVault =
-            decryptedData.cbData == wcslen(c_dummySecretVault) * sizeof(wchar_t) &&
-            memcmp(decryptedData.pbData, c_dummySecretVault, decryptedData.cbData) == 0;
-        if (legacyDummyVault)
+        std::vector<uint8_t> recoveryBytes;
         {
-            return S_OK;
+            std::string utf8 = winrt::to_string(recoveryCode);
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        if (recoveryBytes.empty())
+        {
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=recovery_code_invalid recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::vector<uint8_t> prfSecret(
+            pAssertion.get()->pHmacSecret->pbFirst,
+            pAssertion.get()->pHmacSecret->pbFirst + pAssertion.get()->pHmacSecret->cbFirst);
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV2(cipherText, prfSecret, recoveryBytes, plainBytes, cryptoError))
+        {
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=vault_decrypt_failed code=" + cryptoError.Code +
+                L" detail=" + cryptoError.Detail +
+                L" recovery=recreate_vault_passkey_then_retry");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
         tsupasswd::VaultDocumentV1 vaultDoc{};
         std::wstring parseError;
         if (!tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(
-            decryptedData.pbData,
-            decryptedData.cbData,
+            plainBytes.data(),
+            plainBytes.size(),
             vaultDoc,
             parseError))
         {

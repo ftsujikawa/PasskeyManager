@@ -209,6 +209,16 @@ inline _Success_(return == S_OK) HRESULT WINAPI WebAuthNEncodeMakeCredentialResp
     return s_fn(pCredentialAttestation, pcbResp, ppbResp);
 }
 
+inline _Success_(return == S_OK) HRESULT WINAPI EXPERIMENTAL_WebAuthNEncodeMakeCredentialResponse(
+    _In_ PCWEBAUTHN_CREDENTIAL_ATTESTATION pCredentialAttestation,
+    _Out_ DWORD* pcbResp,
+    _Outptr_result_buffer_maybenull_(*pcbResp) BYTE** ppbResp)
+{
+    static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), EXPERIMENTAL_WebAuthNEncodeMakeCredentialResponse);
+    RETURN_HR_IF_NULL(E_NOTIMPL, s_fn);
+    return s_fn(pCredentialAttestation, pcbResp, ppbResp);
+}
+
 // This decoding API converts CBOR-encoded CTAP get assertion requests into structured format.
 // Enables plugins to process authentication operations without implementing custom CBOR parsing logic.
 inline _Success_(return == S_OK) HRESULT WINAPI WebAuthNDecodeGetAssertionRequest(
@@ -229,6 +239,24 @@ inline void WINAPI WebAuthNFreeDecodedGetAssertionRequest(
     s_fn(pGetAssertionRequest);
 }
 
+inline _Success_(return == S_OK) HRESULT WINAPI EXPERIMENTAL_WebAuthNDecodeGetAssertionRequest(
+    _In_ DWORD cbEncoded,
+    _In_reads_bytes_(cbEncoded) const BYTE* pbEncoded,
+    _Outptr_ EXPERIMENTAL_PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST* ppGetAssertionRequest)
+{
+    static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), EXPERIMENTAL_WebAuthNDecodeGetAssertionRequest);
+    RETURN_HR_IF_NULL(E_NOTIMPL, s_fn);
+    return s_fn(cbEncoded, pbEncoded, ppGetAssertionRequest);
+}
+
+inline void WINAPI EXPERIMENTAL_WebAuthNFreeDecodedGetAssertionRequest(
+    _In_opt_ EXPERIMENTAL_PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST pGetAssertionRequest)
+{
+    static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), EXPERIMENTAL_WebAuthNFreeDecodedGetAssertionRequest);
+    THROW_HR_IF_NULL(E_NOTIMPL, s_fn);
+    s_fn(pGetAssertionRequest);
+}
+
 // This encoding API converts structured get assertion responses into CBOR format.
 // Ensures plugins return properly formatted CTAP responses that comply with FIDO Alliance specifications.
 // Refer: https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#message-encoding.
@@ -238,6 +266,16 @@ inline _Success_(return == S_OK) HRESULT WINAPI WebAuthNEncodeGetAssertionRespon
     _Outptr_result_buffer_maybenull_(*pcbResp) BYTE** ppbResp)
 {
     static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), WebAuthNEncodeGetAssertionResponse);
+    RETURN_HR_IF_NULL(E_NOTIMPL, s_fn);
+    return s_fn(pGetAssertionResponse, pcbResp, ppbResp);
+}
+
+inline _Success_(return == S_OK) HRESULT WINAPI EXPERIMENTAL_WebAuthNEncodeGetAssertionResponse(
+    _In_ EXPERIMENTAL_PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE pGetAssertionResponse,
+    _Out_ DWORD* pcbResp,
+    _Outptr_result_buffer_maybenull_(*pcbResp) BYTE** ppbResp)
+{
+    static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), EXPERIMENTAL_WebAuthNEncodeGetAssertionResponse);
     RETURN_HR_IF_NULL(E_NOTIMPL, s_fn);
     return s_fn(pGetAssertionResponse, pcbResp, ppbResp);
 }
@@ -306,6 +344,16 @@ inline void WINAPI WebAuthNPluginAuthenticatorFreeCredentialDetailsArray(
 //
 // webauthn.h API wrappers
 //
+
+inline DWORD WINAPI WebAuthNGetApiVersionNumber()
+{
+    static auto s_fn = GetProcAddressByFunctionDeclaration(GetWebAuthnDll(), WebAuthNGetApiVersionNumber);
+    if (!s_fn)
+    {
+        return 0;
+    }
+    return s_fn();
+}
 
 inline HRESULT WINAPI WebAuthNGetPlatformCredentialList(
     _In_    PCWEBAUTHN_GET_CREDENTIALS_OPTIONS                  pGetCredentialsOptions,

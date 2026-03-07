@@ -32,14 +32,72 @@ namespace winrt
 namespace winrt::PasskeyManager::implementation
 {
 
+static void PersistAppComMarker(DWORD value) noexcept
+{
+    wchar_t tempPath[MAX_PATH]{};
+    DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+    if (tempLen > 0 && tempLen < std::size(tempPath))
+    {
+        std::wstring filePath(tempPath);
+        filePath += L"tsupasswd_core_app_marker.log";
+        HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hFile != INVALID_HANDLE_VALUE)
+        {
+            wchar_t line[64]{};
+            const int cch = swprintf_s(line, L"0x%08X\r\n", value);
+            if (cch > 0)
+            {
+                DWORD cb = 0;
+                (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
+            }
+            (void)CloseHandle(hFile);
+        }
+    }
+
+    wil::unique_hkey hKey;
+    if (RegCreateKeyEx(
+        HKEY_CURRENT_USER,
+        L"Software\\HappyFactory\\PasskeyManager",
+        0,
+        nullptr,
+        REG_OPTION_NON_VOLATILE,
+        KEY_WRITE,
+        nullptr,
+        &hKey,
+        nullptr) != ERROR_SUCCESS)
+    {
+        return;
+    }
+
+    (void)RegSetValueEx(
+        hKey.get(),
+        L"AppComMarker",
+        0,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&value),
+        sizeof(value));
+}
+
 void App::RegisterPluginClassFactory()
 {
-    winrt::check_hresult(::CoRegisterClassObject(
+    // Ensure COM initialized on the calling thread before registering class objects.
+    const HRESULT hrCoInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (hrCoInit != RPC_E_CHANGED_MODE)
+    {
+        winrt::check_hresult(hrCoInit);
+    }
+
+    PersistAppComMarker(0xAC0C0001);
+    winrt::com_ptr<App> app;
+    app.copy_from(this);
+    const HRESULT hrReg = ::CoRegisterClassObject(
         happyfactoryplugin_guid,
-        make<HappyFactoryPluginFactory>(m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent).get(),
+        make<HappyFactoryPluginFactory>(std::move(app), m_hPluginOpCompletedEvent, m_hAppReadyForPluginOpEvent, m_hPluginCancelOperationEvent).get(),
         CLSCTX_LOCAL_SERVER,
         REGCLS_MULTIPLEUSE,
-        &m_registration));
+        &m_registration);
+    PersistAppComMarker(SUCCEEDED(hrReg) ? 0xAC0C0002 : 0xAC0C0003);
+    winrt::check_hresult(hrReg);
 }
 
 // To learn more about WinUI, the WinUI project structure,
@@ -59,6 +117,7 @@ App::App() :
     m_hWindowReady(nullptr),
     m_pluginOperationStatus({})
 {
+    s_instance = this;
     InitializeComponent();
 #if defined _DEBUG && !defined DISABLE_XAML_GENERATED_BREAK_ON_UNHANDLED_EXCEPTION
     UnhandledException([this](IInspectable const&, UnhandledExceptionEventArgs const& e)
@@ -74,6 +133,7 @@ App::App() :
 
 App::App(PWSTR args) : m_args(args)
 {
+    s_instance = this;
     InitializeComponent();
 #if defined _DEBUG && !defined DISABLE_XAML_GENERATED_BREAK_ON_UNHANDLED_EXCEPTION
     UnhandledException([this](IInspectable const&, UnhandledExceptionEventArgs const& e)
@@ -143,9 +203,11 @@ void App::CloseOrHideWindow()
 
 void App::OnLaunched(LaunchActivatedEventArgs const&)
 {
+    PersistAppComMarker(0xAC0C1000);
     std::wstring argsString{ m_args };
     if (argsString.find(L"-PluginActivated") != std::wstring::npos)
     {
+        PersistAppComMarker(0xAC0C1100);
         // Ensure registration details are up-to-date even when the app is launched only by WebAuthN plugin activation.
         // Without this, supported RP ID changes (e.g., passkeys.guru) may not be reflected until interactive launch.
         auto& registrationManager = PluginRegistrationManager::getInstance();
@@ -166,6 +228,7 @@ void App::OnLaunched(LaunchActivatedEventArgs const&)
     }
     else
     {
+        PersistAppComMarker(0xAC0C1200);
         // Interactive Mode: The user is launching the app directly.
         PluginCredentialManager::getInstance();
         m_window = make<MainWindow>();
@@ -173,6 +236,24 @@ void App::OnLaunched(LaunchActivatedEventArgs const&)
         Frame rootFrame = CreateRootFrame();
         rootFrame.Navigate(xaml_typename<PasskeyManager::MainPage>(), box_value(m_args));
         m_window.Activate();
+
+        // Ensure the COM local server is also registered in interactive mode so browsers can activate
+        // the plugin without relying on a -PluginActivated relaunch.
+        RegisterPluginClassFactory();
+        static std::once_flag s_pluginLoopStarted;
+        std::call_once(s_pluginLoopStarted, [this]
+        {
+            std::thread([this]
+            {
+                // WebAuthn can call into the COM server on arbitrary threads; ensure COM is initialized.
+                const HRESULT hrCoInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+                if (hrCoInit != RPC_E_CHANGED_MODE)
+                {
+                    (void)hrCoInit;
+                }
+                HandlePluginOperations();
+            }).detach();
+        });
     }
 }
 

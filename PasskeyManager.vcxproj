@@ -182,6 +182,7 @@
     <ClInclude Include="src\SyncSnapshotStore.h" />
     <ClInclude Include="src\SyncHistoryStore.h" />
     <ClInclude Include="src\SyncClient.h" />
+    <ClInclude Include="src\VaultCrypto.h" />
     <ClInclude Include="src\VaultModel.h" />
     <ClInclude Include="src\VaultSerialization.h" />
     <ClInclude Include="src\DiagnosticsConfig.h" />
@@ -235,6 +236,7 @@
     <ClCompile Include="src\SyncSnapshotStore.cpp" />
     <ClCompile Include="src\SyncHistoryStore.cpp" />
     <ClCompile Include="src\SyncClient.cpp" />
+    <ClCompile Include="src\VaultCrypto.cpp" />
     <ClCompile Include="src\VaultSerialization.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -576,12 +578,12 @@
     <Error Condition="!Exists('packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.props'))" />
     <Error Condition="!Exists('packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.targets'))" />
   </Target>
-  <Target Name="EnsureExternalHeaders" BeforeTargets="PrepareForBuild">
-    <DownloadFile Condition="!Exists('$(ProjectDir)\include\cbor-lite\codec-fp.h')" DestinationFolder="$(ProjectDir)\include\cbor-lite" SourceUrl="https://bitbucket.org/isode/cbor-lite/raw/master/include/cbor-lite/codec-fp.h" />
-    <DownloadFile Condition="!Exists('$(ProjectDir)\include\cbor-lite\codec.h')" DestinationFolder="$(ProjectDir)\include\cbor-lite" SourceUrl="https://bitbucket.org/isode/cbor-lite/raw/master/include/cbor-lite/codec.h" />
+  <Target Name="EnsureExternalHeaders" BeforeTargets="PrepareForBuild" Condition="false">
+    <DownloadFile Condition="false" DestinationFolder="$(ProjectDir)\include\cbor-lite" SourceUrl="https://bitbucket.org/isode/cbor-lite/raw/master/include/cbor-lite/codec-fp.h" />
+    <DownloadFile Condition="false" DestinationFolder="$(ProjectDir)\include\cbor-lite" SourceUrl="https://bitbucket.org/isode/cbor-lite/raw/master/include/cbor-lite/codec.h" />
   </Target>
-  <Target Name="CleanExternalHeaders" AfterTargets="CoreClean">
-    <Delete Files="$(ProjectDir)\include\cbor-lite\codec-fp.h" />
-    <Delete Files="$(ProjectDir)\include\cbor-lite\codec.h" />
+  <Target Name="CleanExternalHeaders" AfterTargets="CoreClean" Condition="false">
+    <Delete Condition="false" Files="$(ProjectDir)\include\cbor-lite\codec-fp.h" />
+    <Delete Condition="false" Files="$(ProjectDir)\include\cbor-lite\codec.h" />
   </Target>
 </Project>

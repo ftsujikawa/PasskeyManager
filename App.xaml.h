@@ -50,6 +50,11 @@ namespace winrt::PasskeyManager::implementation
         App();
         App(PWSTR args);
 
+        static App* CurrentApp() noexcept
+        {
+            return s_instance;
+        }
+
         wil::shared_event m_hAppReadyForPluginOpEvent { wil::EventOptions::ManualReset };
         wil::shared_event m_hPluginOpCompletedEvent{ wil::EventOptions::ManualReset };
         wil::unique_com_class_object_cookie m_registration;
@@ -85,11 +90,19 @@ namespace winrt::PasskeyManager::implementation
 
         bool GetSilentMode()
         {
+            std::lock_guard<std::mutex> lock(m_pluginOperationOptionsMutex);
             return m_pluginOperationOptions.silentMode;
+        }
+
+        HWND GetPluginOperationHwnd()
+        {
+            std::lock_guard<std::mutex> lock(m_pluginOperationOptionsMutex);
+            return m_pluginOperationOptions.hWnd;
         }
 
         GUID GetPluginTransactionId()
         {
+            std::lock_guard<std::mutex> lock(m_pluginOperationOptionsMutex);
             return m_pluginOperationOptions.transactionId;
         }
 
@@ -107,5 +120,8 @@ namespace winrt::PasskeyManager::implementation
         hstring m_args;
         std::mutex m_pluginOperationOptionsMutex;
         _Guarded_by_(m_pluginOperationOptionsMutex) PluginOpertaionOptions m_pluginOperationOptions;
+
+    private:
+        inline static App* s_instance = nullptr;
     };
 }

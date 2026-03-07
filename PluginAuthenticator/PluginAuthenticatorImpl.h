@@ -15,6 +15,8 @@ static constexpr wchar_t happyfactoryplugin_key_domain[] = L"happyfactory/";
 
 namespace winrt::PasskeyManager::implementation
 {
+    struct App;
+
     enum class PluginOperationType
     {
         MakeCredential = 0,
@@ -39,14 +41,17 @@ namespace winrt::PasskeyManager::implementation
         wil::shared_event m_hPluginOpCompletedEvent;
         wil::shared_event m_hAppReadyForPluginOpEvent;
         wil::shared_event m_hPluginCancelOperationEvent;
+        winrt::com_ptr<winrt::PasskeyManager::implementation::App> m_app;
         HappyFactoryPlugin() = delete;
         // Contructor that takes in the event that set hPluginOpCompletedEvent
-        HappyFactoryPlugin(wil::shared_event hPluginOpCompletedEvent,
+        HappyFactoryPlugin(winrt::com_ptr<winrt::PasskeyManager::implementation::App> app,
+            wil::shared_event hPluginOpCompletedEvent,
             wil::shared_event hAppReadyForPluginOpEvent,
             wil::shared_event hPluginUserCancelEvent) :
             m_hPluginOpCompletedEvent(hPluginOpCompletedEvent),
             m_hAppReadyForPluginOpEvent(hAppReadyForPluginOpEvent),
-            m_hPluginCancelOperationEvent(hPluginUserCancelEvent)
+            m_hPluginCancelOperationEvent(hPluginUserCancelEvent),
+            m_app(std::move(app))
         {
         }
     };
@@ -55,13 +60,16 @@ namespace winrt::PasskeyManager::implementation
     {
         HRESULT __stdcall CreateInstance(::IUnknown* outer, GUID const& iid, void** result) noexcept;
         HRESULT __stdcall LockServer(BOOL) noexcept;
+        winrt::com_ptr<winrt::PasskeyManager::implementation::App> m_app;
         wil::shared_event m_hPluginOpCompletedEvent;
         wil::shared_event m_hAppReadyForPluginOpEvent;
         wil::shared_event m_hPluginCancelOperationEvent;
         HappyFactoryPluginFactory() = delete;
-        HappyFactoryPluginFactory(wil::shared_event hPluginOpCompletedEvent,
+        HappyFactoryPluginFactory(winrt::com_ptr<winrt::PasskeyManager::implementation::App> app,
+            wil::shared_event hPluginOpCompletedEvent,
             wil::shared_event hAppReadyForPluginOpEvent,
             wil::shared_event hPluginUserCancelEvent) :
+            m_app(std::move(app)),
             m_hPluginOpCompletedEvent(hPluginOpCompletedEvent),
             m_hAppReadyForPluginOpEvent(hAppReadyForPluginOpEvent),
             m_hPluginCancelOperationEvent(hPluginUserCancelEvent)

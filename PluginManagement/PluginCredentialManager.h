@@ -161,6 +161,7 @@ namespace winrt::PasskeyManager::implementation
         HRESULT SetVaultUnlockMethod(VaultUnlockMethod method);
         VaultUnlockMethod GetVaultUnlockMethod();
         HRESULT UnlockCredentialVaultWithPasskey(HWND hwnd);
+        HRESULT ExportDecryptedVaultJsonWithPasskey(HWND hwnd, std::wstring& outJson, std::wstring const& requestId = L"");
     private:
         PluginCredentialManager();
         ~PluginCredentialManager();

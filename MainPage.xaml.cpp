@@ -1936,6 +1936,42 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::showSyncedVaultButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto strongThis = get_strong();
+        auto weakThis = get_weak();
+        std::wstring operation = L"show_synced_vault";
+        std::wstring requestId = BuildRequestId(operation);
+        showSyncedVaultButton().IsEnabled(false);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
+
+        com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+        HWND hwnd = curApp->GetNativeWindowHandle();
+
+        co_await winrt::resume_background();
+        std::wstring outJson;
+        HRESULT hr = PluginCredentialManager::getInstance().ExportDecryptedVaultJsonWithPasskey(hwnd, outJson, requestId);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->showSyncedVaultButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                self->syncedVaultTextBox().Text(winrt::hstring{ outJson });
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId });
+            }
+        }
+
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::unregisterPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         std::wstring operation = L"unregister_plugin";

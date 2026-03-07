@@ -1326,4 +1326,137 @@ namespace winrt::PasskeyManager::implementation
         return S_OK;
     }
     CATCH_RETURN()
+
+    HRESULT PluginCredentialManager::ExportDecryptedVaultJsonWithPasskey(HWND hwnd, std::wstring& outJson, std::wstring const& requestId) try
+    {
+        std::wstring operation = L"export_decrypted_vault_json";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(operation);
+        }
+
+        auto logWarningWithRequestId = [&](std::wstring message)
+        {
+            if (message.find(L" request_id=") == std::wstring::npos)
+            {
+                message += L" request_id=" + localRequestId;
+            }
+            LogVaultUnlockWarning(message);
+        };
+
+        outJson.clear();
+
+        WEBAUTHN_CLIENT_DATA clientData = {};
+        clientData.dwVersion = WEBAUTHN_CLIENT_DATA_CURRENT_VERSION;
+        clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
+        std::string clientDataStr = "{\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"}";
+        clientData.pbClientDataJSON = reinterpret_cast<PBYTE>(clientDataStr.data());
+        clientData.cbClientDataJSON = static_cast<DWORD>(clientDataStr.size());
+
+        PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+        std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> prfRawSaltBytes{
+            0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
+            0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
+
+        WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
+        hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
+        hmacSecretSalt.pbFirst = prfRawSaltBytes.data();
+        hmacSecretSalt.cbSecond = 0;
+        hmacSecretSalt.pbSecond = nullptr;
+
+        WEBAUTHN_HMAC_SECRET_SALT_VALUES hmacSecretSaltValues = {};
+        hmacSecretSaltValues.pGlobalHmacSalt = &hmacSecretSalt;
+
+        WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS webAuthNGetAssertionOptions = {};
+        webAuthNGetAssertionOptions.dwVersion = WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION;
+        webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
+        webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
+        webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
+        webAuthNGetAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
+        webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
+
+        unique_webauthn_assertion pAssertion = nullptr;
+        RETURN_IF_FAILED(WebAuthNAuthenticatorGetAssertion(
+            hwnd,
+            c_pluginRpId,
+            &clientData,
+            &webAuthNGetAssertionOptions,
+            &pAssertion));
+
+        if (pAssertion.get()->pHmacSecret == nullptr)
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
+            return NTE_NOT_SUPPORTED;
+        }
+
+        std::vector<uint8_t> cipherText;
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, localRequestId);
+        if (FAILED(hrReadVaultData))
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");
+            return hrReadVaultData;
+        }
+
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE");
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        }
+
+        std::vector<uint8_t> recoveryBytes;
+        {
+            std::string utf8 = winrt::to_string(recoveryCode);
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        if (recoveryBytes.empty())
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=recovery_code_invalid recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::vector<uint8_t> prfSecret(
+            pAssertion.get()->pHmacSecret->pbFirst,
+            pAssertion.get()->pHmacSecret->pbFirst + pAssertion.get()->pHmacSecret->cbFirst);
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV2(cipherText, prfSecret, recoveryBytes, plainBytes, cryptoError))
+        {
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=vault_decrypt_failed code=" + cryptoError.Code +
+                L" detail=" + cryptoError.Detail +
+                L" recovery=recreate_vault_passkey_then_retry");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::wstring parseError;
+        if (!tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(
+            plainBytes.data(),
+            plainBytes.size(),
+            vaultDoc,
+            parseError))
+        {
+            logWarningWithRequestId(
+                L"sync result=failed operation=" + operation +
+                L" reason=vault_integrity_check_failed detail=vault_schema_v1_parse_failed parse_error=" +
+                parseError +
+                L" recovery=recreate_vault_passkey_then_retry");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::wstring json;
+        if (!tsupasswd::SerializeVaultDocumentV1(vaultDoc, json))
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=vault_json_serialize_failed recovery=retry");
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        outJson = std::move(json);
+        return S_OK;
+    }
+    CATCH_RETURN()
 }

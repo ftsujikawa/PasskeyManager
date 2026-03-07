@@ -152,6 +152,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <StackPanel
@@ -328,6 +329,10 @@
                                 x:Name="restoreSyncSnapshotButton"
                                 Click="restoreSyncSnapshotButton_Click"
                                 Content="Restore Snapshot" />
+                            <Button
+                                x:Name="showSyncedVaultButton"
+                                Click="showSyncedVaultButton_Click"
+                                Content="Show Synced Vault" />
                         </StackPanel>
                     </Grid>
 
@@ -345,6 +350,18 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="How to (2 devices / profiles): 1) Set Sync Base URL/Token/User ID + Vault Recovery Code on both devices. 2) On device A, Create Vault Passkey then Resync Now. 3) On device B, Clear Local Vault then Resync Now (auto restore_snapshot)."
                         TextWrapping="WrapWholeWords" />
+
+                    <TextBox
+                        x:Name="syncedVaultTextBox"
+                        Grid.Row="4"
+                        Margin="0,8,0,0"
+                        AcceptsReturn="True"
+                        FontFamily="Cascadia Code"
+                        FontSize="12"
+                        IsReadOnly="True"
+                        PlaceholderText="Synced Vault (decrypted) will appear here"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        TextWrapping="Wrap" />
                 </Grid>
             </Grid>
 

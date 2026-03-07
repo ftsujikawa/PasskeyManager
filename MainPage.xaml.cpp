@@ -779,6 +779,7 @@ namespace winrt::PasskeyManager::implementation
             if (SUCCEEDED(hr))
             {
                 self->ReloadSnapshotCandidates();
+                self->UpdateCredentialList();
             }
             else
             {
@@ -1855,6 +1856,8 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+                self->ReloadSnapshotCandidates();
+                self->UpdateCredentialList();
             }
             else
             {

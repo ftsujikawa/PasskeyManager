@@ -1361,15 +1361,16 @@ namespace winrt::PasskeyManager::implementation {
 
                 UpdatePasskeyOperationStatusText(
                     winrt::hstring{
-                        L"WARNING: summary result=failed operation=" + operation +
-                        L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator" +
+                        L"INFO: sync result=warning operation=" + operation +
+                        L" reason=prf_hmac_secret_missing_but_continuing_for_v3" +
                         detail +
-                        L" request_id=" + localRequestId + L"⚠" });
-                return NTE_NOT_SUPPORTED;
+                        L" request_id=" + localRequestId + L"ℹ" });
             }
-
-            RETURN_IF_FAILED(SetHMACSecret(std::vector<BYTE>(prfSecret.begin(), prfSecret.end()), localRequestId));
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
+            else
+            {
+                RETURN_IF_FAILED(SetHMACSecret(std::vector<BYTE>(prfSecret.begin(), prfSecret.end()), localRequestId));
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" step=prf_hmac_secret_stored request_id=" + localRequestId + L"✅" });
+            }
 
             std::vector<uint8_t> recoveryBytes;
             {

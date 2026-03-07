@@ -1019,7 +1019,6 @@ namespace winrt::PasskeyManager::implementation
 
     void PluginCredentialManager::GetLocalCredsByRpIdAndAllowList(PCWSTR rpId, PWEBAUTHN_CREDENTIAL_EX* ppCredentialList, DWORD pcCredentials, std::vector<const WEBAUTHN_CREDENTIAL_DETAILS *>& matchingCredentials)
     {
-        std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
         auto rpIdsEquivalent = [](PCWSTR left, PCWSTR right) -> bool
         {
             if (left == nullptr || right == nullptr)
@@ -1069,28 +1068,226 @@ namespace winrt::PasskeyManager::implementation
             return passwordlessAlias;
         };
 
-        for (const auto& mapItem : m_pluginLocalCredentialMetadataMap)
+        auto collectFromLocal = [&]()
         {
-            auto& cred = mapItem.second;
-            if (rpIdsEquivalent(cred->pRpInformation->pwszId, rpId))
+            for (const auto& mapItem : m_pluginLocalCredentialMetadataMap)
             {
-                if (pcCredentials > 0)
+                auto& cred = mapItem.second;
+                if (rpIdsEquivalent(cred->pRpInformation->pwszId, rpId))
                 {
-                    for (DWORD i = 0; i < pcCredentials; i++)
+                    if (pcCredentials > 0)
                     {
-                        if (cred->cbCredentialID == ppCredentialList[i]->cbId &&
-                            memcmp(cred->pbCredentialID, ppCredentialList[i]->pbId, cred->cbCredentialID) == 0)
+                        for (DWORD i = 0; i < pcCredentials; i++)
                         {
-                            matchingCredentials.push_back(cred.get());
-                            break;
+                            if (cred->cbCredentialID == ppCredentialList[i]->cbId &&
+                                memcmp(cred->pbCredentialID, ppCredentialList[i]->pbId, cred->cbCredentialID) == 0)
+                            {
+                                matchingCredentials.push_back(cred.get());
+                                break;
+                            }
                         }
                     }
-                }
-                else
-                {
-                    matchingCredentials.push_back(cred.get());
+                    else
+                    {
+                        matchingCredentials.push_back(cred.get());
+                    }
                 }
             }
+        };
+
+        {
+            std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
+            collectFromLocal();
+        }
+
+        if (!matchingCredentials.empty())
+        {
+            return;
+        }
+
+        struct CachedCredentialHydrationItem
+        {
+            std::vector<BYTE> credentialId;
+            std::vector<BYTE> userId;
+            std::wstring userName;
+            std::wstring userDisplayName;
+            std::wstring rpId;
+            std::wstring rpName;
+        };
+
+        std::vector<CachedCredentialHydrationItem> hydrationItems;
+        {
+            std::lock_guard<std::mutex> cacheLock(m_pluginCachedCredentialsOperationMutex);
+            hydrationItems.reserve(m_pluginCachedCredentialMetadataMap.size());
+            for (const auto& [cachedCredentialId, cachedCredential] : m_pluginCachedCredentialMetadataMap)
+            {
+                if (!cachedCredential ||
+                    cachedCredential->cbCredentialId == 0 || cachedCredential->pbCredentialId == nullptr ||
+                    cachedCredential->cbUserId == 0 || cachedCredential->pbUserId == nullptr ||
+                    cachedCredential->pwszUserName == nullptr || cachedCredential->pwszUserDisplayName == nullptr ||
+                    cachedCredential->pwszRpId == nullptr || cachedCredential->pwszRpName == nullptr ||
+                    !rpIdsEquivalent(cachedCredential->pwszRpId, rpId))
+                {
+                    continue;
+                }
+
+                CachedCredentialHydrationItem item;
+                item.credentialId = cachedCredentialId;
+                item.userId.assign(
+                    cachedCredential->pbUserId,
+                    cachedCredential->pbUserId + cachedCredential->cbUserId);
+                item.userName = cachedCredential->pwszUserName;
+                item.userDisplayName = cachedCredential->pwszUserDisplayName;
+                item.rpId = cachedCredential->pwszRpId;
+                item.rpName = cachedCredential->pwszRpName;
+                hydrationItems.push_back(std::move(item));
+            }
+        }
+
+        bool hydratedLocalAdded = false;
+        if (!hydrationItems.empty())
+        {
+            auto duplicateWStringBuffer = [](std::wstring const& src) -> PWSTR
+            {
+                const size_t charCount = src.size() + 1;
+                BYTE* rawBuffer = new (std::nothrow) BYTE[charCount * sizeof(WCHAR)];
+                if (rawBuffer == nullptr)
+                {
+                    return nullptr;
+                }
+
+                wchar_t* wchars = reinterpret_cast<wchar_t*>(rawBuffer);
+                memcpy_s(wchars, charCount * sizeof(WCHAR), src.c_str(), src.size() * sizeof(WCHAR));
+                wchars[src.size()] = L'\0';
+                return reinterpret_cast<PWSTR>(rawBuffer);
+            };
+
+            std::lock_guard<std::mutex> localLock(m_pluginLocalCredentialsOperationMutex);
+            for (const auto& item : hydrationItems)
+            {
+                if (item.credentialId.empty() || m_pluginLocalCredentialMetadataMap.find(item.credentialId) != m_pluginLocalCredentialMetadataMap.end())
+                {
+                    continue;
+                }
+
+                if (item.credentialId.size() > static_cast<size_t>(MAXDWORD) ||
+                    item.userId.size() > static_cast<size_t>(MAXDWORD))
+                {
+                    continue;
+                }
+
+                unique_credential_details hydratedCredential(new WEBAUTHN_CREDENTIAL_DETAILS{});
+                if (!hydratedCredential)
+                {
+                    continue;
+                }
+
+                auto* userInfo = new (std::nothrow) WEBAUTHN_USER_ENTITY_INFORMATION{};
+                if (userInfo == nullptr)
+                {
+                    continue;
+                }
+
+                auto* rpInfo = new (std::nothrow) WEBAUTHN_RP_ENTITY_INFORMATION{};
+                if (rpInfo == nullptr)
+                {
+                    delete userInfo;
+                    continue;
+                }
+
+                const size_t credentialIdByteCount = item.credentialId.size();
+                if (credentialIdByteCount == 0 || credentialIdByteCount > static_cast<size_t>(MAXDWORD))
+                {
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+
+                const DWORD credentialIdSize = static_cast<DWORD>(credentialIdByteCount);
+                if (credentialIdSize == 0)
+                {
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+
+                BYTE* credentialIdBuffer = new (std::nothrow) BYTE[credentialIdSize];
+                if (credentialIdBuffer == nullptr)
+                {
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+                hydratedCredential->pbCredentialID = credentialIdBuffer;
+                hydratedCredential->cbCredentialID = credentialIdSize;
+                memcpy_s(
+                    hydratedCredential->pbCredentialID,
+                    hydratedCredential->cbCredentialID,
+                    item.credentialId.data(),
+                    credentialIdSize);
+
+                userInfo->cbId = static_cast<DWORD>(item.userId.size());
+                userInfo->pbId = new (std::nothrow) BYTE[userInfo->cbId];
+                if (userInfo->pbId == nullptr)
+                {
+                    delete[] hydratedCredential->pbCredentialID;
+                    hydratedCredential->pbCredentialID = nullptr;
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+                memcpy_s(userInfo->pbId, userInfo->cbId, item.userId.data(), item.userId.size());
+
+                userInfo->pwszName = duplicateWStringBuffer(item.userName);
+                userInfo->pwszDisplayName = duplicateWStringBuffer(item.userDisplayName);
+                rpInfo->pwszId = duplicateWStringBuffer(item.rpId);
+                rpInfo->pwszName = duplicateWStringBuffer(item.rpName);
+                if (userInfo->pwszName == nullptr ||
+                    userInfo->pwszDisplayName == nullptr ||
+                    rpInfo->pwszId == nullptr ||
+                    rpInfo->pwszName == nullptr)
+                {
+                    if (userInfo->pwszName != nullptr)
+                    {
+                        delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(userInfo->pwszName));
+                        userInfo->pwszName = nullptr;
+                    }
+                    if (userInfo->pwszDisplayName != nullptr)
+                    {
+                        delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(userInfo->pwszDisplayName));
+                        userInfo->pwszDisplayName = nullptr;
+                    }
+                    if (rpInfo->pwszId != nullptr)
+                    {
+                        delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(rpInfo->pwszId));
+                        rpInfo->pwszId = nullptr;
+                    }
+                    if (rpInfo->pwszName != nullptr)
+                    {
+                        delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(rpInfo->pwszName));
+                        rpInfo->pwszName = nullptr;
+                    }
+                    delete[] userInfo->pbId;
+                    userInfo->pbId = nullptr;
+                    delete userInfo;
+                    delete rpInfo;
+                    delete[] hydratedCredential->pbCredentialID;
+                    hydratedCredential->pbCredentialID = nullptr;
+                    continue;
+                }
+
+                hydratedCredential->pUserInformation = userInfo;
+                hydratedCredential->pRpInformation = rpInfo;
+                m_pluginLocalCredentialMetadataMap.emplace(item.credentialId, std::move(hydratedCredential));
+                hydratedLocalAdded = true;
+            }
+
+            collectFromLocal();
+        }
+
+        if (hydratedLocalAdded)
+        {
+            RecreateCredentialMetadataFile();
         }
     }
 
@@ -1223,7 +1420,11 @@ namespace winrt::PasskeyManager::implementation
         clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
         // This is a dummy challenge, a real challenge may be randomly generated or
         // is received from the cloud service in case of cloud based authenticators.
-        std::string clientDataStr = "{\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"}";
+        std::string clientDataStr =
+            "{\"type\":\"webauthn.get\"," 
+            "\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"," 
+            "\"origin\":\"https://happyfactory.dev\"," 
+            "\"crossOrigin\":false}";
         clientData.pbClientDataJSON = reinterpret_cast<PBYTE>(clientDataStr.data());
         clientData.cbClientDataJSON = static_cast<DWORD>(clientDataStr.size());
 
@@ -1244,7 +1445,7 @@ namespace winrt::PasskeyManager::implementation
         webAuthNGetAssertionOptions.dwVersion = WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION;
         webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
         webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
-        webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
+        webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_PREFERRED;
         webAuthNGetAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
         webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
 
@@ -1345,48 +1546,397 @@ namespace winrt::PasskeyManager::implementation
             LogVaultUnlockWarning(message);
         };
 
+        auto logInfoWithRequestId = [&](std::wstring message)
+        {
+            if (message.find(L" request_id=") == std::wstring::npos)
+            {
+                message += L" request_id=" + localRequestId;
+            }
+            UpdateVaultStatusText(winrt::hstring{ L"INFO: " + message + L"ℹ" });
+        };
+
         outJson.clear();
 
         WEBAUTHN_CLIENT_DATA clientData = {};
         clientData.dwVersion = WEBAUTHN_CLIENT_DATA_CURRENT_VERSION;
         clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
-        std::string clientDataStr = "{\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"}";
-        clientData.pbClientDataJSON = reinterpret_cast<PBYTE>(clientDataStr.data());
-        clientData.cbClientDataJSON = static_cast<DWORD>(clientDataStr.size());
 
         PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
-        std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> prfRawSaltBytes{
-            0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
-            0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
-
-        WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
-        hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
-        hmacSecretSalt.pbFirst = prfRawSaltBytes.data();
-        hmacSecretSalt.cbSecond = 0;
-        hmacSecretSalt.pbSecond = nullptr;
-
-        WEBAUTHN_HMAC_SECRET_SALT_VALUES hmacSecretSaltValues = {};
-        hmacSecretSaltValues.pGlobalHmacSalt = &hmacSecretSalt;
-
-        WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS webAuthNGetAssertionOptions = {};
-        webAuthNGetAssertionOptions.dwVersion = WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION;
-        webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
-        webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
-        webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
-        webAuthNGetAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
-        webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
+        std::vector<uint8_t> prfSecret;
+        {
+            auto registrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+            if (!registrySecret.empty())
+            {
+                prfSecret.assign(registrySecret.begin(), registrySecret.end());
+                logInfoWithRequestId(
+                    L"sync result=info operation=" + operation +
+                    L" reason=prf_hmac_secret_fallback_used source=registry");
+            }
+        }
 
         unique_webauthn_assertion pAssertion = nullptr;
-        RETURN_IF_FAILED(WebAuthNAuthenticatorGetAssertion(
-            hwnd,
-            c_pluginRpId,
-            &clientData,
-            &webAuthNGetAssertionOptions,
-            &pAssertion));
+        HRESULT hrGetAssertion = S_OK;
 
-        if (pAssertion.get()->pHmacSecret == nullptr)
+        if (prfSecret.empty())
+        {
+            UpdateVaultStatusText(
+                winrt::hstring{
+                    L"INFO: sync state=running operation=" + operation +
+                    L" step=webauthn_get_assertion_required reason=prf_secret_not_cached request_id=" + localRequestId +
+                    L"ℹ" });
+
+            std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> prfRawSaltBytes{
+                0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
+                0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
+
+            WEBAUTHN_HMAC_SECRET_SALT hmacSecretSalt = {};
+            hmacSecretSalt.cbFirst = wil::safe_cast<DWORD>(prfRawSaltBytes.size());
+            hmacSecretSalt.pbFirst = prfRawSaltBytes.data();
+            hmacSecretSalt.cbSecond = 0;
+            hmacSecretSalt.pbSecond = nullptr;
+
+            WEBAUTHN_HMAC_SECRET_SALT_VALUES hmacSecretSaltValues = {};
+            hmacSecretSaltValues.pGlobalHmacSalt = &hmacSecretSalt;
+
+            WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS webAuthNGetAssertionOptions = {};
+            webAuthNGetAssertionOptions.dwVersion = WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION;
+            webAuthNGetAssertionOptions.dwTimeoutMilliseconds = 600 * 1000;
+            webAuthNGetAssertionOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
+            webAuthNGetAssertionOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_PREFERRED;
+            webAuthNGetAssertionOptions.dwFlags = WEBAUTHN_AUTHENTICATOR_HMAC_SECRET_VALUES_FLAG;
+            webAuthNGetAssertionOptions.pHmacSecretSaltValues = &hmacSecretSaltValues;
+
+            std::array<PCWSTR, 5> rpIdCandidates = {
+                c_pluginRpIdWebAuthnIo,
+                c_pluginRpIdWebAuthnIoWww,
+                c_pluginRpId,
+                c_pluginRpIdPasskeyOrg,
+                c_pluginRpIdPasskeyOrgWww };
+
+            ReloadCredentialManager();
+
+            PCWSTR attemptedRpId = rpIdCandidates[0];
+            bool attemptedAnyAssertion = false;
+            std::wstring lastAssertionRpId = attemptedRpId;
+            for (size_t candidateIndex = 0; candidateIndex < rpIdCandidates.size(); ++candidateIndex)
+            {
+                attemptedRpId = rpIdCandidates[candidateIndex];
+                std::wstring attemptedOrigin = L"https://" + std::wstring(attemptedRpId);
+                std::string attemptedOriginUtf8 = winrt::to_string(attemptedOrigin);
+                std::string attemptedClientDataStr =
+                    "{\"type\":\"webauthn.get\"," 
+                    "\"challenge\":\"eyJjaGFsbGVuZ2UiOiEiY2hhbGxlbmdlIn0\"," 
+                    "\"origin\":\"" + attemptedOriginUtf8 + "\"," 
+                    "\"crossOrigin\":false}";
+                WEBAUTHN_CLIENT_DATA attemptedClientData = clientData;
+                attemptedClientData.pbClientDataJSON = reinterpret_cast<PBYTE>(attemptedClientDataStr.data());
+                attemptedClientData.cbClientDataJSON = static_cast<DWORD>(attemptedClientDataStr.size());
+
+                auto rpIdsEquivalent = [](PCWSTR left, PCWSTR right) -> bool
+                {
+                    if (left == nullptr || right == nullptr)
+                    {
+                        return false;
+                    }
+                    if (_wcsicmp(left, right) == 0)
+                    {
+                        return true;
+                    }
+
+                    bool webauthnAlias =
+                        (_wcsicmp(left, c_pluginRpIdWebAuthnIo) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIoWww) == 0) ||
+                        (_wcsicmp(left, c_pluginRpIdWebAuthnIoWww) == 0 && _wcsicmp(right, c_pluginRpIdWebAuthnIo) == 0);
+                    if (webauthnAlias)
+                    {
+                        return true;
+                    }
+
+                    bool passkeyOrgAlias =
+                        (_wcsicmp(left, c_pluginRpIdPasskeyOrg) == 0 && _wcsicmp(right, c_pluginRpIdPasskeyOrgWww) == 0) ||
+                        (_wcsicmp(left, c_pluginRpIdPasskeyOrgWww) == 0 && _wcsicmp(right, c_pluginRpIdPasskeyOrg) == 0);
+                    return passkeyOrgAlias;
+                };
+
+                std::vector<const WEBAUTHN_CREDENTIAL_DETAILS*> matchingCredentials;
+                GetLocalCredsByRpIdAndAllowList(attemptedRpId, nullptr, 0, matchingCredentials);
+
+                std::vector<std::vector<BYTE>> allowCredentialIds;
+                allowCredentialIds.reserve(matchingCredentials.size());
+                for (auto const* matchingCredential : matchingCredentials)
+                {
+                    if (matchingCredential == nullptr ||
+                        matchingCredential->cbCredentialID == 0 ||
+                        matchingCredential->pbCredentialID == nullptr)
+                    {
+                        continue;
+                    }
+
+                    allowCredentialIds.emplace_back(
+                        matchingCredential->pbCredentialID,
+                        matchingCredential->pbCredentialID + matchingCredential->cbCredentialID);
+                }
+
+                size_t localAllowCredentialCount = allowCredentialIds.size();
+                size_t cachedAllowCredentialCount = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_pluginCachedCredentialsOperationMutex);
+                    for (const auto& [cachedCredentialId, cachedCredential] : m_pluginCachedCredentialMetadataMap)
+                    {
+                        if (!cachedCredential ||
+                            cachedCredential->cbCredentialId == 0 ||
+                            cachedCredential->pbCredentialId == nullptr ||
+                            !rpIdsEquivalent(cachedCredential->pwszRpId, attemptedRpId))
+                        {
+                            continue;
+                        }
+
+                        bool alreadyAdded = false;
+                        for (const auto& existingCredentialId : allowCredentialIds)
+                        {
+                            if (existingCredentialId.size() == cachedCredentialId.size() &&
+                                memcmp(existingCredentialId.data(), cachedCredentialId.data(), cachedCredentialId.size()) == 0)
+                            {
+                                alreadyAdded = true;
+                                break;
+                            }
+                        }
+
+                        if (!alreadyAdded)
+                        {
+                            allowCredentialIds.push_back(cachedCredentialId);
+                            cachedAllowCredentialCount += 1;
+                        }
+                    }
+                }
+
+                std::vector<WEBAUTHN_CREDENTIAL_EX> allowCredentials;
+                std::vector<PWEBAUTHN_CREDENTIAL_EX> allowCredentialPtrs;
+                allowCredentials.reserve(allowCredentialIds.size());
+                allowCredentialPtrs.reserve(allowCredentialIds.size());
+                for (const auto& allowCredentialId : allowCredentialIds)
+                {
+                    if (allowCredentialId.empty())
+                    {
+                        continue;
+                    }
+
+                    WEBAUTHN_CREDENTIAL_EX allowCredential = {};
+                    allowCredential.dwVersion = WEBAUTHN_CREDENTIAL_EX_CURRENT_VERSION;
+                    allowCredential.cbId = static_cast<DWORD>(allowCredentialId.size());
+                    allowCredential.pbId = const_cast<PBYTE>(allowCredentialId.data());
+                    allowCredential.pwszCredentialType = WEBAUTHN_CREDENTIAL_TYPE_PUBLIC_KEY;
+                    allowCredential.dwTransports = 0;
+                    allowCredentials.push_back(allowCredential);
+                }
+
+                for (auto& allowCredential : allowCredentials)
+                {
+                    allowCredentialPtrs.push_back(&allowCredential);
+                }
+
+                WEBAUTHN_CREDENTIAL_LIST allowList = {};
+                if (!allowCredentialPtrs.empty())
+                {
+                    allowList.cCredentials = static_cast<DWORD>(allowCredentialPtrs.size());
+                    allowList.ppCredentials = allowCredentialPtrs.data();
+                    webAuthNGetAssertionOptions.pAllowCredentialList = &allowList;
+                }
+                else
+                {
+                    webAuthNGetAssertionOptions.pAllowCredentialList = nullptr;
+
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=retry operation=" + operation +
+                            L" step=webauthn_get_assertion_prepare reason=no_allow_credentials_try_discoverable rp_id=" + std::wstring(attemptedRpId) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                }
+
+                UpdateVaultStatusText(
+                    winrt::hstring{
+                        L"INFO: sync state=running operation=" + operation +
+                        L" step=webauthn_get_assertion_prepare rp_id=" + std::wstring(attemptedRpId) +
+                        L" origin=" + attemptedOrigin +
+                        L" allow_credentials=" + std::to_wstring(allowCredentialPtrs.size()) +
+                        L" allow_credentials_local=" + std::to_wstring(localAllowCredentialCount) +
+                        L" allow_credentials_cached=" + std::to_wstring(cachedAllowCredentialCount) +
+                        L" request_id=" + localRequestId +
+                        L"ℹ" });
+
+                hrGetAssertion = WebAuthNAuthenticatorGetAssertion(
+                    hwnd,
+                    attemptedRpId,
+                    &attemptedClientData,
+                    &webAuthNGetAssertionOptions,
+                    &pAssertion);
+                attemptedAnyAssertion = true;
+                lastAssertionRpId = attemptedRpId;
+
+                bool retriedWithoutAllowList = false;
+                if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED) &&
+                    webAuthNGetAssertionOptions.pAllowCredentialList != nullptr)
+                {
+                    WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS retryWithoutAllowListOptions = webAuthNGetAssertionOptions;
+                    retryWithoutAllowListOptions.pAllowCredentialList = nullptr;
+
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=retry operation=" + operation +
+                            L" step=webauthn_get_assertion reason=retry_without_allow_credentials rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+
+                    pAssertion.reset();
+                    hrGetAssertion = WebAuthNAuthenticatorGetAssertion(
+                        hwnd,
+                        attemptedRpId,
+                        &attemptedClientData,
+                        &retryWithoutAllowListOptions,
+                        &pAssertion);
+                    retriedWithoutAllowList = true;
+                }
+
+                if (retriedWithoutAllowList)
+                {
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: summary state=observed operation=" + operation +
+                            L" step=webauthn_get_assertion_retry_without_allow_credentials_result rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                }
+
+                bool hasAssertionPrf =
+                    SUCCEEDED(hrGetAssertion) &&
+                    pAssertion.get() != nullptr &&
+                    pAssertion.get()->pHmacSecret != nullptr &&
+                    pAssertion.get()->pHmacSecret->pbFirst != nullptr &&
+                    pAssertion.get()->pHmacSecret->cbFirst > 0;
+                if (hasAssertionPrf)
+                {
+                    break;
+                }
+
+                if (SUCCEEDED(hrGetAssertion) && !hasAssertionPrf)
+                {
+                    PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+                    auto postAssertionRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                    if (!postAssertionRegistrySecret.empty())
+                    {
+                        prfSecret.assign(postAssertionRegistrySecret.begin(), postAssertionRegistrySecret.end());
+                        logInfoWithRequestId(
+                            L"sync result=info operation=" + operation +
+                            L" reason=prf_hmac_secret_post_assertion_fallback_used source=registry");
+                        break;
+                    }
+                }
+
+                bool canRetryWithNextRpBecausePrfMissing =
+                    SUCCEEDED(hrGetAssertion) &&
+                    !hasAssertionPrf &&
+                    (candidateIndex + 1 < rpIdCandidates.size());
+                if (canRetryWithNextRpBecausePrfMissing)
+                {
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=retry operation=" + operation +
+                            L" step=webauthn_get_assertion reason=prf_hmac_secret_missing_try_next_rp from_rp_id=" + std::wstring(attemptedRpId) +
+                            L" to_rp_id=" + std::wstring(rpIdCandidates[candidateIndex + 1]) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                    continue;
+                }
+
+                if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED) && localAllowCredentialCount > 0)
+                {
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=stopped operation=" + operation +
+                            L" step=webauthn_get_assertion reason=cancelled_with_local_credential_no_fallback rp_id=" + std::wstring(attemptedRpId) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                    break;
+                }
+
+                bool canRetryWithNextRp =
+                    (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED) || hrGetAssertion == NTE_NOT_FOUND) &&
+                    (candidateIndex + 1 < rpIdCandidates.size());
+                if (canRetryWithNextRp)
+                {
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=retry operation=" + operation +
+                            L" step=webauthn_get_assertion reason=rp_id_fallback from_rp_id=" + std::wstring(attemptedRpId) +
+                            L" to_rp_id=" + std::wstring(rpIdCandidates[candidateIndex + 1]) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                    continue;
+                }
+
+                break;
+            }
+
+            if (!attemptedAnyAssertion)
+            {
+                hrGetAssertion = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+            }
+
+            if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+            {
+                UpdateVaultStatusText(
+                    winrt::hstring{
+                        L"INFO: sync result=cancelled operation=" + operation +
+                        L" step=webauthn_get_assertion reason=user_cancelled_or_no_eligible_credential rp_id=" + lastAssertionRpId +
+                        L" hr=" + std::to_wstring(hrGetAssertion) +
+                        L" request_id=" + localRequestId +
+                        L"ℹ" });
+
+                return hrGetAssertion;
+            }
+
+            if (SUCCEEDED(hrGetAssertion) &&
+                pAssertion.get() != nullptr &&
+                pAssertion.get()->pHmacSecret != nullptr &&
+                pAssertion.get()->pHmacSecret->pbFirst != nullptr &&
+                pAssertion.get()->pHmacSecret->cbFirst > 0)
+            {
+                prfSecret.assign(
+                    pAssertion.get()->pHmacSecret->pbFirst,
+                    pAssertion.get()->pHmacSecret->pbFirst + pAssertion.get()->pHmacSecret->cbFirst);
+
+                HRESULT hrStorePrf = PluginRegistrationManager::getInstance().SetHMACSecret(
+                    std::vector<BYTE>(prfSecret.begin(), prfSecret.end()),
+                    localRequestId);
+                if (FAILED(hrStorePrf))
+                {
+                    logWarningWithRequestId(
+                        L"sync result=warning operation=" + operation +
+                        L" reason=prf_hmac_secret_store_failed hr=" + std::to_wstring(hrStorePrf));
+                }
+            }
+
+            if (prfSecret.empty() && SUCCEEDED(hrGetAssertion))
+            {
+                PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+                auto postAssertionRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                if (!postAssertionRegistrySecret.empty())
+                {
+                    prfSecret.assign(postAssertionRegistrySecret.begin(), postAssertionRegistrySecret.end());
+                    logWarningWithRequestId(
+                        L"sync result=warning operation=" + operation +
+                        L" reason=prf_hmac_secret_post_assertion_fallback_used source=registry");
+                }
+            }
+        }
+
+        if (prfSecret.empty())
         {
             logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
+            RETURN_IF_FAILED(hrGetAssertion);
             return NTE_NOT_SUPPORTED;
         }
 
@@ -1415,10 +1965,6 @@ namespace winrt::PasskeyManager::implementation
             logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=recovery_code_invalid recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
-
-        std::vector<uint8_t> prfSecret(
-            pAssertion.get()->pHmacSecret->pbFirst,
-            pAssertion.get()->pHmacSecret->pbFirst + pAssertion.get()->pHmacSecret->cbFirst);
 
         tsupasswd::VaultCryptoError cryptoError{};
         std::vector<uint8_t> plainBytes;

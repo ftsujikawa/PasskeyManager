@@ -890,7 +890,7 @@ namespace winrt::PasskeyManager::implementation
             attestationResponse.pbAttestation = nullptr;
             attestationResponse.cbAuthenticatorData = 0;
             attestationResponse.pbAuthenticatorData = nullptr;
-            const bool advertisePrfAndHmacSecret = !isWebAuthnIoRp;
+            const bool advertisePrfAndHmacSecret = true;
             attestationResponse.bPrfEnabled = advertisePrfAndHmacSecret ? TRUE : FALSE;
             BOOL hmacSecretExtensionValue = TRUE;
             WEBAUTHN_EXTENSION hmacSecretExtension = {};
@@ -1650,16 +1650,16 @@ namespace winrt::PasskeyManager::implementation
 
             // Provide PRF/HMAC-secret output for vault recovery.
             // For now we derive a stable 32-byte secret from the persisted private key and the fixed salt.
-            const bool wantHmacSecret =
-                pDecodedAssertionRequest->cbHmacSecretSaltValues == WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH &&
-                pDecodedAssertionRequest->pbHmacSecretSaltValues != nullptr;
+            const bool hasHmacSaltInput =
+                pDecodedAssertionRequest->pbHmacSecretSaltValues != nullptr &&
+                pDecodedAssertionRequest->cbHmacSecretSaltValues >= WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH;
 
             std::array<BYTE, 32> prfSecret{};
-            if (wantHmacSecret)
+            if (hasHmacSaltInput)
             {
                 std::span<const BYTE> prfSaltBytes(
                     pDecodedAssertionRequest->pbHmacSecretSaltValues,
-                    pDecodedAssertionRequest->cbHmacSecretSaltValues);
+                    WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH);
 
                 DWORD cbPriv = 0;
                 THROW_IF_FAILED(NCryptExportKey(
@@ -1790,7 +1790,7 @@ namespace winrt::PasskeyManager::implementation
 
             std::vector<BYTE> ext;
             wil::unique_cotaskmem_ptr<BYTE[]> extBytes;
-            if (wantHmacSecret)
+            if (hasHmacSaltInput)
             {
                 // Encode: { "hmac-secret": { 1: <32-byte output> } }
                 (void)CborLite::encodeMapSize(ext, 1u);

@@ -1956,11 +1956,58 @@ namespace winrt::PasskeyManager::implementation
         if (auto self = weakThis.get())
         {
             self->showSyncedVaultButton().IsEnabled(true);
+            self->LogInfo(
+                winrt::hstring{
+                    L"summary state=observed operation=" + operation +
+                    L" step=export_decrypted_vault_json_returned hr=" + std::to_wstring(static_cast<int>(hr)) +
+                    L" request_id=" + requestId });
+
+            if (FAILED(hr))
+            {
+                HRESULT pluginPerformStatus = S_OK;
+                HRESULT pluginUvStatus = S_OK;
+                HRESULT pluginRequestSignStatus = S_OK;
+                {
+                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
+                    pluginPerformStatus = curApp->m_pluginOperationStatus.performOperationStatus;
+                    pluginUvStatus = curApp->m_pluginOperationStatus.uvSignatureVerificationStatus;
+                    pluginRequestSignStatus = curApp->m_pluginOperationStatus.requestSignatureVerificationStatus;
+                }
+
+                self->LogInfo(
+                    winrt::hstring{
+                        L"summary state=observed operation=" + operation +
+                        L" step=plugin_perform_operation_status hr=" + std::to_wstring(static_cast<int>(pluginPerformStatus)) +
+                        L" request_id=" + requestId });
+                self->LogInfo(
+                    winrt::hstring{
+                        L"summary state=observed operation=" + operation +
+                        L" step=plugin_uv_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginUvStatus)) +
+                        L" request_id=" + requestId });
+                self->LogInfo(
+                    winrt::hstring{
+                        L"summary state=observed operation=" + operation +
+                        L" step=plugin_request_signature_verification_status hr=" + std::to_wstring(static_cast<int>(pluginRequestSignStatus)) +
+                        L" request_id=" + requestId });
+            }
+
             if (SUCCEEDED(hr))
             {
                 self->syncedVaultTextBox().Text(winrt::hstring{ outJson });
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+            {
+                self->syncStatusTextBlock().Text(
+                    winrt::hstring{
+                        L"INFO: sync result=cancelled operation=" + operation +
+                        L" reason=user_cancelled request_id=" + requestId +
+                        L"ℹ" });
+                self->LogInfo(
+                    winrt::hstring{
+                        L"sync result=cancelled operation=" + operation +
+                        L" reason=user_cancelled request_id=" + requestId });
             }
             else
             {

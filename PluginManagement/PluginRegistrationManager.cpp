@@ -1580,7 +1580,7 @@ namespace winrt::PasskeyManager::implementation {
         auto opt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginEncryptedVaultData, REG_BINARY);
         if (!opt)
         {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=recreate_vault_passkey_and_register_again request_id=" + localRequestId + L"⚠" });
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=restore_snapshot_then_retry request_id=" + localRequestId + L"⚠" });
             OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_missing source=registry\n").c_str());
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
@@ -1622,6 +1622,39 @@ namespace winrt::PasskeyManager::implementation {
         }
 
         cipherText = std::move(vaultCipher);
+        return S_OK;
+    }
+
+    HRESULT PluginRegistrationManager::ClearLocalEncryptedVaultData(std::wstring const& requestId)
+    {
+        std::wstring operation = L"clear_local_encrypted_vault_data";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(operation);
+        }
+
+        std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
+        wil::unique_hkey hKey;
+        RETURN_IF_WIN32_ERROR(RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            c_pluginRegistryPath,
+            0,
+            nullptr,
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            nullptr,
+            &hKey,
+            nullptr));
+
+        LONG deleteResult = RegDeleteValueW(hKey.get(), c_pluginEncryptedVaultData);
+        if (deleteResult != ERROR_SUCCESS && deleteResult != ERROR_FILE_NOT_FOUND)
+        {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=registry_delete_failed hr=" + std::to_wstring(static_cast<int>(HRESULT_FROM_WIN32(deleteResult))) + L" request_id=" + localRequestId + L"⚠" });
+            return HRESULT_FROM_WIN32(deleteResult);
+        }
+
+        UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" hr=0 request_id=" + localRequestId + L"✅" });
         return S_OK;
     }
 

@@ -316,6 +316,10 @@
                                 Click="runVaultSchemaSelfTestButton_Click"
                                 Content="Run Vault Self-Test (Debug)" />
                             <Button
+                                x:Name="clearLocalVaultButton"
+                                Click="clearLocalVaultButton_Click"
+                                Content="Clear Local Vault" />
+                            <Button
                                 x:Name="manualSyncButton"
                                 Click="manualSyncButton_Click"
                                 Content="Resync Now" />
@@ -331,6 +335,14 @@
                         Grid.Row="2"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Sync status: Not synced yet"
+                        TextWrapping="WrapWholeWords" />
+
+                    <TextBlock
+                        x:Name="syncHowToTextBlock"
+                        Grid.Row="3"
+                        Margin="0,8,0,0"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="How to (2 devices / profiles): 1) Set Sync Base URL/Token/User ID + Vault Recovery Code on both devices. 2) On device A, Create Vault Passkey then Resync Now. 3) On device B, Clear Local Vault then Resync Now (auto restore_snapshot)."
                         TextWrapping="WrapWholeWords" />
                 </Grid>
             </Grid>

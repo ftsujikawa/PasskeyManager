@@ -1904,6 +1904,35 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::clearLocalVaultButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        auto weakThis = get_weak();
+        std::wstring operation = L"clear_local_vault";
+        std::wstring requestId = BuildRequestId(operation);
+        clearLocalVaultButton().IsEnabled(false);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
+
+        co_await winrt::resume_background();
+        HRESULT hr = PluginRegistrationManager::getInstance().ClearLocalEncryptedVaultData(requestId);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->clearLocalVaultButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId });
+            }
+        }
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::unregisterPluginButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         std::wstring operation = L"unregister_plugin";

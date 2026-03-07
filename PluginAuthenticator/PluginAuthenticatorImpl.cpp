@@ -917,10 +917,12 @@ namespace winrt::PasskeyManager::implementation
             if (encodeHr == E_NOTIMPL || FAILED(encodeHr))
             {
                 // Fallback to the stable encoder for older platforms.
-                // In that case PRF enablement cannot be advertised via bPrfEnabled.
+                // Keep PRF/HMAC advertisement enabled for vault recovery compatibility.
                 PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E002));
                 attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION;
-                attestationResponse.bPrfEnabled = FALSE;
+                attestationResponse.bPrfEnabled = advertisePrfAndHmacSecret ? TRUE : FALSE;
+                attestationResponse.Extensions.cExtensions = advertisePrfAndHmacSecret ? 1 : 0;
+                attestationResponse.Extensions.pExtensions = advertisePrfAndHmacSecret ? &hmacSecretExtension : nullptr;
 
                 encodeHr = WebAuthNEncodeMakeCredentialResponse(
                     &attestationResponse,

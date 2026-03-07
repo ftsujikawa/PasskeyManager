@@ -1809,6 +1809,43 @@ namespace winrt::PasskeyManager::implementation
                             L"ℹ" });
                 }
 
+                bool retriedDiscoverableAfterCancelledWithLocalCredential = false;
+                if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED) &&
+                    localAllowCredentialCount > 0 &&
+                    retriedWithoutAllowList)
+                {
+                    WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS retryDiscoverableAfterCancelledOptions = webAuthNGetAssertionOptions;
+                    retryDiscoverableAfterCancelledOptions.pAllowCredentialList = nullptr;
+
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=retry operation=" + operation +
+                            L" step=webauthn_get_assertion reason=retry_discoverable_after_cancelled_with_local_credential rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+
+                    pAssertion.reset();
+                    hrGetAssertion = WebAuthNAuthenticatorGetAssertion(
+                        hwnd,
+                        attemptedRpId,
+                        &attemptedClientData,
+                        &retryDiscoverableAfterCancelledOptions,
+                        &pAssertion);
+                    retriedDiscoverableAfterCancelledWithLocalCredential = true;
+                }
+
+                if (retriedDiscoverableAfterCancelledWithLocalCredential)
+                {
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: summary state=observed operation=" + operation +
+                            L" step=webauthn_get_assertion_retry_discoverable_after_cancelled_with_local_credential_result rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+                }
+
                 bool hasAssertionPrf =
                     SUCCEEDED(hrGetAssertion) &&
                     pAssertion.get() != nullptr &&
@@ -1887,15 +1924,32 @@ namespace winrt::PasskeyManager::implementation
 
             if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED))
             {
-                UpdateVaultStatusText(
-                    winrt::hstring{
-                        L"INFO: sync result=cancelled operation=" + operation +
-                        L" step=webauthn_get_assertion reason=user_cancelled_or_no_eligible_credential rp_id=" + lastAssertionRpId +
-                        L" hr=" + std::to_wstring(hrGetAssertion) +
-                        L" request_id=" + localRequestId +
-                        L"ℹ" });
+                PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+                auto cancelledRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                if (!cancelledRegistrySecret.empty())
+                {
+                    prfSecret.assign(cancelledRegistrySecret.begin(), cancelledRegistrySecret.end());
+                    logInfoWithRequestId(
+                        L"sync result=info operation=" + operation +
+                        L" reason=prf_hmac_secret_fallback_used_after_cancelled source=registry");
+                }
 
-                return hrGetAssertion;
+                if (prfSecret.empty())
+                {
+                    logWarningWithRequestId(
+                        L"sync result=failed operation=" + operation +
+                        L" reason=prf_hmac_secret_missing_after_cancelled source=registry");
+
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync result=cancelled operation=" + operation +
+                            L" step=webauthn_get_assertion reason=user_cancelled_or_no_eligible_credential rp_id=" + lastAssertionRpId +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
+
+                    return hrGetAssertion;
+                }
             }
 
             if (SUCCEEDED(hrGetAssertion) &&

@@ -1933,13 +1933,6 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
-        if (prfSecret.empty())
-        {
-            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
-            RETURN_IF_FAILED(hrGetAssertion);
-            return NTE_NOT_SUPPORTED;
-        }
-
         std::vector<uint8_t> cipherText;
         HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, localRequestId);
         if (FAILED(hrReadVaultData))
@@ -1968,14 +1961,36 @@ namespace winrt::PasskeyManager::implementation
 
         tsupasswd::VaultCryptoError cryptoError{};
         std::vector<uint8_t> plainBytes;
-        if (!tsupasswd::DecryptVaultV2(cipherText, prfSecret, recoveryBytes, plainBytes, cryptoError))
+        if (!tsupasswd::DecryptVaultV3(cipherText, recoveryBytes, plainBytes, cryptoError))
         {
-            logWarningWithRequestId(
-                L"sync result=failed operation=" + operation +
-                L" reason=vault_decrypt_failed code=" + cryptoError.Code +
-                L" detail=" + cryptoError.Detail +
-                L" recovery=recreate_vault_passkey_then_retry");
-            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            if (cryptoError.Code != L"not_v3")
+            {
+                logWarningWithRequestId(
+                    L"sync result=failed operation=" + operation +
+                    L" reason=vault_decrypt_failed version=v3 code=" + cryptoError.Code +
+                    L" detail=" + cryptoError.Detail +
+                    L" recovery=check_recovery_code_or_reupload_v3");
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
+
+            if (prfSecret.empty())
+            {
+                logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=prf_hmac_secret_missing recovery=use_prf_capable_authenticator");
+                RETURN_IF_FAILED(hrGetAssertion);
+                return NTE_NOT_SUPPORTED;
+            }
+
+            cryptoError = {};
+            plainBytes.clear();
+            if (!tsupasswd::DecryptVaultV2(cipherText, prfSecret, recoveryBytes, plainBytes, cryptoError))
+            {
+                logWarningWithRequestId(
+                    L"sync result=failed operation=" + operation +
+                    L" reason=vault_decrypt_failed version=v2 code=" + cryptoError.Code +
+                    L" detail=" + cryptoError.Detail +
+                    L" recovery=recreate_vault_passkey_then_retry");
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
         }
 
         tsupasswd::VaultDocumentV1 vaultDoc{};

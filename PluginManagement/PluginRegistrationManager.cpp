@@ -1403,7 +1403,7 @@ namespace winrt::PasskeyManager::implementation {
             std::vector<uint8_t> encryptedVaultData;
             tsupasswd::VaultCryptoError cryptoError{};
             std::vector<uint8_t> vaultPlaintextBytes(vaultPlaintext.begin(), vaultPlaintext.end());
-            if (!tsupasswd::EncryptVaultV2(vaultPlaintextBytes, prfSecret, recoveryBytes, encryptedVaultData, cryptoError))
+            if (!tsupasswd::EncryptVaultV3(vaultPlaintextBytes, recoveryBytes, encryptedVaultData, cryptoError))
             {
                 UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: summary result=failed operation=" + operation + L" reason=vault_encrypt_failed code=" + cryptoError.Code + L" detail=" + cryptoError.Detail + L" request_id=" + localRequestId + L"⚠" });
                 return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);

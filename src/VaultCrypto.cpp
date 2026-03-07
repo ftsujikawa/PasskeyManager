@@ -13,6 +13,8 @@ namespace tsupasswd
     {
         constexpr uint8_t kVaultV2Magic[4] = { 'T', 'V', '2', '0' };
         constexpr uint8_t kVaultV2Version = 1;
+        constexpr uint8_t kVaultV3Magic[4] = { 'T', 'V', '3', '0' };
+        constexpr uint8_t kVaultV3Version = 1;
         constexpr size_t kAesGcmNonceBytes = 12;
         constexpr size_t kAesGcmTagBytes = 16;
         constexpr size_t kDekBytes = 32;
@@ -379,6 +381,24 @@ namespace tsupasswd
             return HkdfSha256(hkdfSalt, ikm, info, outKek, kKekBytes);
         }
 
+        bool BuildKekV3(
+            std::vector<uint8_t> const& recoveryCodeBytes,
+            std::vector<uint8_t> const& hkdfSalt,
+            std::vector<uint8_t>& outKek)
+        {
+            if (recoveryCodeBytes.empty() || hkdfSalt.size() != kHkdfSaltBytes)
+            {
+                return false;
+            }
+
+            std::vector<uint8_t> info;
+            char const* label = "tsupasswd/vault-v3-kek";
+            info.assign(label, label + strlen(label));
+
+            std::vector<uint8_t> ikm = recoveryCodeBytes;
+            return HkdfSha256(hkdfSalt, ikm, info, outKek, kKekBytes);
+        }
+
         bool BuildRecoveryCodeBytes(std::wstring const& codeWide, std::vector<uint8_t>& outBytes)
         {
             outBytes.clear();
@@ -396,6 +416,205 @@ namespace tsupasswd
             outBytes.assign(codeUtf8.begin(), codeUtf8.end());
             return true;
         }
+    }
+
+    bool EncryptVaultV3(
+        std::vector<uint8_t> const& plaintext,
+        std::vector<uint8_t> const& recoveryCodeBytes,
+        std::vector<uint8_t>& outCipherPackage,
+        VaultCryptoError& outError)
+    {
+        outCipherPackage.clear();
+        outError = {};
+
+        if (plaintext.empty())
+        {
+            SetError(outError, L"empty_plaintext", L"plaintext is required");
+            return false;
+        }
+        if (recoveryCodeBytes.empty())
+        {
+            SetError(outError, L"kek_material_missing", L"recoveryCodeBytes is required");
+            return false;
+        }
+
+        std::vector<uint8_t> dek;
+        if (!GenRandom(dek, kDekBytes))
+        {
+            SetError(outError, L"rng_failed", L"BCryptGenRandom(dek) failed");
+            return false;
+        }
+
+        std::vector<uint8_t> nonce;
+        if (!GenRandom(nonce, kAesGcmNonceBytes))
+        {
+            SetError(outError, L"rng_failed", L"BCryptGenRandom(nonce) failed");
+            return false;
+        }
+
+        std::vector<uint8_t> aad;
+        std::vector<uint8_t> ciphertext;
+        std::vector<uint8_t> tag;
+        if (!Aes256GcmEncrypt(dek, nonce, aad, plaintext, ciphertext, tag))
+        {
+            SetError(outError, L"encrypt_failed", L"AES-256-GCM encrypt failed");
+            return false;
+        }
+
+        std::vector<uint8_t> hkdfSalt;
+        if (!GenRandom(hkdfSalt, kHkdfSaltBytes))
+        {
+            SetError(outError, L"rng_failed", L"BCryptGenRandom(hkdfSalt) failed");
+            return false;
+        }
+
+        std::vector<uint8_t> kek;
+        if (!BuildKekV3(recoveryCodeBytes, hkdfSalt, kek))
+        {
+            SetError(outError, L"kdf_failed", L"HKDF-SHA256 failed");
+            return false;
+        }
+
+        std::vector<uint8_t> wrapNonce;
+        if (!GenRandom(wrapNonce, kWrapNonceBytes))
+        {
+            SetError(outError, L"rng_failed", L"BCryptGenRandom(wrapNonce) failed");
+            return false;
+        }
+
+        std::vector<uint8_t> wrappedDekCipher;
+        std::vector<uint8_t> wrappedDekTag;
+        std::vector<uint8_t> dekAsPlain = dek;
+        if (!Aes256GcmEncrypt(kek, wrapNonce, aad, dekAsPlain, wrappedDekCipher, wrappedDekTag))
+        {
+            SetError(outError, L"wrap_failed", L"AES-256-GCM wrap(DEK) failed");
+            return false;
+        }
+
+        outCipherPackage.clear();
+        outCipherPackage.insert(outCipherPackage.end(), std::begin(kVaultV3Magic), std::end(kVaultV3Magic));
+        outCipherPackage.push_back(kVaultV3Version);
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(hkdfSalt.size()));
+        outCipherPackage.insert(outCipherPackage.end(), hkdfSalt.begin(), hkdfSalt.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(wrapNonce.size()));
+        outCipherPackage.insert(outCipherPackage.end(), wrapNonce.begin(), wrapNonce.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(wrappedDekCipher.size()));
+        outCipherPackage.insert(outCipherPackage.end(), wrappedDekCipher.begin(), wrappedDekCipher.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(wrappedDekTag.size()));
+        outCipherPackage.insert(outCipherPackage.end(), wrappedDekTag.begin(), wrappedDekTag.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(nonce.size()));
+        outCipherPackage.insert(outCipherPackage.end(), nonce.begin(), nonce.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(ciphertext.size()));
+        outCipherPackage.insert(outCipherPackage.end(), ciphertext.begin(), ciphertext.end());
+
+        AppendUint32LE(outCipherPackage, wil::safe_cast<uint32_t>(tag.size()));
+        outCipherPackage.insert(outCipherPackage.end(), tag.begin(), tag.end());
+
+        return true;
+    }
+
+    bool DecryptVaultV3(
+        std::vector<uint8_t> const& cipherPackage,
+        std::vector<uint8_t> const& recoveryCodeBytes,
+        std::vector<uint8_t>& outPlaintext,
+        VaultCryptoError& outError)
+    {
+        outPlaintext.clear();
+        outError = {};
+
+        if (cipherPackage.size() < 5)
+        {
+            SetError(outError, L"invalid_package", L"too small");
+            return false;
+        }
+
+        if (!std::equal(std::begin(kVaultV3Magic), std::end(kVaultV3Magic), cipherPackage.begin()))
+        {
+            SetError(outError, L"not_v3", L"magic mismatch");
+            return false;
+        }
+        if (cipherPackage[4] != kVaultV3Version)
+        {
+            SetError(outError, L"unsupported_version", L"version mismatch");
+            return false;
+        }
+        if (recoveryCodeBytes.empty())
+        {
+            SetError(outError, L"kek_material_missing", L"recoveryCodeBytes is required");
+            return false;
+        }
+
+        size_t cursor = 5;
+        auto readBlob = [&](std::vector<uint8_t>& out) -> bool
+        {
+            uint32_t len = 0;
+            if (!ReadUint32LE(cipherPackage, cursor, len))
+            {
+                return false;
+            }
+            cursor += sizeof(uint32_t);
+            if (cursor + len > cipherPackage.size())
+            {
+                return false;
+            }
+            out.assign(cipherPackage.begin() + cursor, cipherPackage.begin() + cursor + len);
+            cursor += len;
+            return true;
+        };
+
+        std::vector<uint8_t> hkdfSalt;
+        std::vector<uint8_t> wrapNonce;
+        std::vector<uint8_t> wrappedDekCipher;
+        std::vector<uint8_t> wrappedDekTag;
+        std::vector<uint8_t> vaultNonce;
+        std::vector<uint8_t> vaultCipher;
+        std::vector<uint8_t> vaultTag;
+
+        if (!readBlob(hkdfSalt) || !readBlob(wrapNonce) || !readBlob(wrappedDekCipher) || !readBlob(wrappedDekTag) || !readBlob(vaultNonce) || !readBlob(vaultCipher) || !readBlob(vaultTag))
+        {
+            SetError(outError, L"invalid_package", L"field parse failed");
+            return false;
+        }
+
+        if (hkdfSalt.size() != kHkdfSaltBytes || wrapNonce.size() != kWrapNonceBytes || wrappedDekTag.size() != kAesGcmTagBytes || vaultNonce.size() != kAesGcmNonceBytes || vaultTag.size() != kAesGcmTagBytes)
+        {
+            SetError(outError, L"invalid_package", L"field size invalid");
+            return false;
+        }
+
+        std::vector<uint8_t> kek;
+        if (!BuildKekV3(recoveryCodeBytes, hkdfSalt, kek))
+        {
+            SetError(outError, L"kdf_failed", L"HKDF-SHA256 failed");
+            return false;
+        }
+
+        std::vector<uint8_t> aad;
+        std::vector<uint8_t> dek;
+        if (!Aes256GcmDecrypt(kek, wrapNonce, aad, wrappedDekCipher, wrappedDekTag, dek))
+        {
+            SetError(outError, L"unwrap_failed", L"DEK unwrap failed");
+            return false;
+        }
+        if (dek.size() != kDekBytes)
+        {
+            SetError(outError, L"unwrap_failed", L"DEK length mismatch");
+            return false;
+        }
+
+        if (!Aes256GcmDecrypt(dek, vaultNonce, aad, vaultCipher, vaultTag, outPlaintext))
+        {
+            SetError(outError, L"decrypt_failed", L"Vault decrypt failed");
+            return false;
+        }
+
+        return true;
     }
 
     bool EncryptVaultV2(

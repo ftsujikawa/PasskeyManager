@@ -1,0 +1,12 @@
+[package]
+name = "opaque-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+bincode = "1.3"
+opaque-ke = { version = "4", features = ["serde", "ristretto255", "ed25519"] }
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"

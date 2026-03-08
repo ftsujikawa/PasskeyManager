@@ -78,6 +78,12 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OpaqueFfiCfg>dbg</OpaqueFfiCfg>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OpaqueFfiCfg>rel</OpaqueFfiCfg>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
@@ -104,6 +110,12 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$([Microsoft.Build.Utilities.ToolLocationHelper]::GetPlatformExtensionSDKLocation(`WindowsDesktop, Version=10.0.22621.0`, $(TargetPlatformIdentifier), $(TargetPlatformVersion),  $(SDKReferenceDirectoryRoot), $(SDKExtensionDirectoryRoot), $(SDKReferenceRegistryRoot)))\DesignTime\CommonConfiguration\Neutral\WindowsDesktop.props" Condition="exists('$([Microsoft.Build.Utilities.ToolLocationHelper]::GetPlatformExtensionSDKLocation(`WindowsDesktop, Version=10.0.22621.0`, $(TargetPlatformIdentifier), $(TargetPlatformVersion),  $(SDKReferenceDirectoryRoot), $(SDKExtensionDirectoryRoot), $(SDKReferenceRegistryRoot)))\DesignTime\CommonConfiguration\Neutral\WindowsDesktop.props')" />
   </ImportGroup>
+  <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'=='Debug'">
+    <OpaqueFfiCfg>dbg</OpaqueFfiCfg>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'=='Release'">
+    <OpaqueFfiCfg>rel</OpaqueFfiCfg>
+  </PropertyGroup>
   <PropertyGroup Label="UserMacros">
     <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
@@ -127,7 +139,7 @@
       <WarningLevel>Level4</WarningLevel>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8 /wd26819 /wd28182 /wd28252 /wd28253</AdditionalOptions>
       <PreprocessorDefinitions>DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\opaque-ffi\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Midl>
@@ -135,9 +147,16 @@
     </Midl>
     <Link>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>shell32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)vendor\opaque-ffi\lib\win-$(Platform)\dbg;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)vendor\opaque-ffi\lib\win-$(Platform)\rel;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)vendor\opaque-ffi\lib\win-$(Platform)\dbg\opaque_ffi.dll.lib;shell32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)vendor\opaque-ffi\lib\win-$(Platform)\rel\opaque_ffi.dll.lib;shell32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Platform)'!='x64'">shell32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">if exist "$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll" copy /Y "$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll" "$(OutDir)"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">if exist "$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll" copy /Y "$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup Condition="'$(WindowsPackageType)'!='None' and Exists('Package.appxmanifest')">
     <AppxManifest Include="Package.appxmanifest">
@@ -168,11 +187,13 @@
       <SubType>Code</SubType>
     </ClInclude>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="src\OpaqueFfiSmoke.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="MainWindow.xaml.h">
       <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
     </ClInclude>
     <ClInclude Include="PluginAuthenticator\PluginAuthenticatorImpl.h" />
     <ClInclude Include="PluginManagement\PluginCredentialManager.h" />
@@ -222,6 +243,7 @@
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\OpaqueFfiSmoke.cpp" />
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>
@@ -276,14 +298,6 @@
     <Content Include="Assets\SmallTile.scale-400.png" />
     <Content Include="Assets\SplashScreen.scale-100.png" />
     <Content Include="Assets\SplashScreen.scale-400.png" />
-    <Content Include="Assets\Square150x150Logo.scale-100.png" />
-    <Content Include="Assets\Square150x150Logo.scale-400.png" />
-    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-16.png" />
-    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-256.png" />
-    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-16.png" />
-    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-256.png" />
-    <Content Include="Assets\Square44x44Logo.scale-100.png" />
-    <Content Include="Assets\Square44x44Logo.scale-400.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-16.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-256.png" />
@@ -292,6 +306,18 @@
     <Content Include="Assets\Wide310x150Logo.scale-400.png" />
     <Content Include="appsetting.local.json" Condition="Exists('appsetting.local.json')" />
     <Content Include="appsetting.local.example.json" />
+    <Content Include="vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll" Condition="'$(Configuration)|$(Platform)'=='Debug|x64' and Exists('$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DeploymentContent>true</DeploymentContent>
+      <Link>opaque_ffi.dll</Link>
+      <TargetPath>opaque_ffi.dll</TargetPath>
+    </Content>
+    <Content Include="vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll" Condition="'$(Configuration)|$(Platform)'=='Release|x64' and Exists('$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DeploymentContent>true</DeploymentContent>
+      <Link>opaque_ffi.dll</Link>
+      <TargetPath>opaque_ffi.dll</TargetPath>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="appsetting.local.json" Condition="Exists('appsetting.local.json')">
@@ -299,6 +325,18 @@
     </Content>
     <Content Update="appsetting.local.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll" Condition="'$(Configuration)|$(Platform)'=='Debug|x64' and Exists('$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\dbg\opaque_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DeploymentContent>true</DeploymentContent>
+      <Link>opaque_ffi.dll</Link>
+      <TargetPath>opaque_ffi.dll</TargetPath>
+    </Content>
+    <Content Update="vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll" Condition="'$(Configuration)|$(Platform)'=='Release|x64' and Exists('$(ProjectDir)vendor\opaque-ffi\bin\win-$(Platform)\rel\opaque_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DeploymentContent>true</DeploymentContent>
+      <Link>opaque_ffi.dll</Link>
+      <TargetPath>opaque_ffi.dll</TargetPath>
     </Content>
   </ItemGroup>
   <!--

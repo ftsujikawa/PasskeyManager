@@ -1162,6 +1162,9 @@ namespace winrt::PasskeyManager::implementation
                 return reinterpret_cast<PWSTR>(rawBuffer);
             };
 
+            #pragma warning(push)
+            #pragma warning(disable : 26110)
+            #pragma warning(disable : 26117)
             std::lock_guard<std::mutex> localLock(m_pluginLocalCredentialsOperationMutex);
             for (const auto& item : hydrationItems)
             {
@@ -1283,6 +1286,7 @@ namespace winrt::PasskeyManager::implementation
             }
 
             collectFromLocal();
+            #pragma warning(pop)
         }
 
         if (hydratedLocalAdded)

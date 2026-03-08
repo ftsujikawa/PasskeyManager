@@ -9,6 +9,7 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
+#include "src/OpaqueFfiSmoke.h"
 #include "src/RequestId.h"
 #include "src/SyncHistoryStore.h"
 #include "src/SyncClient.h"
@@ -659,6 +660,30 @@ namespace {
 
 namespace winrt::PasskeyManager::implementation
 {
+    static bool RunOpaqueFfiSmokeWithSeh(std::string* error, bool* outOk)
+    {
+        if (!outOk)
+        {
+            return false;
+        }
+
+        __try
+        {
+            *outOk = TsuPasswdOpaqueFfiInProcessSmoke(error);
+            return true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            OutputDebugStringW(L"opaque_ffi_smoke crashed with SEH exception\n");
+            *outOk = false;
+            if (error && error->empty())
+            {
+                *error = "seh_exception";
+            }
+            return false;
+        }
+    }
+
     winrt::fire_and_forget MainPage::UpdatePluginEnableState()
     {
         winrt::apartment_context ui_thread;
@@ -1484,6 +1509,7 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::OnNavigatedTo(Navigation::NavigationEventArgs e)
     {
+        OutputDebugStringW(L"opaque_ffi_smoke hook reached: MainPage::OnNavigatedTo\n");
         std::wstring operation = L"ensure_plugin_registration";
         std::wstring requestId = BuildRequestId(operation);
         auto toStateText = [](AUTHENTICATOR_STATE state) -> std::wstring
@@ -1531,6 +1557,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         co_await wil::resume_foreground(DispatcherQueue());
+        OutputDebugStringW(L"opaque_ffi_smoke hook: after resume_foreground\n");
         if (FAILED(hrEnsurePlugin) && hrEnsurePlugin != NTE_EXISTS)
         {
             LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=register_or_update_plugin hr=" + std::to_wstring(static_cast<int>(hrEnsurePlugin)) + L" request_id=" + requestId });
@@ -1544,6 +1571,53 @@ namespace winrt::PasskeyManager::implementation
             LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=persist_deployment_version hr=" + std::to_wstring(static_cast<int>(hrPersistPackageVersion)) + L" request_id=" + requestId });
         }
         LogInfo(winrt::hstring{ L"summary state=observed operation=" + operation + L" step=registration_state_sync before=" + toStateText(stateBefore) + L" after=" + toStateText(stateAfter) + L" hr=" + std::to_wstring(static_cast<int>(hrEnsurePlugin)) + L" request_id=" + requestId });
+
+        const std::wstring runOpaqueFfiSmoke = TrimCopy(GetProcessEnvironmentValue(L"TSUPASSWD_RUN_OPAQUE_FFI_SMOKE"));
+        OutputDebugStringW((std::wstring(L"opaque_ffi_smoke env TSUPASSWD_RUN_OPAQUE_FFI_SMOKE='") + runOpaqueFfiSmoke + L"'\n").c_str());
+        if (runOpaqueFfiSmoke == L"1")
+        {
+            OutputDebugStringW(L"opaque_ffi_smoke starting\n");
+            std::string error;
+            bool ok = false;
+            try
+            {
+                (void)RunOpaqueFfiSmokeWithSeh(&error, &ok);
+            }
+            catch (const std::exception& ex)
+            {
+                OutputDebugStringA((std::string("opaque_ffi_smoke threw std::exception: ") + ex.what() + "\n").c_str());
+                ok = false;
+                if (error.empty())
+                {
+                    error = ex.what();
+                }
+            }
+            catch (...)
+            {
+                OutputDebugStringW(L"opaque_ffi_smoke threw unknown C++ exception\n");
+                ok = false;
+                if (error.empty())
+                {
+                    error = "unknown_exception";
+                }
+            }
+
+            if (ok)
+            {
+                OutputDebugStringW(L"opaque_ffi_smoke finished ok\n");
+                LogInfo(winrt::hstring{ L"summary result=success operation=" + operation + L" step=opaque_ffi_smoke result=ok request_id=" + requestId });
+            }
+            else
+            {
+                OutputDebugStringW(L"opaque_ffi_smoke finished failed\n");
+                OutputDebugStringA((std::string("opaque_ffi_smoke failed: ") + error + "\n").c_str());
+                LogWarning(winrt::hstring{ L"summary result=warning operation=" + operation + L" step=opaque_ffi_smoke result=failed request_id=" + requestId });
+            }
+        }
+        else
+        {
+            OutputDebugStringW(L"opaque_ffi_smoke skipped (env != 1)\n");
+        }
 
         ULONGLONG startupSequence = 0;
         DWORD startupSequenceSize = sizeof(startupSequence);

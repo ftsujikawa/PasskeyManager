@@ -36,6 +36,12 @@ namespace winrt::PasskeyManager::implementation
     constexpr wchar_t c_pluginProtectedHMACSecretInput[] = L"HMACSecretInputProtected";
 
     namespace {
+        bool IsPluginTempPersistenceEnabled() noexcept;
+
+        void AppendTempLogLine(wchar_t const* fileName, std::wstring const& line) noexcept;
+
+        bool TryAcquireOperationInProgressFlag(std::atomic<bool>& flag) noexcept;
+
         HRESULT ComputeHmacSha256(
             std::span<const BYTE> key,
             std::span<const BYTE> data,
@@ -150,23 +156,13 @@ namespace winrt::PasskeyManager::implementation
 
         void PersistLastMakeCredentialStatus(HRESULT hr) noexcept
         {
-            wchar_t tempPath[MAX_PATH]{};
-            DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
-            if (tempLen > 0 && tempLen < std::size(tempPath))
+            if (IsPluginTempPersistenceEnabled())
             {
-                std::wstring filePath(tempPath);
-                filePath += L"tsupasswd_core_make_credential_status.log";
-                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (hFile != INVALID_HANDLE_VALUE)
+                wchar_t line[96]{};
+                const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
+                if (cch > 0)
                 {
-                    wchar_t line[96]{};
-                    const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
-                    if (cch > 0)
-                    {
-                        DWORD cb = 0;
-                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
-                    }
-                    (void)CloseHandle(hFile);
+                    AppendTempLogLine(L"tsupasswd_core_make_credential_status.log", std::wstring(line, cch));
                 }
             }
 
@@ -220,48 +216,124 @@ namespace winrt::PasskeyManager::implementation
 
         void PersistLastGetAssertionStatus(HRESULT hr) noexcept
         {
+            if (!IsPluginTempPersistenceEnabled())
+            {
+                return;
+            }
+
+            wchar_t line[128]{};
+            const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
+            if (cch > 0)
+            {
+                AppendTempLogLine(L"tsupasswd_core_get_assertion_status.log", std::wstring(line, cch));
+            }
+        }
+
+        bool IsTruthySetting(std::wstring value) noexcept
+        {
+            std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch)
+            {
+                return static_cast<wchar_t>(towlower(ch));
+            });
+            return value == L"1" || value == L"true" || value == L"yes" || value == L"on";
+        }
+
+        bool IsPluginTempPersistenceEnabled() noexcept
+        {
+            wchar_t buffer[16]{};
+            DWORD written = GetEnvironmentVariableW(L"TSUPASSWD_PLUGIN_PERSIST_GET_ASSERTION_INFO", buffer, static_cast<DWORD>(std::size(buffer)));
+            if (written == 0 || written >= std::size(buffer))
+            {
+                return false;
+            }
+            return IsTruthySetting(std::wstring(buffer, written));
+        }
+
+        void AppendTempLogLine(wchar_t const* fileName, std::wstring const& line) noexcept
+        {
+            if (fileName == nullptr || fileName[0] == L'\0' || line.empty())
+            {
+                return;
+            }
+
             wchar_t tempPath[MAX_PATH]{};
             DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
-            if (tempLen > 0 && tempLen < std::size(tempPath))
+            if (tempLen == 0 || tempLen >= std::size(tempPath))
             {
-                std::wstring filePath(tempPath);
-                filePath += L"tsupasswd_core_get_assertion_status.log";
-                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (hFile != INVALID_HANDLE_VALUE)
+                return;
+            }
+
+            std::wstring filePath(tempPath);
+            filePath += fileName;
+            HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (hFile == INVALID_HANDLE_VALUE)
+            {
+                return;
+            }
+
+            DWORD cb = 0;
+            (void)WriteFile(hFile, line.data(), static_cast<DWORD>(line.size() * sizeof(wchar_t)), &cb, nullptr);
+            (void)CloseHandle(hFile);
+        }
+
+        bool TryAcquireOperationInProgressFlag(std::atomic<bool>& flag) noexcept
+        {
+            bool expected = false;
+            if (flag.compare_exchange_strong(expected, true))
+            {
+                return true;
+            }
+
+            flag = false;
+            expected = false;
+            return flag.compare_exchange_strong(expected, true);
+        }
+
+        bool IsSupportedRpId(wchar_t const* rpId) noexcept
+        {
+            if (rpId == nullptr || rpId[0] == L'\0')
+            {
+                return false;
+            }
+
+            static wchar_t const* const kSupportedRpIds[] = {
+                c_pluginRpId,
+                c_pluginRpIdWebAuthnIo,
+                c_pluginRpIdWebAuthnIoWww,
+                c_pluginRpIdPasskeyOrg,
+                c_pluginRpIdPasskeyOrgWww,
+                c_pluginRpIdPasskeysIo,
+                c_pluginRpIdPasskeysIoWww,
+                c_pluginRpIdPasskeysGuru,
+                c_pluginRpIdPasskeysGuruWww,
+                c_pluginRpIdWebAuthnPasswordlessId,
+                c_pluginRpIdWebAuthnPasswordlessIdWww,
+            };
+
+            for (auto const* candidate : kSupportedRpIds)
+            {
+                if (_wcsicmp(rpId, candidate) == 0)
                 {
-                    wchar_t line[128]{};
-                    const int cch = swprintf_s(line, L"0x%08X\r\n", static_cast<DWORD>(hr));
-                    if (cch > 0)
-                    {
-                        DWORD cb = 0;
-                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
-                    }
-                    (void)CloseHandle(hFile);
+                    return true;
                 }
             }
+
+            return false;
         }
 
         void PersistGetAssertionInfo(PCWSTR rpId, DWORD credentialIdLen, DWORD userIdLen) noexcept
         {
-            wchar_t tempPath[MAX_PATH]{};
-            DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
-            if (tempLen > 0 && tempLen < std::size(tempPath))
+            if (!IsPluginTempPersistenceEnabled())
             {
-                std::wstring filePath(tempPath);
-                filePath += L"tsupasswd_core_get_assertion_info.log";
-                HANDLE hFile = CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (hFile != INVALID_HANDLE_VALUE)
-                {
-                    const wchar_t* rp = (rpId && rpId[0] != L'\0') ? rpId : L"(null)";
-                    wchar_t line[512]{};
-                    const int cch = swprintf_s(line, L"rpId=%s credIdLen=%lu userIdLen=%lu\r\n", rp, credentialIdLen, userIdLen);
-                    if (cch > 0)
-                    {
-                        DWORD cb = 0;
-                        (void)WriteFile(hFile, line, static_cast<DWORD>(cch * sizeof(wchar_t)), &cb, nullptr);
-                    }
-                    (void)CloseHandle(hFile);
-                }
+                return;
+            }
+
+            const wchar_t* rp = (rpId && rpId[0] != L'\0') ? rpId : L"(null)";
+            wchar_t line[512]{};
+            const int cch = swprintf_s(line, L"rpId=%s credIdLen=%lu userIdLen=%lu\r\n", rp, credentialIdLen, userIdLen);
+            if (cch > 0)
+            {
+                AppendTempLogLine(L"tsupasswd_core_get_assertion_info.log", std::wstring(line, cch));
             }
         }
 
@@ -665,18 +737,12 @@ namespace winrt::PasskeyManager::implementation
             SetMakeCredentialStage(0x0016);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430016));
 
-            bool expected = false;
-            if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+            if (!TryAcquireOperationInProgressFlag(curApp->m_isOperationInProgress))
             {
                 SetMakeCredentialStage(0x0017);
                 PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430017));
-                curApp->m_isOperationInProgress = false;
-                expected = false;
-                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
-                {
-                    PersistLastMakeCredentialStatus(HRESULT_FROM_WIN32(ERROR_BUSY));
-                    return HRESULT_FROM_WIN32(ERROR_BUSY);
-                }
+                PersistLastMakeCredentialStatus(HRESULT_FROM_WIN32(ERROR_BUSY));
+                return HRESULT_FROM_WIN32(ERROR_BUSY);
             }
 
             SetMakeCredentialStage(0x0018);
@@ -744,18 +810,7 @@ namespace winrt::PasskeyManager::implementation
             THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
 
             std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
-            bool rpSupported =
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrg) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeyOrgWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIo) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysIoWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuru) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdPasskeysGuruWww) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessId) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnPasswordlessIdWww) == 0;
+            bool rpSupported = IsSupportedRpId(rpIdFromRequestW.c_str());
             THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
             wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
             if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
@@ -1273,16 +1328,9 @@ namespace winrt::PasskeyManager::implementation
             }
 
             // Atomically check if an operation is already in progress.
-            bool expected = false;
-            if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
+            if (!TryAcquireOperationInProgressFlag(curApp->m_isOperationInProgress))
             {
-                // Recover once from a potentially stale in-progress flag left by a previous failed flow.
-                curApp->m_isOperationInProgress = false;
-                expected = false;
-                if (!curApp->m_isOperationInProgress.compare_exchange_strong(expected, true))
-                {
-                    return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
-                }
+                return HRESULT_FROM_WIN32(ERROR_BUSY); // Another operation is running.
             }
             // Ensure the flag is cleared when the function exits, for any reason.
             auto clearOperationInProgress = wil::scope_exit([&]

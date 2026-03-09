@@ -573,6 +573,10 @@ namespace winrt::PasskeyManager::implementation {
             std::vector<uint8_t> cipherForSync = cipherPlain;
             PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
             auto exportKey = PluginRegistrationManager::getInstance().GetOpaqueExportKey();
+            if (IsOpaqueSessionWrapEnabled() && exportKey.empty())
+            {
+                statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=sync_wrap_skipped reason=opaque_export_key_missing fallback=plaintext_cipher request_id=" + localRequestId + L"ℹ" });
+            }
             if (IsOpaqueSessionWrapEnabled() && !exportKey.empty())
             {
                 tsupasswd::VaultCryptoError wrapError{};
@@ -583,7 +587,7 @@ namespace winrt::PasskeyManager::implementation {
                 }
                 else
                 {
-                    statusSink(winrt::hstring{ L"WARNING: sync result=warning operation=" + operation + L" reason=sync_wrap_failed code=" + wrapError.Code + L" detail=" + wrapError.Detail + L" request_id=" + localRequestId + L"⚠" });
+                    statusSink(winrt::hstring{ L"WARNING: sync result=warning operation=" + operation + L" reason=sync_wrap_failed code=" + wrapError.Code + L" detail=" + wrapError.Detail + L" fallback=plaintext_cipher fail_mode=fail_open request_id=" + localRequestId + L"⚠" });
                 }
             }
             return Base64StdEncode(cipherForSync.data(), wil::safe_cast<DWORD>(cipherForSync.size()));

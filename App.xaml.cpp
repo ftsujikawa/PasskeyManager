@@ -231,11 +231,17 @@ void App::OnLaunched(LaunchActivatedEventArgs const&)
         PersistAppComMarker(0xAC0C1200);
         // Interactive Mode: The user is launching the app directly.
         PluginCredentialManager::getInstance();
+        PersistAppComMarker(0xAC0C1201);
         m_window = make<MainWindow>();
+        PersistAppComMarker(0xAC0C1202);
         InitializeAppWindTitleBar();
+        PersistAppComMarker(0xAC0C1203);
         Frame rootFrame = CreateRootFrame();
+        PersistAppComMarker(0xAC0C1204);
         rootFrame.Navigate(xaml_typename<PasskeyManager::MainPage>(), box_value(m_args));
+        PersistAppComMarker(0xAC0C1205);
         m_window.Activate();
+        PersistAppComMarker(0xAC0C1206);
 
         // Ensure the COM local server is also registered in interactive mode so browsers can activate
         // the plugin without relying on a -PluginActivated relaunch.

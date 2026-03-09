@@ -1303,6 +1303,7 @@ namespace winrt::PasskeyManager::implementation
 
     MainPage::MainPage()
     {
+        InitializeComponent();
         m_credentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         m_filteredCredentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         DataContext(m_credentialListViewModel);
@@ -2961,6 +2962,9 @@ namespace winrt::PasskeyManager::implementation
         }
 
         homeCredentialSummaryTextBlock().Text(winrt::hstring{ summary });
+        bool hasResults = m_filteredCredentialListViewModel.credentials().Size() > 0;
+        homeCredentialListView().Visibility(hasResults ? Visibility::Visible : Visibility::Collapsed);
+        homeCredentialEmptyStateTextBlock().Visibility(hasResults ? Visibility::Collapsed : Visibility::Visible);
     }
 
     void MainPage::SetHomeViewVisible(bool isHomeVisible)

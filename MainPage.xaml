@@ -44,12 +44,137 @@
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="HappyFactory Passkey Manager" />
         </StackPanel>
-        <Grid
-            Grid.Row="1"
-            Padding="16,24,16,16"
-            ColumnSpacing="24"
-            RowSpacing="8"
-            Visibility="Visible">
+        <Grid Grid.Row="1">
+            <Grid
+                x:Name="homeViewRoot"
+                Padding="16,24,16,16"
+                RowSpacing="16"
+                Visibility="Visible">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="パスキー一覧" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="検索しながら登録済みパスキーを確認できます。詳細設定は右上のボタンから開きます。"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                    <Button
+                        x:Name="showDetailViewButton"
+                        Grid.Column="1"
+                        Click="showDetailViewButton_Click"
+                        Content="詳細"
+                        Style="{StaticResource AccentButtonStyle}" />
+                </Grid>
+
+                <Grid
+                    Grid.Row="1"
+                    Style="{StaticResource CardStyle}">
+                    <Grid RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <AutoSuggestBox
+                            x:Name="passkeySearchBox"
+                            Grid.Row="0"
+                            PlaceholderText="ユーザー名 / RP 名で検索"
+                            TextChanged="passkeySearchBox_TextChanged" />
+                        <TextBlock
+                            x:Name="homeCredentialSummaryTextBlock"
+                            Grid.Row="1"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="パスキーを読み込み中..."
+                            TextWrapping="WrapWholeWords" />
+                    </Grid>
+                </Grid>
+
+                <Grid
+                    Grid.Row="2"
+                    Style="{StaticResource CardStyle}">
+                    <ListView
+                        x:Name="homeCredentialListView"
+                        IsItemClickEnabled="False"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:Credential">
+                                <Grid Padding="8" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <FontIcon
+                                        Grid.RowSpan="2"
+                                        Grid.Column="0"
+                                        FontSize="16"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Glyph="&#xF427;" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind UserName}" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind RpName}" />
+                                    <Border
+                                        Grid.RowSpan="2"
+                                        Grid.Column="2"
+                                        Padding="4"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource ControlAltFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlCornerRadius}"
+                                        Visibility="{x:Bind CredentialOptions, Converter={StaticResource BitwiseFlagToVisibilityConverter}, ConverterParameter=AutofillCapable}">
+                                        <TextBlock FontSize="12" Text="Autofill" />
+                                    </Border>
+                                    <Border
+                                        Grid.RowSpan="2"
+                                        Grid.Column="3"
+                                        Padding="4"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlCornerRadius}"
+                                        Visibility="{x:Bind CredentialOptions, Converter={StaticResource BitwiseFlagToVisibilityConverter}, ConverterParameter=MetadataStale}">
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                            Text="Stale" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Grid>
+
+            <ScrollViewer
+                x:Name="detailViewScroller"
+                Padding="0"
+                VerticalScrollBarVisibility="Auto"
+                Visibility="Collapsed">
+                <Grid
+                    Padding="16,24,16,16"
+                    ColumnSpacing="24"
+                    RowSpacing="8"
+                    Visibility="Visible">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -92,22 +217,22 @@
                     <Button
                         x:Name="registerPluginButton"
                         Click="registerPluginButton_Click"
-                        Content="Register"
+                        Content="プラグインを登録"
                         Style="{StaticResource AccentButtonStyle}" />
                     <Button
                         x:Name="updatePluginButton"
                         Click="updatePluginButton_Click"
-                        Content="Update"
+                        Content="プラグインを更新"
                         Style="{StaticResource AccentButtonStyle}" />
                     <Button
                         x:Name="activatePluginButton"
                         Click="activatePluginButton_Click"
-                        Content="Enable"
+                        Content="プラグインを有効化"
                         Style="{StaticResource AccentButtonStyle}" />
                     <Button
                         x:Name="unregisterPluginButton"
                         Click="unregisterPluginButton_Click"
-                        Content="Remove" />
+                        Content="プラグイン登録を解除" />
                 </StackPanel>
                 <TextBlock
                     x:Name="pluginActivationHintText"
@@ -241,6 +366,8 @@
                             x:Name="syncBaseUrlTextBox"
                             Grid.Row="0"
                             Grid.Column="1"
+                            MinHeight="28"
+                            Padding="8,2"
                             PlaceholderText="https://tsupasswd.com/"
                             TextWrapping="NoWrap" />
 
@@ -254,6 +381,8 @@
                             x:Name="syncBearerTokenBox"
                             Grid.Row="1"
                             Grid.Column="1"
+                            MinHeight="28"
+                            Padding="8,2"
                             PlaceholderText="Bearer token" />
 
                         <TextBlock
@@ -266,6 +395,8 @@
                             x:Name="syncUserIdTextBox"
                             Grid.Row="2"
                             Grid.Column="1"
+                            MinHeight="28"
+                            Padding="8,2"
                             PlaceholderText="HappyFactoryUserId"
                             TextWrapping="NoWrap" />
 
@@ -287,52 +418,64 @@
                             <Button
                                 x:Name="refreshSnapshotCandidatesButton"
                                 Click="refreshSnapshotCandidatesButton_Click"
-                                Content="Refresh List" />
+                                Content="履歴を更新" />
                             <Button
                                 x:Name="restoreSelectedSnapshotButton"
                                 Click="restoreSelectedSnapshotButton_Click"
-                                Content="Restore Selected" />
+                                Content="選択した履歴を復元" />
                         </StackPanel>
 
                         <StackPanel
                             Grid.Row="0"
                             Grid.Column="2"
                             Grid.RowSpan="4"
-                            Orientation="Vertical"
                             Spacing="8">
-                            <Button
-                                x:Name="loadSyncSettingsButton"
-                                Click="loadSyncSettingsButton_Click"
-                                Content="Load" />
-                            <Button
-                                x:Name="saveSyncSettingsButton"
-                                Click="saveSyncSettingsButton_Click"
-                                Content="Save"
-                                Style="{StaticResource AccentButtonStyle}" />
-                            <Button
-                                x:Name="testSyncConnectionButton"
-                                Click="testSyncConnectionButton_Click"
-                                Content="Test Connection" />
-                            <Button
-                                x:Name="runVaultSchemaSelfTestButton"
-                                Click="runVaultSchemaSelfTestButton_Click"
-                                Content="Run Vault Self-Test (Debug)" />
-                            <Button
-                                x:Name="clearLocalVaultButton"
-                                Click="clearLocalVaultButton_Click"
-                                Content="Clear Local Vault" />
-                            <Button
-                                x:Name="manualSyncButton"
-                                Click="manualSyncButton_Click"
-                                Content="Resync Now" />
-                            <Button
-                                x:Name="restoreSyncSnapshotButton"
-                                Click="restoreSyncSnapshotButton_Click"
-                                Content="Restore Snapshot" />
-                            <Button
-                                x:Name="showSyncedVaultButton"
-                                Click="showSyncedVaultButton_Click"
-                                Content="Show Synced Vault" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="基本操作" />
+                            <StackPanel Spacing="8">
+                                <Button
+                                    x:Name="loadSyncSettingsButton"
+                                    Click="loadSyncSettingsButton_Click"
+                                    Content="保存済み設定を読み込む" />
+                                <Button
+                                    x:Name="saveSyncSettingsButton"
+                                    Click="saveSyncSettingsButton_Click"
+                                    Content="設定を保存する"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                                <Button
+                                    x:Name="testSyncConnectionButton"
+                                    Click="testSyncConnectionButton_Click"
+                                    Content="接続を確認する" />
+                                <Button
+                                    x:Name="manualSyncButton"
+                                    Click="manualSyncButton_Click"
+                                    Content="今すぐ同期する" />
+                                <Button
+                                    x:Name="restoreSyncSnapshotButton"
+                                    Click="restoreSyncSnapshotButton_Click"
+                                    Content="最新スナップショットを復元する" />
+                            </StackPanel>
+                            <TextBlock
+                                Margin="0,8,0,0"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="保守・復旧 / 開発向け" />
+                            <StackPanel Spacing="8">
+                                <Button
+                                    x:Name="showSyncedVaultButton"
+                                    Click="showSyncedVaultButton_Click"
+                                    Content="同期済み Vault を表示する" />
+                                <Button
+                                    x:Name="clearLocalVaultButton"
+                                    Click="clearLocalVaultButton_Click"
+                                    Content="ローカル Vault を消去する" />
+                                <Button
+                                    x:Name="runVaultSchemaSelfTestButton"
+                                    Click="runVaultSchemaSelfTestButton_Click"
+                                    Content="Vault 自己テストを実行する（開発用）" />
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 
@@ -378,38 +521,38 @@
                 <Button
                     x:Name="refreshButton"
                     Click="refreshButton_Click"
-                    Content="Refresh"
+                    Content="一覧を更新"
                     Style="{StaticResource AccentButtonStyle}" />
                 <Button
                     x:Name="quickCreateVaultPasskeyButton"
                     Click="runVaultRecoveryButton_Click"
-                    Content="Create Vault Passkey" />
-                <DropDownButton Content="Add">
+                    Content="Vault 用パスキーを作成" />
+                <DropDownButton Content="追加">
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
-                            <MenuFlyoutItem Click="addAllPluginCredentials_Click" Text="All Passkeys to Cache" />
+                            <MenuFlyoutItem Click="addAllPluginCredentials_Click" Text="すべてのパスキーをキャッシュへ追加" />
                             <MenuFlyoutItem
                                 x:Name="selectedAddButton"
                                 Click="addSelectedCredentials_Click"
                                 IsEnabled="False"
-                                Text="Selected Passkeys to Cache" />
+                                Text="選択したパスキーをキャッシュへ追加" />
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
-                <DropDownButton Content="Delete">
+                <DropDownButton Content="削除">
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
-                            <MenuFlyoutItem Click="deleteAllPluginCredentials_Click" Text="All Passkeys from Cache" />
+                            <MenuFlyoutItem Click="deleteAllPluginCredentials_Click" Text="すべてのパスキーをキャッシュから削除" />
                             <MenuFlyoutItem
                                 x:Name="deleteSelectedCacheButton"
                                 Click="deleteSelectedPluginCredentials_Click"
-                                Text="Selected Passkeys from Cache" />
+                                Text="選択したパスキーをキャッシュから削除" />
                             <MenuFlyoutItem
                                 x:Name="deleteSelectedLocalButton"
                                 Click="deleteSelectedPluginCredentialsEverywhere_Click"
-                                Text="Selected Passkeys everywhere" />
-                            <MenuFlyoutItem Click="deleteAllLocalCredentials_Click" Text="All Passkeys from Local" />
-                            <MenuFlyoutItem Click="deleteAllCredentials_Click" Text="All Passkeys everywhere" />
+                                Text="選択したパスキーを全保存先から削除" />
+                            <MenuFlyoutItem Click="deleteAllLocalCredentials_Click" Text="すべてのパスキーをローカルから削除" />
+                            <MenuFlyoutItem Click="deleteAllCredentials_Click" Text="すべてのパスキーを全保存先から削除" />
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
@@ -522,6 +665,10 @@
                 Grid.Column="1"
                 Orientation="Horizontal"
                 Spacing="8">
+                <Button
+                    x:Name="backToHomeButton"
+                    Click="backToHomeButton_Click"
+                    Content="ホームへ戻る" />
                 <ComboBox
                     x:Name="logsFilterCombo"
                     MinWidth="160"
@@ -537,12 +684,14 @@
                 <Button
                     x:Name="copyLatestLogButton"
                     Click="copyLatestLogButton_Click"
-                    Content="Copy Visible" />
+                    Content="表示中ログをコピー" />
                 <Button
                     x:Name="clearLogsButton"
                     Click="clearLogsButton_Click"
-                    Content="Clear" />
+                    Content="ログ表示をクリア" />
             </StackPanel>
+                </Grid>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Page>

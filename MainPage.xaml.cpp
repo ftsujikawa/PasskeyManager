@@ -79,6 +79,15 @@ namespace {
         return value.substr(first, last - first + 1);
     }
 
+    std::wstring ToLowerCopy(std::wstring value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch)
+        {
+            return static_cast<wchar_t>(std::towlower(ch));
+        });
+        return value;
+    }
+
     bool HasDwordRegistryValue(HKEY root, wchar_t const* subKey, wchar_t const* valueName)
     {
         DWORD value = 0;
@@ -1295,6 +1304,7 @@ namespace winrt::PasskeyManager::implementation
     MainPage::MainPage()
     {
         m_credentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
+        m_filteredCredentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         DataContext(m_credentialListViewModel);
 
         auto weakThis = get_weak();
@@ -1464,6 +1474,7 @@ namespace winrt::PasskeyManager::implementation
     winrt::fire_and_forget MainPage::UpdateCredentialList()
     {
         m_credentialListViewModel.credentials().Clear();
+        m_filteredCredentialListViewModel.credentials().Clear();
         auto weakThis = get_weak();
         co_await winrt::resume_background();
 
@@ -1500,10 +1511,14 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->m_credentialListViewModel.credentials().Clear();
+        self->m_allCredentials.clear();
         for (auto& credListItem : credentialViewList)
         {
-            self->m_credentialListViewModel.credentials().Append(*credListItem.detach());
+            auto credential = credListItem.as<PasskeyManager::Credential>();
+            self->m_credentialListViewModel.credentials().Append(credential);
+            self->m_allCredentials.push_back(credential);
         }
+        self->ApplyCredentialFilter();
         co_return;
     }
 
@@ -1762,17 +1777,6 @@ namespace winrt::PasskeyManager::implementation
             syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required request_id=" + requestId + L"⚠" });
             LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + requestId });
             co_return;
-        }
-        if (!baseUrl.empty())
-        {
-            std::wstring host;
-            if (!TryGetSyncBaseUrlHost(baseUrl, host) || !IsHostNameResolvable(host))
-            {
-                std::wstring hostValue = host.empty() ? L"unparsed" : host;
-                syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=name_not_resolved host=" + hostValue + L" request_id=" + requestId + L"⚠" });
-                LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=name_not_resolved host=" + hostValue + L" recovery=check_sync_base_url_dns_or_hosts request_id=" + requestId });
-                co_return;
-            }
         }
         if (!userId.empty() && !IsValidSyncUserId(userId))
         {
@@ -2358,8 +2362,8 @@ namespace winrt::PasskeyManager::implementation
 
         for (auto item : selectedItems)
         {
-            auto credential = item.as<PasskeyManager::implementation::Credential>();
-            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential->CredentialId());
+            auto credential = item.as<PasskeyManager::Credential>();
+            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential.CredentialId());
             std::vector<UINT8> credentialIdToAdd(reader.UnconsumedBufferLength());
             reader.ReadBytes(credentialIdToAdd);
             credentialIdList.push_back(credentialIdToAdd);
@@ -2455,8 +2459,8 @@ namespace winrt::PasskeyManager::implementation
 
         for (auto item : selectedItems)
         {
-            auto credential = item.as<PasskeyManager::implementation::Credential>();
-            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential->CredentialId());
+            auto credential = item.as<PasskeyManager::Credential>();
+            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential.CredentialId());
             std::vector<UINT8> credentialIdToDelete(reader.UnconsumedBufferLength());
             reader.ReadBytes(credentialIdToDelete);
             credentialIdList.push_back(credentialIdToDelete);
@@ -2553,8 +2557,8 @@ namespace winrt::PasskeyManager::implementation
 
         for (auto item : selectedItems)
         {
-            auto credential = item.as<PasskeyManager::implementation::Credential>();
-            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential->CredentialId());
+            auto credential = item.as<PasskeyManager::Credential>();
+            auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential.CredentialId());
             std::vector<UINT8> credentialIdToDelete(reader.UnconsumedBufferLength());
             reader.ReadBytes(credentialIdToDelete);
             credentialIdList.push_back(credentialIdToDelete);
@@ -2920,6 +2924,69 @@ namespace winrt::PasskeyManager::implementation
         selectedAddButton().IsEnabled(selected);
         deleteSelectedCacheButton().IsEnabled(selected);
         deleteSelectedLocalButton().IsEnabled(selected);
+        co_return;
+    }
+
+    void MainPage::ApplyCredentialFilter()
+    {
+        m_filteredCredentialListViewModel.credentials().Clear();
+        homeCredentialListView().ItemsSource(m_filteredCredentialListViewModel.credentials());
+
+        std::wstring query = TrimCopy(m_passkeySearchText);
+        std::wstring loweredQuery = ToLowerCopy(query);
+
+        for (auto const& credential : m_allCredentials)
+        {
+            if (loweredQuery.empty())
+            {
+                m_filteredCredentialListViewModel.credentials().Append(credential);
+                continue;
+            }
+
+            std::wstring userName = ToLowerCopy(std::wstring{ credential.UserName().c_str() });
+            std::wstring rpName = ToLowerCopy(std::wstring{ credential.RpName().c_str() });
+            if (userName.find(loweredQuery) != std::wstring::npos ||
+                rpName.find(loweredQuery) != std::wstring::npos)
+            {
+                m_filteredCredentialListViewModel.credentials().Append(credential);
+            }
+        }
+
+        std::wstring summary = std::to_wstring(m_filteredCredentialListViewModel.credentials().Size()) +
+            L" / " + std::to_wstring(m_allCredentials.size()) +
+            L" 件のパスキーを表示中";
+        if (!query.empty())
+        {
+            summary += L"（検索: " + query + L"）";
+        }
+
+        homeCredentialSummaryTextBlock().Text(winrt::hstring{ summary });
+    }
+
+    void MainPage::SetHomeViewVisible(bool isHomeVisible)
+    {
+        homeViewRoot().Visibility(isHomeVisible ? Visibility::Visible : Visibility::Collapsed);
+        detailViewScroller().Visibility(isHomeVisible ? Visibility::Collapsed : Visibility::Visible);
+    }
+
+    winrt::IAsyncAction MainPage::showDetailViewButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        SetHomeViewVisible(false);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::backToHomeButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        SetHomeViewVisible(true);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::passkeySearchBox_TextChanged(
+        Microsoft::UI::Xaml::Controls::AutoSuggestBox const& sender,
+        Microsoft::UI::Xaml::Controls::AutoSuggestBoxTextChangedEventArgs const&)
+    {
+        m_passkeySearchText = sender.Text().c_str();
+        ApplyCredentialFilter();
         co_return;
     }
 

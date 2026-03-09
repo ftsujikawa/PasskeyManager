@@ -44,6 +44,8 @@ namespace winrt::PasskeyManager::implementation
 
         wchar_t const* GetNonEmptyStringOrFallback(wchar_t const* value, wchar_t const* fallback) noexcept;
 
+        void SetPerformOperationStatus(App& app, HRESULT status) noexcept;
+
         std::vector<uint8_t> GetRequestSigningPubKey();
 
         HRESULT VerifySignatureHelper(
@@ -313,6 +315,12 @@ namespace winrt::PasskeyManager::implementation
             }
 
             return fallback;
+        }
+
+        void SetPerformOperationStatus(App& app, HRESULT status) noexcept
+        {
+            std::lock_guard<std::mutex> lock(app.m_pluginOperationOptionsMutex);
+            app.m_pluginOperationStatus.performOperationStatus = status;
         }
 
         HRESULT VerifyRequestSignatureIfPresent(
@@ -1397,13 +1405,13 @@ namespace winrt::PasskeyManager::implementation
             std::vector<const WEBAUTHN_CREDENTIAL_DETAILS*> selectedCredentials;
 
             // Wait for credentials to be loaded with timeout
-            constexpr int MAX_WAIT_ITERATIONS = 100;
-            constexpr int WAIT_INTERVAL_MS = 100;
+            constexpr int kCredentialMetadataLoadWaitIterations = 100;
+            constexpr int kCredentialMetadataLoadWaitIntervalMs = 100;
             int waitCount = 0;
             
-            while (waitCount < MAX_WAIT_ITERATIONS)
+            while (waitCount < kCredentialMetadataLoadWaitIterations)
             {
-                Sleep(WAIT_INTERVAL_MS);
+                Sleep(kCredentialMetadataLoadWaitIntervalMs);
                 if (credManager.IsLocalCredentialMetadataLoaded())
                 {
                     credManager.GetLocalCredsByRpIdAndAllowList(pDecodedAssertionRequest->pwszRpId,
@@ -1417,10 +1425,7 @@ namespace winrt::PasskeyManager::implementation
 
             if (selectedCredentials.empty())
             {
-                {
-                    std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                    curApp->m_pluginOperationStatus.performOperationStatus = NTE_NOT_FOUND;
-                }
+                SetPerformOperationStatus(*curApp, NTE_NOT_FOUND);
                 THROW_HR(NTE_NOT_FOUND);
             }
             else if (selectedCredentials.size() == 1)
@@ -1472,10 +1477,7 @@ namespace winrt::PasskeyManager::implementation
                     selectedCredential->pUserInformation == nullptr ||
                     selectedCredential->pUserInformation->pwszName == nullptr)
                 {
-                    {
-                        std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
-                        curApp->m_pluginOperationStatus.performOperationStatus = NTE_NOT_FOUND;
-                    }
+                    SetPerformOperationStatus(*curApp, NTE_NOT_FOUND);
                     THROW_HR(NTE_NOT_FOUND);
                 }
             }

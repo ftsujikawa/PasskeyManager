@@ -36,6 +36,11 @@ namespace winrt::PasskeyManager::implementation
             return m_credentialListViewModel;
         }
 
+        PasskeyManager::CredentialListViewModel FilteredCredentialList()
+        {
+            return m_filteredCredentialListViewModel;
+        }
+
         winrt::IAsyncAction refreshButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction registerPluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction updatePluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
@@ -64,6 +69,11 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction restoreSelectedSnapshotButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction logsFilterCombo_SelectionChanged(IInspectable const& sender, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& args);
         winrt::IAsyncAction copyLatestLogButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction showDetailViewButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction backToHomeButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction passkeySearchBox_TextChanged(
+            Microsoft::UI::Xaml::Controls::AutoSuggestBox const& sender,
+            Microsoft::UI::Xaml::Controls::AutoSuggestBoxTextChangedEventArgs const& args);
 
         winrt::fire_and_forget UpdateCredentialList();
 
@@ -232,13 +242,17 @@ namespace winrt::PasskeyManager::implementation
         void UpdatePluginStateTextBlock(AUTHENTICATOR_STATE state);
         winrt::IAsyncAction SelectionChanged(IInspectable const& sender, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         winrt::fire_and_forget UpdatePluginEnableState();
+        void ApplyCredentialFilter();
+        void SetHomeViewVisible(bool isHomeVisible);
 
         winrt::IAsyncAction vaultLockSwitch_Toggled(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::IAsyncAction silentOperationSwitch_Toggled(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& e);
     private:
         PasskeyManager::CredentialListViewModel m_credentialListViewModel{ nullptr };
+        PasskeyManager::CredentialListViewModel m_filteredCredentialListViewModel{ nullptr };
         winrt::IMap<winrt::IBuffer, IInspectable> m_selectedCredentialsSet = winrt::single_threaded_map<winrt::IBuffer, IInspectable>();
         std::vector<winrt::hstring> m_logEntries{};
+        std::vector<winrt::PasskeyManager::Credential> m_allCredentials{};
         wil::unique_registry_watcher m_registryWatcher;
         wil::unique_folder_change_reader_nothrow m_mockCredentialsDBWatcher;
         bool m_suppressVaultLockSwitchToggled = false;
@@ -246,6 +260,7 @@ namespace winrt::PasskeyManager::implementation
         bool m_isDeleteEverywhereInProgress = false;
         uint64_t m_deleteEverywhereRunCounter = 0;
         uint64_t m_deleteEverywhereActiveRunId = 0;
+        std::wstring m_passkeySearchText{};
         std::optional<DWORD> m_lastObservedMakeCredentialStatus{};
         std::optional<ULONGLONG> m_lastObservedMakeCredentialSequence{};
         std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};

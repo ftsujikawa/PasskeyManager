@@ -7,6 +7,8 @@
 - `sync_client_abnormal_log_scenarios.md`  
   異常系シナリオ、サンプル、GitHub Actions 実行手順
   （末尾に `Vault Schema v1 クイック回帰チェックリスト` を含む）
+- `opaque_smoke.md`
+  `sync-axum-api` の OPAQUE register/login と Vault PUT/GET のスモークテスト手順
 - `check_sync_runtime_log_keys.cmd`  
   実運用ログ向けの軽量チェック（必須異常シナリオを要求しない）。現在は14ルールを検証し、`manual_resync` success summary の `request_id` フォーマット整合、`delete_selected_credentials_everywhere` success summary の `request_id` 必須、`load_settings` / `save_settings` sync success の `request_id` 必須とフォーマット整合を含む
 - `check_sync_runtime_log_keys_samples.cmd`  

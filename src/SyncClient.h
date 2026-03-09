@@ -89,6 +89,17 @@ namespace tsupasswd
             std::wstring& outBearerToken,
             SyncHttpStatus* outStatus = nullptr) const noexcept;
 
+        HRESULT OpaqueLogin(
+            std::wstring const& userId,
+            std::wstring const& password,
+            std::wstring& outBearerToken,
+            SyncHttpStatus* outStatus = nullptr) const noexcept;
+
+        HRESULT OpaqueRegister(
+            std::wstring const& userId,
+            std::wstring const& password,
+            SyncHttpStatus* outStatus = nullptr) const noexcept;
+
         HRESULT GetVault(
             std::wstring const& userId,
             VaultRecord& outRecord,

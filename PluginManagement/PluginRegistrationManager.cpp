@@ -145,7 +145,6 @@ namespace
                 return value;
             }
         }
-
         return L"";
     }
 
@@ -190,6 +189,29 @@ namespace
             value.pop_back();
         }
         return value;
+    }
+
+    void ClearUserEnvironmentRegistryValue(wchar_t const* name)
+    {
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_WRITE, &hKey) != ERROR_SUCCESS)
+        {
+            OutputDebugStringW((std::wstring(L"DEBUG: ClearUserEnvironmentRegistryValue open_failed name='") + name + L"'\n").c_str());
+            return;
+        }
+
+        auto keyCleanup = wil::scope_exit([&]() {
+            RegCloseKey(hKey);
+        });
+
+        LONG rc = RegDeleteValueW(hKey, name);
+        OutputDebugStringW((std::wstring(L"DEBUG: ClearUserEnvironmentRegistryValue delete_result name='") + name + L"' rc=" + std::to_wstring(static_cast<int>(rc)) + L"\n").c_str());
+    }
+
+    void ClearProcessEnvironmentVariableValue(wchar_t const* name)
+    {
+        BOOL ok = SetEnvironmentVariableW(name, nullptr);
+        OutputDebugStringW((std::wstring(L"DEBUG: ClearProcessEnvironmentVariableValue name='") + name + L"' ok=" + std::to_wstring(static_cast<int>(ok)) + L"\n").c_str());
     }
 
     std::wstring GetEnvironmentVariableValue(wchar_t const* name)
@@ -728,17 +750,33 @@ namespace
         }
         else
         {
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (recoveryCode.empty())
+            {
+                statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE request_id=" + localRequestId + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            }
+
             tsupasswd::SyncHttpStatus loginStatus{};
             std::wstring issuedToken;
-            HRESULT hrLogin = syncClient.DevLogin(syncUserId, issuedToken, &loginStatus);
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            if (FAILED(hrLogin) || issuedToken.empty())
+            {
+                tsupasswd::SyncHttpStatus regStatus{};
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                loginStatus = {};
+                issuedToken.clear();
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            }
+
             if (SUCCEEDED(hrLogin) && !issuedToken.empty())
             {
                 syncClient.SetBearerToken(issuedToken);
-                statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=dev_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+                statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=opaque_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
             }
             else
             {
-                statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=dev_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" detail=" + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
+                statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=opaque_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" detail=" + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
                 return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
             }
         }
@@ -762,11 +800,58 @@ namespace
         auto syncStartTime = std::chrono::steady_clock::now();
         int attemptsUsed = 0;
 
+        auto reauthIfUnauthorized = [&](tsupasswd::SyncHttpStatus const& status) -> HRESULT
+        {
+            if (status.StatusCode != 401 && status.StatusCode != 403)
+            {
+                return S_FALSE;
+            }
+
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (recoveryCode.empty())
+            {
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            }
+
+            tsupasswd::SyncHttpStatus loginStatus{};
+            std::wstring issuedToken;
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            if (FAILED(hrLogin) || issuedToken.empty())
+            {
+                tsupasswd::SyncHttpStatus regStatus{};
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                loginStatus = {};
+                issuedToken.clear();
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            }
+
+            if (SUCCEEDED(hrLogin) && !issuedToken.empty())
+            {
+                syncClient.SetBearerToken(issuedToken);
+                ClearProcessEnvironmentVariableValue(kSyncBearerTokenEnv);
+                ClearUserEnvironmentRegistryValue(kSyncBearerTokenEnv);
+                statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=opaque_reauth_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+                return S_OK;
+            }
+
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=opaque_reauth_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" detail=" + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+        };
+
         for (int attempt = 1; attempt <= kMaxAttempts; ++attempt)
         {
             attemptsUsed = attempt;
             syncStatus = {};
             hrSync = syncClient.PutVault(syncUserId, putRequest, putResponse, &syncStatus);
+
+            if (hrSync == HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED) && attempt == 1)
+            {
+                HRESULT hrReauth = reauthIfUnauthorized(syncStatus);
+                if (hrReauth == S_OK)
+                {
+                    continue;
+                }
+            }
 
             if (hrSync == HRESULT_FROM_WIN32(ERROR_REVISION_MISMATCH) && syncStatus.ServerVersion >= 0)
             {
@@ -1868,17 +1953,33 @@ namespace winrt::PasskeyManager::implementation {
         }
         else
         {
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (recoveryCode.empty())
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE request_id=" + localRequestId + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            }
+
             tsupasswd::SyncHttpStatus loginStatus{};
             std::wstring issuedToken;
-            HRESULT hrLogin = syncClient.DevLogin(syncUserId, issuedToken, &loginStatus);
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            if (FAILED(hrLogin) || issuedToken.empty())
+            {
+                tsupasswd::SyncHttpStatus regStatus{};
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                loginStatus = {};
+                issuedToken.clear();
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            }
+
             if (SUCCEEDED(hrLogin) && !issuedToken.empty())
             {
                 syncClient.SetBearerToken(issuedToken);
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=dev_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=opaque_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
             }
             else
             {
-                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=dev_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" " + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=opaque_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" " + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
                 return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
             }
         }
@@ -1886,6 +1987,36 @@ namespace winrt::PasskeyManager::implementation {
         tsupasswd::VaultRecord record{};
         tsupasswd::SyncHttpStatus status{};
         HRESULT hr = syncClient.GetVault(syncUserId, record, &status);
+        if (hr == HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED) && (status.StatusCode == 401 || status.StatusCode == 403))
+        {
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (!recoveryCode.empty())
+            {
+                tsupasswd::SyncHttpStatus loginStatus{};
+                std::wstring issuedToken;
+                HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                if (FAILED(hrLogin) || issuedToken.empty())
+                {
+                    tsupasswd::SyncHttpStatus regStatus{};
+                    (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                    loginStatus = {};
+                    issuedToken.clear();
+                    hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                }
+
+                if (SUCCEEDED(hrLogin) && !issuedToken.empty())
+                {
+                    syncClient.SetBearerToken(issuedToken);
+                    ClearProcessEnvironmentVariableValue(kSyncBearerTokenEnv);
+                    ClearUserEnvironmentRegistryValue(kSyncBearerTokenEnv);
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=opaque_reauth_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+                    status = {};
+                    record = {};
+                    hr = syncClient.GetVault(syncUserId, record, &status);
+                }
+            }
+        }
+
         if (FAILED(hr))
         {
             if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || status.StatusCode == 404)

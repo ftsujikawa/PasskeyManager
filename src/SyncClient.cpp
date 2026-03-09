@@ -1,10 +1,15 @@
 #include "pch.h"
 #include "SyncClient.h"
 
+#include <wincrypt.h>
 #include <winhttp.h>
 #include <winrt/Windows.Data.Json.h>
 
+#include "tsupasswd_opaque_raii.hpp"
+
 #pragma comment(lib, "Winhttp.lib")
+
+#pragma comment(lib, "Crypt32.lib")
 
 namespace tsupasswd
 {
@@ -61,6 +66,71 @@ namespace tsupasswd
         private:
             HINTERNET m_handle{ nullptr };
         };
+
+        std::wstring Base64StdEncode(uint8_t const* bytes, size_t len)
+        {
+            if (!bytes || len == 0)
+            {
+                return L"";
+            }
+
+            DWORD outChars = 0;
+            if (!CryptBinaryToStringW(bytes, static_cast<DWORD>(len), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &outChars))
+            {
+                return L"";
+            }
+
+            std::wstring out;
+            out.resize(outChars);
+            if (!CryptBinaryToStringW(bytes, static_cast<DWORD>(len), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, out.data(), &outChars))
+            {
+                return L"";
+            }
+
+            while (!out.empty() && out.back() == L'\0')
+            {
+                out.pop_back();
+            }
+            return out;
+        }
+
+        bool Base64StdDecode(std::wstring const& b64, std::vector<uint8_t>& out)
+        {
+            out.clear();
+            if (b64.empty())
+            {
+                return false;
+            }
+
+            DWORD outBytes = 0;
+            if (!CryptStringToBinaryW(b64.c_str(), static_cast<DWORD>(b64.size()), CRYPT_STRING_BASE64, nullptr, &outBytes, nullptr, nullptr))
+            {
+                return false;
+            }
+
+            out.resize(outBytes);
+            if (!CryptStringToBinaryW(b64.c_str(), static_cast<DWORD>(b64.size()), CRYPT_STRING_BASE64, out.data(), &outBytes, nullptr, nullptr))
+            {
+                out.clear();
+                return false;
+            }
+            out.resize(outBytes);
+            return true;
+        }
+
+        std::wstring GetNamedStringOrEmpty(winrt::Windows::Data::Json::JsonObject const& obj, wchar_t const* name)
+        {
+            if (!obj.HasKey(name))
+            {
+                return L"";
+            }
+            auto value = obj.GetNamedValue(name, nullptr);
+            if (!value || value.ValueType() != winrt::Windows::Data::Json::JsonValueType::String)
+            {
+                return L"";
+            }
+            return std::wstring(value.GetString().c_str());
+        }
 
         struct ParsedBaseUrl
         {
@@ -575,6 +645,394 @@ namespace tsupasswd
             {
                 outStatus->ErrorCode = L"CLIENT_ERROR";
                 outStatus->ErrorMessage = L"SyncClient::DevLogin failed before receiving valid response.";
+            }
+            return wil::ResultFromCaughtException();
+        }
+    }
+
+    HRESULT SyncClient::OpaqueRegister(
+        std::wstring const& userId,
+        std::wstring const& password,
+        SyncHttpStatus* outStatus) const noexcept
+    {
+        if (outStatus)
+        {
+            *outStatus = {};
+        }
+
+        try
+        {
+            auto parsed = ParseBaseUrl(m_baseUrl);
+            RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"OpaqueRegister"));
+
+            std::string passwordUtf8 = WideToUtf8(password);
+            if (passwordUtf8.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueRegister requires non-empty password.";
+                }
+                return E_INVALIDARG;
+            }
+
+            using tsupasswd::opaque::ByteBufferOwner;
+            ByteBufferOwner regClientState;
+            ByteBufferOwner regRequest;
+            if (!tsupasswd_opaque_client_register_start(
+                    reinterpret_cast<const uint8_t*>(passwordUtf8.data()),
+                    passwordUtf8.size(),
+                    regClientState.out_ptr(),
+                    regRequest.out_ptr()))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"OPAQUE_CLIENT_ERROR";
+                    outStatus->ErrorMessage = Utf8ToWide(tsupasswd::opaque::TakeLastErrorString());
+                }
+                return E_FAIL;
+            }
+
+            DWORD openFlags = parsed.Secure ? WINHTTP_FLAG_SECURE : 0;
+            std::wstring headers = L"Content-Type: application/json; charset=utf-8";
+
+            WinHttpHandle hSession(WinHttpOpen(L"tsupasswd_core/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+            THROW_LAST_ERROR_IF_NULL(hSession.get());
+            WinHttpSetTimeouts(hSession.get(), m_timeoutMs, m_timeoutMs, m_timeoutMs, m_timeoutMs);
+            WinHttpHandle hConnect(WinHttpConnect(hSession.get(), parsed.Host.c_str(), parsed.Port, 0));
+            THROW_LAST_ERROR_IF_NULL(hConnect.get());
+
+            // POST /v1/auth/register/start
+            winrt::Windows::Data::Json::JsonObject startBody;
+            startBody.SetNamedValue(L"email", winrt::Windows::Data::Json::JsonValue::CreateStringValue(userId));
+            startBody.SetNamedValue(
+                L"registration_request_base64",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(Base64StdEncode(regRequest.data(), regRequest.size())));
+            std::string startUtf8 = WideToUtf8(std::wstring(startBody.Stringify().c_str()));
+
+            std::wstring startPath = BuildRequestPath(parsed.BasePath, L"v1/auth/register/start");
+            WinHttpHandle hReq1(WinHttpOpenRequest(hConnect.get(), L"POST", startPath.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, openFlags));
+            THROW_LAST_ERROR_IF_NULL(hReq1.get());
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpAddRequestHeaders(hReq1.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_ADDREQ_FLAG_ADD));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpSendRequest(
+                hReq1.get(),
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                startUtf8.empty() ? WINHTTP_NO_REQUEST_DATA : reinterpret_cast<LPVOID>(startUtf8.data()),
+                static_cast<DWORD>(startUtf8.size()),
+                static_cast<DWORD>(startUtf8.size()),
+                0));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpReceiveResponse(hReq1.get(), nullptr));
+
+            int32_t statusCode1 = QueryStatusCode(hReq1.get());
+            std::string body1 = ReadResponseBody(hReq1.get());
+            if (outStatus)
+            {
+                outStatus->StatusCode = statusCode1;
+                outStatus->RequestId = QueryRequestId(hReq1.get());
+            }
+
+            HRESULT hrStatus1 = MapHttpStatusToHr(statusCode1);
+            if (FAILED(hrStatus1))
+            {
+                ParseErrorBody(body1, outStatus);
+                return hrStatus1;
+            }
+
+            auto startRespJson = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body1));
+            std::wstring regRespB64 = GetNamedStringOrEmpty(startRespJson, L"registration_response_base64");
+            if (regRespB64.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueRegister: missing registration_response_base64.";
+                }
+                return E_FAIL;
+            }
+
+            std::vector<uint8_t> regRespBytes;
+            if (!Base64StdDecode(regRespB64, regRespBytes))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueRegister: invalid registration_response_base64.";
+                }
+                return E_FAIL;
+            }
+
+            ByteBuffer regResp{ regRespBytes.data(), regRespBytes.size() };
+            ByteBufferOwner regUpload;
+            ByteBufferOwner regSessionKey;
+            if (!tsupasswd_opaque_client_register_finish(
+                    reinterpret_cast<const uint8_t*>(passwordUtf8.data()),
+                    passwordUtf8.size(),
+                    &regClientState.get(),
+                    &regResp,
+                    regUpload.out_ptr(),
+                    regSessionKey.out_ptr()))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"OPAQUE_CLIENT_ERROR";
+                    outStatus->ErrorMessage = Utf8ToWide(tsupasswd::opaque::TakeLastErrorString());
+                }
+                return E_FAIL;
+            }
+
+            // POST /v1/auth/register/finish
+            winrt::Windows::Data::Json::JsonObject finishBody;
+            finishBody.SetNamedValue(L"email", winrt::Windows::Data::Json::JsonValue::CreateStringValue(userId));
+            finishBody.SetNamedValue(
+                L"registration_upload_base64",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(Base64StdEncode(regUpload.data(), regUpload.size())));
+            std::string finishUtf8 = WideToUtf8(std::wstring(finishBody.Stringify().c_str()));
+
+            std::wstring finishPath = BuildRequestPath(parsed.BasePath, L"v1/auth/register/finish");
+            WinHttpHandle hReq2(WinHttpOpenRequest(hConnect.get(), L"POST", finishPath.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, openFlags));
+            THROW_LAST_ERROR_IF_NULL(hReq2.get());
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpAddRequestHeaders(hReq2.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_ADDREQ_FLAG_ADD));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpSendRequest(
+                hReq2.get(),
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                finishUtf8.empty() ? WINHTTP_NO_REQUEST_DATA : reinterpret_cast<LPVOID>(finishUtf8.data()),
+                static_cast<DWORD>(finishUtf8.size()),
+                static_cast<DWORD>(finishUtf8.size()),
+                0));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpReceiveResponse(hReq2.get(), nullptr));
+
+            int32_t statusCode2 = QueryStatusCode(hReq2.get());
+            std::string body2 = ReadResponseBody(hReq2.get());
+            if (outStatus)
+            {
+                outStatus->StatusCode = statusCode2;
+                outStatus->RequestId = QueryRequestId(hReq2.get());
+            }
+
+            HRESULT hrStatus2 = MapHttpStatusToHr(statusCode2);
+            if (FAILED(hrStatus2))
+            {
+                ParseErrorBody(body2, outStatus);
+                return hrStatus2;
+            }
+
+            auto finishRespJson = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body2));
+            bool ok = finishRespJson.GetNamedBoolean(L"ok", false);
+            return ok ? S_OK : E_FAIL;
+        }
+        catch (...)
+        {
+            if (outStatus)
+            {
+                outStatus->ErrorCode = L"CLIENT_ERROR";
+                outStatus->ErrorMessage = L"SyncClient::OpaqueRegister failed before receiving valid response.";
+            }
+            return wil::ResultFromCaughtException();
+        }
+    }
+
+    HRESULT SyncClient::OpaqueLogin(
+        std::wstring const& userId,
+        std::wstring const& password,
+        std::wstring& outBearerToken,
+        SyncHttpStatus* outStatus) const noexcept
+    {
+        outBearerToken.clear();
+        if (outStatus)
+        {
+            *outStatus = {};
+        }
+
+        try
+        {
+            auto parsed = ParseBaseUrl(m_baseUrl);
+            RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"OpaqueLogin"));
+
+            std::string passwordUtf8 = WideToUtf8(password);
+            if (passwordUtf8.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueLogin requires non-empty password.";
+                }
+                return E_INVALIDARG;
+            }
+
+            using tsupasswd::opaque::ByteBufferOwner;
+            ByteBufferOwner loginClientState;
+            ByteBufferOwner credRequest;
+            if (!tsupasswd_opaque_client_login_start(
+                    reinterpret_cast<const uint8_t*>(passwordUtf8.data()),
+                    passwordUtf8.size(),
+                    loginClientState.out_ptr(),
+                    credRequest.out_ptr()))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"OPAQUE_CLIENT_ERROR";
+                    outStatus->ErrorMessage = Utf8ToWide(tsupasswd::opaque::TakeLastErrorString());
+                }
+                return E_FAIL;
+            }
+
+            DWORD openFlags = parsed.Secure ? WINHTTP_FLAG_SECURE : 0;
+            std::wstring headers = L"Content-Type: application/json; charset=utf-8";
+
+            WinHttpHandle hSession(WinHttpOpen(L"tsupasswd_core/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+            THROW_LAST_ERROR_IF_NULL(hSession.get());
+            WinHttpSetTimeouts(hSession.get(), m_timeoutMs, m_timeoutMs, m_timeoutMs, m_timeoutMs);
+            WinHttpHandle hConnect(WinHttpConnect(hSession.get(), parsed.Host.c_str(), parsed.Port, 0));
+            THROW_LAST_ERROR_IF_NULL(hConnect.get());
+
+            // POST /v1/auth/login/start
+            winrt::Windows::Data::Json::JsonObject startBody;
+            startBody.SetNamedValue(L"email", winrt::Windows::Data::Json::JsonValue::CreateStringValue(userId));
+            startBody.SetNamedValue(
+                L"credential_request_base64",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(Base64StdEncode(credRequest.data(), credRequest.size())));
+            std::string startUtf8 = WideToUtf8(std::wstring(startBody.Stringify().c_str()));
+
+            std::wstring startPath = BuildRequestPath(parsed.BasePath, L"v1/auth/login/start");
+            WinHttpHandle hReq1(WinHttpOpenRequest(hConnect.get(), L"POST", startPath.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, openFlags));
+            THROW_LAST_ERROR_IF_NULL(hReq1.get());
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpAddRequestHeaders(hReq1.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_ADDREQ_FLAG_ADD));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpSendRequest(
+                hReq1.get(),
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                startUtf8.empty() ? WINHTTP_NO_REQUEST_DATA : reinterpret_cast<LPVOID>(startUtf8.data()),
+                static_cast<DWORD>(startUtf8.size()),
+                static_cast<DWORD>(startUtf8.size()),
+                0));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpReceiveResponse(hReq1.get(), nullptr));
+
+            int32_t statusCode1 = QueryStatusCode(hReq1.get());
+            std::string body1 = ReadResponseBody(hReq1.get());
+            if (outStatus)
+            {
+                outStatus->StatusCode = statusCode1;
+                outStatus->RequestId = QueryRequestId(hReq1.get());
+            }
+
+            HRESULT hrStatus1 = MapHttpStatusToHr(statusCode1);
+            if (FAILED(hrStatus1))
+            {
+                ParseErrorBody(body1, outStatus);
+                return hrStatus1;
+            }
+
+            auto startRespJson = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body1));
+            std::wstring serverStateB64 = GetNamedStringOrEmpty(startRespJson, L"server_state_base64");
+            std::wstring credRespB64 = GetNamedStringOrEmpty(startRespJson, L"credential_response_base64");
+            if (serverStateB64.empty() || credRespB64.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueLogin: missing server_state_base64 or credential_response_base64.";
+                }
+                return E_FAIL;
+            }
+
+            std::vector<uint8_t> serverStateBytes;
+            std::vector<uint8_t> credRespBytes;
+            if (!Base64StdDecode(serverStateB64, serverStateBytes) || !Base64StdDecode(credRespB64, credRespBytes))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueLogin: invalid base64 in login/start response.";
+                }
+                return E_FAIL;
+            }
+
+            ByteBuffer serverState{ serverStateBytes.data(), serverStateBytes.size() };
+            ByteBuffer credResp{ credRespBytes.data(), credRespBytes.size() };
+
+            ByteBufferOwner credFinalization;
+            ByteBufferOwner sessionKey;
+            if (!tsupasswd_opaque_client_login_finish(
+                    reinterpret_cast<const uint8_t*>(passwordUtf8.data()),
+                    passwordUtf8.size(),
+                    &loginClientState.get(),
+                    &credResp,
+                    credFinalization.out_ptr(),
+                    sessionKey.out_ptr()))
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"OPAQUE_CLIENT_ERROR";
+                    outStatus->ErrorMessage = Utf8ToWide(tsupasswd::opaque::TakeLastErrorString());
+                }
+                return E_FAIL;
+            }
+
+            // POST /v1/auth/login/finish
+            winrt::Windows::Data::Json::JsonObject finishBody;
+            finishBody.SetNamedValue(
+                L"email",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::hstring{ userId }));
+            finishBody.SetNamedValue(
+                L"server_state_base64",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::hstring{ Base64StdEncode(serverState.ptr, serverState.len) }));
+            finishBody.SetNamedValue(
+                L"credential_finalization_base64",
+                winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::hstring{ Base64StdEncode(credFinalization.data(), credFinalization.size()) }));
+            std::string finishUtf8 = WideToUtf8(std::wstring(finishBody.Stringify().c_str()));
+
+            std::wstring finishPath = BuildRequestPath(parsed.BasePath, L"v1/auth/login/finish");
+            WinHttpHandle hReq2(WinHttpOpenRequest(hConnect.get(), L"POST", finishPath.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, openFlags));
+            THROW_LAST_ERROR_IF_NULL(hReq2.get());
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpAddRequestHeaders(hReq2.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_ADDREQ_FLAG_ADD));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpSendRequest(
+                hReq2.get(),
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                finishUtf8.empty() ? WINHTTP_NO_REQUEST_DATA : reinterpret_cast<LPVOID>(finishUtf8.data()),
+                static_cast<DWORD>(finishUtf8.size()),
+                static_cast<DWORD>(finishUtf8.size()),
+                0));
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpReceiveResponse(hReq2.get(), nullptr));
+
+            int32_t statusCode2 = QueryStatusCode(hReq2.get());
+            std::string body2 = ReadResponseBody(hReq2.get());
+            if (outStatus)
+            {
+                outStatus->StatusCode = statusCode2;
+                outStatus->RequestId = QueryRequestId(hReq2.get());
+            }
+
+            HRESULT hrStatus2 = MapHttpStatusToHr(statusCode2);
+            if (FAILED(hrStatus2))
+            {
+                ParseErrorBody(body2, outStatus);
+                return hrStatus2;
+            }
+
+            auto tokenJson = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body2));
+            std::wstring accessToken = GetNamedStringOrEmpty(tokenJson, L"access_token");
+            if (accessToken.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"OpaqueLogin succeeded but response did not include access_token.";
+                }
+                return E_FAIL;
+            }
+
+            outBearerToken = accessToken;
+            return S_OK;
+        }
+        catch (...)
+        {
+            if (outStatus)
+            {
+                outStatus->ErrorCode = L"CLIENT_ERROR";
+                outStatus->ErrorMessage = L"SyncClient::OpaqueLogin failed before receiving valid response.";
             }
             return wil::ResultFromCaughtException();
         }

@@ -7,6 +7,8 @@
 - `sync_client_abnormal_log_scenarios.md`  
   異常系シナリオ、サンプル、GitHub Actions 実行手順
   （末尾に `Vault Schema v1 クイック回帰チェックリスト` を含む）
+- `sync_opaque_export_key_operations.md`
+  OPAQUE export key 永続化、Vault sync、復旧導線、verbose debug の運用手順
 - `opaque_smoke.md`
   `sync-axum-api` の OPAQUE register/login と Vault PUT/GET のスモークテスト手順
 - `check_sync_runtime_log_keys.cmd`  

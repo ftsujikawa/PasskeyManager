@@ -744,9 +744,6 @@ namespace winrt::PasskeyManager::implementation
             THROW_HR_IF(NTE_NOT_SUPPORTED, rpIdFromRequest.empty());
 
             std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
-            const bool isWebAuthnIoRp =
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||
-                _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIoWww) == 0;
             bool rpSupported =
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0 ||
                 _wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpIdWebAuthnIo) == 0 ||

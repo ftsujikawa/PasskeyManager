@@ -1167,7 +1167,7 @@ namespace winrt::PasskeyManager::implementation {
                 std::wstring observedAaguid = FormatAaguid(observedAaguidBytes.data(), observedAaguidBytes.size());
                 std::string expectedAaguidNarrow{ c_pluginAaguidString };
                 std::wstring expectedAaguid(expectedAaguidNarrow.begin(), expectedAaguidNarrow.end());
-                std::wstring provider = (observedAaguid == expectedAaguid) ? L"tsupasswd_core" : L"other";
+                std::wstring provider = (_wcsicmp(observedAaguid.c_str(), expectedAaguid.c_str()) == 0) ? L"tsupasswd_core" : L"other";
 
                 attestationAaguidObserved = true;
                 attestationAaguid = observedAaguid;

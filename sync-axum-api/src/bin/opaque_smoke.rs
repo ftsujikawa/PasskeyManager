@@ -74,6 +74,11 @@ struct GetVaultResp {
     updated_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ErrorBody {
+    server_version: Option<i64>,
+}
+
 fn get_arg(flag: &str) -> Option<String> {
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -103,17 +108,30 @@ async fn main() -> Result<()> {
             base64::engine::general_purpose::STANDARD.encode(&reg_request.bytes),
     };
 
-    let reg_start_resp = client
+    let reg_start_http = client
         .post(format!("{base_url}/v1/auth/register/start"))
         .json(&reg_start_req)
         .send()
         .await
-        .context("register/start request failed")?
-        .error_for_status()
-        .context("register/start non-2xx")?
-        .json::<RegisterStartResp>()
-        .await
-        .context("register/start invalid json")?;
+        .context("register/start request failed")?;
+
+    let reg_start_resp = if reg_start_http.status().is_success() {
+        reg_start_http
+            .json::<RegisterStartResp>()
+            .await
+            .context("register/start invalid json")?
+    } else {
+        let status = reg_start_http.status();
+        let body = reg_start_http
+            .text()
+            .await
+            .unwrap_or_else(|_| "".to_string());
+        return Err(anyhow!(
+            "register/start non-2xx status={} body={}",
+            status,
+            body
+        ));
+    };
 
     let reg_response_bytes = base64::engine::general_purpose::STANDARD
         .decode(reg_start_resp.registration_response_base64.as_bytes())
@@ -134,20 +152,35 @@ async fn main() -> Result<()> {
             base64::engine::general_purpose::STANDARD.encode(&upload.bytes),
     };
 
-    let reg_finish_resp = client
+    let reg_finish_http = client
         .post(format!("{base_url}/v1/auth/register/finish"))
         .json(&reg_finish_req)
         .send()
         .await
-        .context("register/finish request failed")?
-        .error_for_status()
-        .context("register/finish non-2xx")?
-        .json::<RegisterFinishResp>()
-        .await
-        .context("register/finish invalid json")?;
+        .context("register/finish request failed")?;
 
-    if !reg_finish_resp.ok {
-        return Err(anyhow!("register/finish returned ok=false"));
+    if reg_finish_http.status().is_success() {
+        let reg_finish_resp = reg_finish_http
+            .json::<RegisterFinishResp>()
+            .await
+            .context("register/finish invalid json")?;
+
+        if !reg_finish_resp.ok {
+            return Err(anyhow!("register/finish returned ok=false"));
+        }
+    } else {
+        let status = reg_finish_http.status();
+        let body = reg_finish_http
+            .text()
+            .await
+            .unwrap_or_else(|_| "".to_string());
+        if status.as_u16() != 409 {
+            return Err(anyhow!(
+                "register/finish non-2xx status={} body={}",
+                status,
+                body
+            ));
+        }
     }
 
     // Login: client start
@@ -215,36 +248,64 @@ async fn main() -> Result<()> {
 
     // Vault PUT/GET using the issued JWT
     let dummy_cipher_blob = base64::engine::general_purpose::STANDARD.encode(b"dummy_vault_cipher");
-    let put_req = PutVaultReq {
-        expected_server_version: 0,
-        cipher_blob_base64: dummy_cipher_blob.clone(),
+    let mut expected_server_version = 0i64;
+    let put_resp = loop {
+        let put_req = PutVaultReq {
+            expected_server_version,
+            cipher_blob_base64: dummy_cipher_blob.clone(),
+        };
+
+        let put_http = client
+            .put(format!("{base_url}/v1/vaults/{email}"))
+            .bearer_auth(&token_resp.access_token)
+            .json(&put_req)
+            .send()
+            .await
+            .context("vault put request failed")?;
+
+        if put_http.status().is_success() {
+            let put_resp = put_http
+                .json::<PutVaultResp>()
+                .await
+                .context("vault put invalid json")?;
+            if !put_resp.ok {
+                return Err(anyhow!("vault put returned ok=false"));
+            }
+            break put_resp;
+        }
+
+        if put_http.status().as_u16() == 409 {
+            let body = put_http
+                .text()
+                .await
+                .unwrap_or_else(|_| "".to_string());
+            let parsed = serde_json::from_str::<ErrorBody>(&body).ok();
+            if let Some(sv) = parsed.and_then(|p| p.server_version) {
+                expected_server_version = sv;
+                continue;
+            }
+            return Err(anyhow!("vault put conflict body={}", body));
+        }
+
+        let status = put_http.status();
+        let body = put_http.text().await.unwrap_or_else(|_| "".to_string());
+        return Err(anyhow!("vault put non-2xx status={} body={}", status, body));
     };
 
-    let put_resp = client
-        .put(format!("{base_url}/v1/vaults/{email}"))
-        .bearer_auth(&token_resp.access_token)
-        .json(&put_req)
-        .send()
-        .await
-        .context("vault put request failed")?
-        .error_for_status()
-        .context("vault put non-2xx")?
-        .json::<PutVaultResp>()
-        .await
-        .context("vault put invalid json")?;
-
-    if !put_resp.ok {
-        return Err(anyhow!("vault put returned ok=false"));
-    }
-
-    let get_resp = client
+    let get_http = client
         .get(format!("{base_url}/v1/vaults/{email}"))
         .bearer_auth(&token_resp.access_token)
         .send()
         .await
-        .context("vault get request failed")?
-        .error_for_status()
-        .context("vault get non-2xx")?
+        .context("vault get request failed")?;
+
+    if !get_http.status().is_success() {
+        let status = get_http.status();
+        let body = get_http.text().await.unwrap_or_else(|_| "".to_string());
+        return Err(anyhow!("vault get non-2xx status={} body={}", status, body));
+    }
+
+    let get_resp = get_http
         .json::<GetVaultResp>()
         .await
         .context("vault get invalid json")?;

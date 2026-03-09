@@ -257,6 +257,122 @@ namespace
         return encoded;
     }
 
+    namespace
+    {
+        std::string WideToUtf8(std::wstring const& wide)
+        {
+            if (wide.empty())
+            {
+                return {};
+            }
+
+            int cb = WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                wide.data(),
+                static_cast<int>(wide.size()),
+                nullptr,
+                0,
+                nullptr,
+                nullptr);
+            if (cb <= 0)
+            {
+                return {};
+            }
+
+            std::string utf8;
+            utf8.resize(static_cast<size_t>(cb));
+            WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                wide.data(),
+                static_cast<int>(wide.size()),
+                utf8.data(),
+                cb,
+                nullptr,
+                nullptr);
+            return utf8;
+        }
+    }
+
+    bool Base64StdDecode(std::wstring const& encodedWide, std::vector<BYTE>& outBytes)
+    {
+        outBytes.clear();
+        if (encodedWide.empty())
+        {
+            return false;
+        }
+
+        std::string encoded = WideToUtf8(encodedWide);
+        if (encoded.empty())
+        {
+            return false;
+        }
+
+        DWORD neededBytes = 0;
+        if (!CryptStringToBinaryA(
+            encoded.c_str(),
+            static_cast<DWORD>(encoded.size()),
+            CRYPT_STRING_BASE64,
+            nullptr,
+            &neededBytes,
+            nullptr,
+            nullptr))
+        {
+            return false;
+        }
+
+        outBytes.resize(neededBytes);
+        if (!CryptStringToBinaryA(
+            encoded.c_str(),
+            static_cast<DWORD>(encoded.size()),
+            CRYPT_STRING_BASE64,
+            outBytes.data(),
+            &neededBytes,
+            nullptr,
+            nullptr))
+        {
+            outBytes.clear();
+            return false;
+        }
+
+        outBytes.resize(neededBytes);
+        return true;
+    }
+
+    std::string Base64StdEncode(const uint8_t* data, DWORD dataSize)
+    {
+        DWORD requiredSize = 0;
+        if (!CryptBinaryToStringA(
+            data,
+            dataSize,
+            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+            nullptr,
+            &requiredSize))
+        {
+            return {};
+        }
+
+        std::string encoded;
+        encoded.resize(requiredSize);
+        if (!CryptBinaryToStringA(
+            data,
+            dataSize,
+            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+            encoded.data(),
+            &requiredSize))
+        {
+            return {};
+        }
+
+        while (!encoded.empty() && (encoded.back() == '\0' || encoded.back() == '\n' || encoded.back() == '\r'))
+        {
+            encoded.pop_back();
+        }
+
+        return encoded;
+    }
+
     std::wstring FormatAaguid(BYTE const* aaguidBytes, size_t length)
     {
         if (aaguidBytes == nullptr || length != 16)
@@ -306,31 +422,10 @@ namespace
 
     std::string Base64UrlEncode(const uint8_t* data, DWORD dataSize)
     {
-        DWORD requiredSize = 0;
-        if (!CryptBinaryToStringA(
-            data,
-            dataSize,
-            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
-            nullptr,
-            &requiredSize))
+        std::string encoded = Base64StdEncode(data, dataSize);
+        if (encoded.empty())
         {
             return {};
-        }
-
-        std::string encoded(requiredSize, '\0');
-        if (!CryptBinaryToStringA(
-            data,
-            dataSize,
-            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
-            encoded.data(),
-            &requiredSize))
-        {
-            return {};
-        }
-
-        if (!encoded.empty() && encoded.back() == '\0')
-        {
-            encoded.pop_back();
         }
 
         std::replace(encoded.begin(), encoded.end(), '+', '-');
@@ -617,21 +712,42 @@ namespace
             return S_FALSE;
         }
 
+        OutputDebugStringW(
+            (L"DEBUG: sync put_vault base_url='" + syncBaseUrl + L"' user_id='" + syncUserId + L"'\n")
+                .c_str());
+
         statusSink(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
+        syncClient.SetApiKind(tsupasswd::SyncApiKind::Axum);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
         if (!bearerToken.empty())
         {
             syncClient.SetBearerToken(bearerToken);
         }
+        else
+        {
+            tsupasswd::SyncHttpStatus loginStatus{};
+            std::wstring issuedToken;
+            HRESULT hrLogin = syncClient.DevLogin(syncUserId, issuedToken, &loginStatus);
+            if (SUCCEEDED(hrLogin) && !issuedToken.empty())
+            {
+                syncClient.SetBearerToken(issuedToken);
+                statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=dev_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+            }
+            else
+            {
+                statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=dev_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" detail=" + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            }
+        }
 
         tsupasswd::PutVaultRequest putRequest{};
         putRequest.ExpectedVersion = 0;
         putRequest.NewVersion = 1;
         putRequest.DeviceId = L"tsupasswd_core_windows";
-        putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64UrlEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
+        putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64StdEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
         putRequest.Blob.NonceBase64 = L"";
         putRequest.Blob.AadBase64 = L"";
         putRequest.Meta.CreatedAt = GetNowIsoLikeTimestamp();
@@ -1743,11 +1859,28 @@ namespace winrt::PasskeyManager::implementation {
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
         tsupasswd::SyncClient syncClient(syncBaseUrl);
+        syncClient.SetApiKind(tsupasswd::SyncApiKind::Axum);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
         if (!bearerToken.empty())
         {
             syncClient.SetBearerToken(bearerToken);
+        }
+        else
+        {
+            tsupasswd::SyncHttpStatus loginStatus{};
+            std::wstring issuedToken;
+            HRESULT hrLogin = syncClient.DevLogin(syncUserId, issuedToken, &loginStatus);
+            if (SUCCEEDED(hrLogin) && !issuedToken.empty())
+            {
+                syncClient.SetBearerToken(issuedToken);
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=dev_login_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" step=dev_login_failed hr=" + std::to_wstring(static_cast<int>(hrLogin)) + L" " + BuildSyncFailureStatusMessage(hrLogin, loginStatus, syncBaseUrl) + L" request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            }
         }
 
         tsupasswd::VaultRecord record{};
@@ -1783,15 +1916,46 @@ namespace winrt::PasskeyManager::implementation {
             return hr;
         }
 
-        std::vector<BYTE> cipherBytes;
-        if (!Base64UrlDecode(record.Blob.CiphertextBase64, cipherBytes))
+        if (record.Blob.CiphertextBase64.empty())
         {
+            OutputDebugStringW(
+                (L"DEBUG: restore_snapshot empty_ciphertext server_version=" +
+                 std::to_wstring(record.VaultVersion) +
+                 L" updated_at='" + record.Meta.UpdatedAt + L"'\n")
+                    .c_str());
             UpdatePasskeyOperationStatusText(
                 winrt::hstring{
-                    L"WARNING: sync result=failed operation=" + operation + L" reason=invalid_ciphertext hr=-2147024883 failure_kind=client_error request_id=" +
+                    L"WARNING: sync result=failed operation=" + operation +
+                    L" reason=empty_ciphertext hr=-2147024883 failure_kind=client_error request_id=" +
                     ResolveRequestId(localRequestId, status) +
                     L"⚠" });
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::vector<BYTE> cipherBytes;
+        if (!Base64StdDecode(record.Blob.CiphertextBase64, cipherBytes))
+        {
+            // 互換性: 既存のMVPサーバや過去データがURL-safe Base64を返す場合がある
+            if (!Base64UrlDecode(record.Blob.CiphertextBase64, cipherBytes))
+            {
+                std::wstring preview = record.Blob.CiphertextBase64;
+                if (preview.size() > 24)
+                {
+                    preview = preview.substr(0, 24) + L"...";
+                }
+                OutputDebugStringW(
+                    (L"DEBUG: restore_snapshot invalid_ciphertext base64_len=" +
+                     std::to_wstring(record.Blob.CiphertextBase64.size()) +
+                     L" base64_prefix='" + preview + L"'\n")
+                        .c_str());
+
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"WARNING: sync result=failed operation=" + operation + L" reason=invalid_ciphertext hr=-2147024883 failure_kind=client_error request_id=" +
+                        ResolveRequestId(localRequestId, status) +
+                        L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
         }
 
         RETURN_IF_FAILED(WriteEncryptedVaultData(cipherBytes));

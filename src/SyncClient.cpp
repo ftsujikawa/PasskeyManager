@@ -309,6 +309,26 @@ namespace tsupasswd
             }
         }
 
+        void FillVaultRecordFromJsonAxum(
+            winrt::Windows::Data::Json::JsonObject const& root,
+            std::wstring const& userId,
+            VaultRecord& outRecord)
+        {
+            outRecord = {};
+            outRecord.UserId = userId;
+            outRecord.VaultVersion = TryGetJsonInt64(root, L"server_version", 0);
+            outRecord.DeviceClock = L"";
+
+            outRecord.Blob.CiphertextBase64 = TryGetJsonString(root, L"cipher_blob_base64");
+            outRecord.Blob.NonceBase64 = L"";
+            outRecord.Blob.AadBase64 = L"";
+
+            outRecord.Meta.CreatedAt = L"";
+            outRecord.Meta.UpdatedAt = TryGetJsonString(root, L"updated_at");
+            outRecord.Meta.LastWriterDeviceId = L"";
+            outRecord.Meta.BlobSha256Base64 = L"";
+        }
+
         HRESULT MapHttpStatusToHr(int32_t statusCode)
         {
             if (statusCode >= 200 && statusCode < 300)
@@ -430,11 +450,26 @@ namespace tsupasswd
 
             return std::wstring(root.Stringify().c_str());
         }
+
+        std::wstring BuildPutVaultJsonAxum(PutVaultRequest const& request)
+        {
+            using namespace winrt::Windows::Data::Json;
+
+            JsonObject root;
+            root.SetNamedValue(L"expected_server_version", JsonValue::CreateNumberValue(static_cast<double>(request.ExpectedVersion)));
+            root.SetNamedValue(L"cipher_blob_base64", JsonValue::CreateStringValue(request.Blob.CiphertextBase64));
+            return std::wstring(root.Stringify().c_str());
+        }
     }
 
     SyncClient::SyncClient(std::wstring baseUrl) :
         m_baseUrl(std::move(baseUrl))
     {
+    }
+
+    void SyncClient::SetApiKind(SyncApiKind kind)
+    {
+        m_apiKind = kind;
     }
 
     void SyncClient::SetBearerToken(std::wstring bearerToken)
@@ -453,6 +488,96 @@ namespace tsupasswd
     void SyncClient::SetAllowInsecureHttp(bool allowInsecureHttp)
     {
         m_allowInsecureHttp = allowInsecureHttp;
+    }
+
+    HRESULT SyncClient::DevLogin(
+        std::wstring const& userId,
+        std::wstring& outBearerToken,
+        SyncHttpStatus* outStatus) const noexcept
+    {
+        outBearerToken.clear();
+        if (outStatus)
+        {
+            *outStatus = {};
+        }
+
+        try
+        {
+            auto parsed = ParseBaseUrl(m_baseUrl);
+            RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"DevLogin"));
+
+            std::wstring path = BuildRequestPath(parsed.BasePath, L"v1/auth/dev/login");
+
+            winrt::Windows::Data::Json::JsonObject root;
+            root.SetNamedValue(L"email", winrt::Windows::Data::Json::JsonValue::CreateStringValue(userId));
+            std::wstring requestJson = std::wstring(root.Stringify().c_str());
+            std::string requestUtf8 = WideToUtf8(requestJson);
+
+            WinHttpHandle hSession(WinHttpOpen(L"tsupasswd_core/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+            THROW_LAST_ERROR_IF_NULL(hSession.get());
+
+            WinHttpSetTimeouts(hSession.get(), m_timeoutMs, m_timeoutMs, m_timeoutMs, m_timeoutMs);
+
+            WinHttpHandle hConnect(WinHttpConnect(hSession.get(), parsed.Host.c_str(), parsed.Port, 0));
+            THROW_LAST_ERROR_IF_NULL(hConnect.get());
+
+            DWORD openFlags = parsed.Secure ? WINHTTP_FLAG_SECURE : 0;
+            WinHttpHandle requestHandle(WinHttpOpenRequest(hConnect.get(), L"POST", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, openFlags));
+            THROW_LAST_ERROR_IF_NULL(requestHandle.get());
+
+            std::wstring headers = L"Content-Type: application/json; charset=utf-8";
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpAddRequestHeaders(requestHandle.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_ADDREQ_FLAG_ADD));
+
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpSendRequest(
+                requestHandle.get(),
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                requestUtf8.empty() ? WINHTTP_NO_REQUEST_DATA : reinterpret_cast<LPVOID>(requestUtf8.data()),
+                static_cast<DWORD>(requestUtf8.size()),
+                static_cast<DWORD>(requestUtf8.size()),
+                0));
+
+            THROW_IF_WIN32_BOOL_FALSE(WinHttpReceiveResponse(requestHandle.get(), nullptr));
+
+            int32_t statusCode = QueryStatusCode(requestHandle.get());
+            std::string body = ReadResponseBody(requestHandle.get());
+            if (outStatus)
+            {
+                outStatus->StatusCode = statusCode;
+                outStatus->RequestId = QueryRequestId(requestHandle.get());
+            }
+
+            HRESULT hrStatus = MapHttpStatusToHr(statusCode);
+            if (FAILED(hrStatus))
+            {
+                ParseErrorBody(body, outStatus);
+                return hrStatus;
+            }
+
+            auto tokenRoot = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body));
+            std::wstring accessToken = TryGetJsonString(tokenRoot, L"access_token");
+            if (accessToken.empty())
+            {
+                if (outStatus)
+                {
+                    outStatus->ErrorCode = L"CLIENT_ERROR";
+                    outStatus->ErrorMessage = L"DevLogin succeeded but response did not include access_token.";
+                }
+                return E_FAIL;
+            }
+
+            outBearerToken = accessToken;
+            return S_OK;
+        }
+        catch (...)
+        {
+            if (outStatus)
+            {
+                outStatus->ErrorCode = L"CLIENT_ERROR";
+                outStatus->ErrorMessage = L"SyncClient::DevLogin failed before receiving valid response.";
+            }
+            return wil::ResultFromCaughtException();
+        }
     }
 
     HRESULT SyncClient::GetVault(
@@ -509,7 +634,14 @@ namespace tsupasswd
             }
 
             auto root = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body));
-            FillVaultRecordFromJson(root, outRecord);
+            if (m_apiKind == SyncApiKind::Axum)
+            {
+                FillVaultRecordFromJsonAxum(root, userId, outRecord);
+            }
+            else
+            {
+                FillVaultRecordFromJson(root, outRecord);
+            }
             return S_OK;
         }
         catch (...)
@@ -540,7 +672,9 @@ namespace tsupasswd
             auto parsed = ParseBaseUrl(m_baseUrl);
             RETURN_IF_FAILED(EnsureTransportPolicy(parsed, m_allowInsecureHttp, outStatus, L"PutVault"));
             std::wstring path = BuildRequestPath(parsed.BasePath, L"v1/vaults/" + userId);
-            std::wstring requestJson = BuildPutVaultJson(request);
+            std::wstring requestJson = (m_apiKind == SyncApiKind::Axum)
+                ? BuildPutVaultJsonAxum(request)
+                : BuildPutVaultJson(request);
             std::string requestUtf8 = WideToUtf8(requestJson);
 
             WinHttpHandle hSession(WinHttpOpen(L"tsupasswd_core/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
@@ -592,7 +726,14 @@ namespace tsupasswd
 
             auto root = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body));
             outResponse.Ok = root.GetNamedBoolean(L"ok", false);
-            outResponse.VaultVersion = TryGetJsonInt64(root, L"vault_version", request.NewVersion);
+            if (m_apiKind == SyncApiKind::Axum)
+            {
+                outResponse.VaultVersion = TryGetJsonInt64(root, L"server_version", request.NewVersion);
+            }
+            else
+            {
+                outResponse.VaultVersion = TryGetJsonInt64(root, L"vault_version", request.NewVersion);
+            }
             outResponse.UpdatedAt = TryGetJsonString(root, L"updated_at");
             return S_OK;
         }

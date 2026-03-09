@@ -630,6 +630,7 @@ async fn get_vault(
     headers: HeaderMap,
     Path(email): Path<String>,
 ) -> impl IntoResponse {
+    let email = normalize_email(&email);
     if let Err(resp) = authorize(&state, &headers, &email) {
         return resp;
     }
@@ -683,6 +684,7 @@ async fn put_vault(
     Path(email): Path<String>,
     Json(req): Json<PutVaultRequest>,
 ) -> impl IntoResponse {
+    let email = normalize_email(&email);
     if let Err(resp) = authorize(&state, &headers, &email) {
         return resp;
     }

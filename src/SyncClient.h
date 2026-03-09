@@ -5,6 +5,12 @@
 
 namespace tsupasswd
 {
+    enum class SyncApiKind
+    {
+        Mvp = 0,
+        Axum = 1,
+    };
+
     struct VaultBlob
     {
         std::wstring CiphertextBase64{};
@@ -73,9 +79,15 @@ namespace tsupasswd
     public:
         explicit SyncClient(std::wstring baseUrl);
 
+        void SetApiKind(SyncApiKind kind);
         void SetBearerToken(std::wstring bearerToken);
         void SetTimeoutMs(int32_t timeoutMs);
         void SetAllowInsecureHttp(bool allowInsecureHttp);
+
+        HRESULT DevLogin(
+            std::wstring const& userId,
+            std::wstring& outBearerToken,
+            SyncHttpStatus* outStatus = nullptr) const noexcept;
 
         HRESULT GetVault(
             std::wstring const& userId,
@@ -93,5 +105,6 @@ namespace tsupasswd
         std::wstring m_bearerToken;
         int32_t m_timeoutMs{ 15000 };
         bool m_allowInsecureHttp{ false };
+        SyncApiKind m_apiKind{ SyncApiKind::Mvp };
     };
 }

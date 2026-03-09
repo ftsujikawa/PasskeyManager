@@ -24,12 +24,16 @@ namespace
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
+    constexpr wchar_t kSyncOpaqueSessionWrapEnv[] = L"TSUPASSWD_SYNC_OPAQUE_SESSION_WRAP";
+    constexpr wchar_t kSyncVerboseDebugEnv[] = L"TSUPASSWD_SYNC_VERBOSE_DEBUG";
     constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
     constexpr wchar_t kVaultRecoveryCodeEnv[] = L"TSUPASSWD_VAULT_RECOVERY_CODE";
     constexpr wchar_t kDefaultSyncUserId[] = L"HappyFactoryUserId";
     constexpr size_t kAuthenticatorDataFlagsOffset = 32;
     constexpr size_t kAuthenticatorDataAttestedDataOffset = 37;
     constexpr BYTE kAuthenticatorDataAttestedCredentialFlag = 0x40;
+
+    constexpr wchar_t c_pluginProtectedOpaqueExportKey[] = L"OpaqueExportKeyProtected";
 
     enum class VaultBlobParseResult
     {
@@ -38,150 +42,30 @@ namespace
         Invalid
     };
 
-    void AppendUint32LE(std::vector<BYTE>& out, uint32_t value)
-    {
-        out.push_back(static_cast<BYTE>(value & 0xFF));
-        out.push_back(static_cast<BYTE>((value >> 8) & 0xFF));
-        out.push_back(static_cast<BYTE>((value >> 16) & 0xFF));
-        out.push_back(static_cast<BYTE>((value >> 24) & 0xFF));
-    }
-
-    bool ReadUint32LE(std::vector<BYTE> const& bytes, size_t offset, uint32_t& outValue)
-    {
-        if (offset + sizeof(uint32_t) > bytes.size())
-        {
-            return false;
-        }
-
-        outValue =
-            static_cast<uint32_t>(bytes[offset]) |
-            (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
-            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
-            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
-        return true;
-    }
-
-    uint32_t ComputeFnv1a32(std::vector<BYTE> const& data)
-    {
-        uint32_t hash = 2166136261u;
-        for (BYTE b : data)
-        {
-            hash ^= static_cast<uint32_t>(b);
-            hash *= 16777619u;
-        }
-        return hash;
-    }
-
-    bool BuildVaultBlobWithIntegrity(std::vector<BYTE> const& cipherText, std::vector<BYTE>& outBlob)
-    {
-        outBlob.clear();
-        if (cipherText.empty())
-        {
-            return false;
-        }
-
-        outBlob.reserve(kVaultBlobHeaderBytes + cipherText.size());
-        outBlob.insert(outBlob.end(), std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic));
-        outBlob.push_back(kVaultBlobVersion);
-        AppendUint32LE(outBlob, static_cast<uint32_t>(cipherText.size()));
-        AppendUint32LE(outBlob, ComputeFnv1a32(cipherText));
-        outBlob.insert(outBlob.end(), cipherText.begin(), cipherText.end());
-        return true;
-    }
-
-    VaultBlobParseResult TryExtractVaultCipherWithIntegrity(std::vector<BYTE> const& storedBlob, std::vector<BYTE>& outCipherText)
-    {
-        outCipherText.clear();
-
-        if (storedBlob.size() < kVaultBlobHeaderBytes)
-        {
-            return VaultBlobParseResult::NotFramed;
-        }
-
-        if (!std::equal(std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic), storedBlob.begin()))
-        {
-            return VaultBlobParseResult::NotFramed;
-        }
-
-        if (storedBlob[4] != kVaultBlobVersion)
-        {
-            return VaultBlobParseResult::Invalid;
-        }
-
-        uint32_t cipherLength = 0;
-        uint32_t expectedChecksum = 0;
-        if (!ReadUint32LE(storedBlob, 5, cipherLength) || !ReadUint32LE(storedBlob, 9, expectedChecksum))
-        {
-            return VaultBlobParseResult::Invalid;
-        }
-
-        size_t expectedTotalSize = kVaultBlobHeaderBytes + static_cast<size_t>(cipherLength);
-        if (expectedTotalSize != storedBlob.size())
-        {
-            return VaultBlobParseResult::Invalid;
-        }
-
-        outCipherText.assign(storedBlob.begin() + kVaultBlobHeaderBytes, storedBlob.end());
-        if (ComputeFnv1a32(outCipherText) != expectedChecksum)
-        {
-            outCipherText.clear();
-            return VaultBlobParseResult::Invalid;
-        }
-
-        return VaultBlobParseResult::Ok;
-    }
-
-    std::wstring GetProcessEnvironmentVariableValue(wchar_t const* name)
-    {
-        DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
-        if (needed != 0)
-        {
-            std::wstring value;
-            value.resize(needed);
-            DWORD written = GetEnvironmentVariableW(name, value.data(), needed);
-            if (written != 0)
-            {
-                value.resize(written);
-                return value;
-            }
-        }
-        return L"";
-    }
+    void AppendUint32LE(std::vector<BYTE>& out, uint32_t value);
 
     std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
     {
-        // Fallback for GUI/app-model launch paths where process env does not inherit
-        // latest shell variables. setx writes to HKCU\Environment.
         HKEY hKey = nullptr;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         {
-            return L"";
+            return {};
         }
 
-        auto keyCleanup = wil::scope_exit([&]() {
-            RegCloseKey(hKey);
-        });
-
+        wil::unique_hkey key{ hKey };
         DWORD type = 0;
-        DWORD sizeBytes = 0;
-        LONG queryResult = RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &sizeBytes);
-        if (queryResult != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) || sizeBytes < sizeof(wchar_t))
+        DWORD cbData = 0;
+        if (RegQueryValueExW(key.get(), name, nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS ||
+            (type != REG_SZ && type != REG_EXPAND_SZ) ||
+            cbData < sizeof(wchar_t))
         {
-            return L"";
+            return {};
         }
 
-        std::wstring value;
-        value.resize(sizeBytes / sizeof(wchar_t));
-        queryResult = RegQueryValueExW(
-            hKey,
-            name,
-            nullptr,
-            &type,
-            reinterpret_cast<LPBYTE>(value.data()),
-            &sizeBytes);
-        if (queryResult != ERROR_SUCCESS)
+        std::wstring value(cbData / sizeof(wchar_t), L'\0');
+        if (RegQueryValueExW(key.get(), name, nullptr, &type, reinterpret_cast<LPBYTE>(value.data()), &cbData) != ERROR_SUCCESS)
         {
-            return L"";
+            return {};
         }
 
         while (!value.empty() && value.back() == L'\0')
@@ -191,52 +75,57 @@ namespace
         return value;
     }
 
-    void ClearUserEnvironmentRegistryValue(wchar_t const* name)
+    std::wstring GetProcessEnvironmentVariableValue(wchar_t const* name)
     {
-        HKEY hKey = nullptr;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_WRITE, &hKey) != ERROR_SUCCESS)
+        DWORD needed = GetEnvironmentVariableW(name, nullptr, 0);
+        if (needed == 0)
         {
-            OutputDebugStringW((std::wstring(L"DEBUG: ClearUserEnvironmentRegistryValue open_failed name='") + name + L"'\n").c_str());
-            return;
+            return {};
         }
 
-        auto keyCleanup = wil::scope_exit([&]() {
-            RegCloseKey(hKey);
-        });
+        std::wstring value(needed, L'\0');
+        DWORD written = GetEnvironmentVariableW(name, value.data(), needed);
+        if (written == 0)
+        {
+            return {};
+        }
 
-        LONG rc = RegDeleteValueW(hKey, name);
-        OutputDebugStringW((std::wstring(L"DEBUG: ClearUserEnvironmentRegistryValue delete_result name='") + name + L"' rc=" + std::to_wstring(static_cast<int>(rc)) + L"\n").c_str());
-    }
-
-    void ClearProcessEnvironmentVariableValue(wchar_t const* name)
-    {
-        BOOL ok = SetEnvironmentVariableW(name, nullptr);
-        OutputDebugStringW((std::wstring(L"DEBUG: ClearProcessEnvironmentVariableValue name='") + name + L"' ok=" + std::to_wstring(static_cast<int>(ok)) + L"\n").c_str());
+        value.resize(written);
+        return value;
     }
 
     std::wstring GetEnvironmentVariableValue(wchar_t const* name)
     {
-        std::wstring value = GetProcessEnvironmentVariableValue(name);
-        if (!value.empty())
+        auto processValue = GetProcessEnvironmentVariableValue(name);
+        if (!processValue.empty())
         {
-            return value;
+            return processValue;
+        }
+        return GetUserEnvironmentRegistryValue(name);
+    }
+
+    void ClearProcessEnvironmentVariableValue(wchar_t const* name)
+    {
+        SetEnvironmentVariableW(name, nullptr);
+    }
+
+    void ClearUserEnvironmentRegistryValue(wchar_t const* name)
+    {
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS)
+        {
+            return;
         }
 
-        // Fallback for GUI/app-model launch paths where process env does not inherit
-        // latest shell variables. setx writes to HKCU\Environment.
-        return GetUserEnvironmentRegistryValue(name);
+        wil::unique_hkey key{ hKey };
+        RegDeleteValueW(key.get(), name);
     }
 
     bool IsTruthySetting(std::wstring value)
     {
-        if (value.empty())
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch)
         {
-            return false;
-        }
-
-        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c)
-        {
-            return static_cast<wchar_t>(std::towlower(c));
+            return static_cast<wchar_t>(towlower(ch));
         });
         return value == L"1" || value == L"true" || value == L"yes" || value == L"on";
     }
@@ -246,148 +135,98 @@ namespace
         return IsTruthySetting(GetEnvironmentVariableValue(kSyncAllowInsecureHttpEnv));
     }
 
+    bool IsOpaqueSessionWrapEnabled()
+    {
+        return IsTruthySetting(GetEnvironmentVariableValue(kSyncOpaqueSessionWrapEnv));
+    }
+
+    bool IsVerboseSyncDebugEnabled()
+    {
+        return IsTruthySetting(GetEnvironmentVariableValue(kSyncVerboseDebugEnv));
+    }
+
+    void DebugLogIfVerbose(std::wstring const& message)
+    {
+        if (!IsVerboseSyncDebugEnabled())
+        {
+            return;
+        }
+        OutputDebugStringW(message.c_str());
+    }
+
     std::wstring GetNowIsoLikeTimestamp()
     {
         SYSTEMTIME st{};
         GetSystemTime(&st);
-        wchar_t buffer[32]{};
-        swprintf_s(buffer, L"%04u-%02u-%02uT%02u:%02u:%02uZ",
+
+        wchar_t buffer[40]{};
+        swprintf_s(
+            buffer,
+            L"%04u-%02u-%02uT%02u:%02u:%02u.%03uZ",
             st.wYear,
             st.wMonth,
             st.wDay,
             st.wHour,
             st.wMinute,
-            st.wSecond);
+            st.wSecond,
+            st.wMilliseconds);
         return buffer;
     }
 
-    std::wstring BuildRequestId(std::wstring const& operation)
+    std::wstring ResolveRequestId(std::wstring const& fallbackRequestId, tsupasswd::SyncHttpStatus const& status)
     {
-        return tsupasswd::BuildRequestId(operation);
+        return status.RequestId.empty() ? fallbackRequestId : status.RequestId;
     }
 
-    std::wstring HexEncodeLower(BYTE const* bytes, size_t length)
+    std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status, std::wstring const&)
     {
-        static constexpr wchar_t kHex[] = L"0123456789abcdef";
-        std::wstring encoded;
-        encoded.resize(length * 2);
-        for (size_t i = 0; i < length; ++i)
+        std::wstring detail =
+            L"failure_kind=" + (FAILED(hr) ? std::wstring(L"client_error") : std::wstring(L"unexpected_or_server_error")) +
+            L" sync_failure=" + (status.StatusCode >= 500 ? std::wstring(L"unexpected_or_server_error") : std::wstring(L"unexpected_or_server_error")) +
+            L" local_save=kept";
+
+        if (!status.ErrorCode.empty())
         {
-            encoded[(i * 2)] = kHex[(bytes[i] >> 4) & 0x0F];
-            encoded[(i * 2) + 1] = kHex[bytes[i] & 0x0F];
+            detail += L" code=" + status.ErrorCode;
+            detail += L" message_code=" + status.ErrorCode;
         }
-        return encoded;
+        if (!status.ErrorMessage.empty())
+        {
+            detail += L" message=" + status.ErrorMessage;
+        }
+        return detail;
     }
 
-    namespace
+    std::wstring Base64StdEncode(uint8_t const* bytes, size_t len)
     {
-        std::string WideToUtf8(std::wstring const& wide)
-        {
-            if (wide.empty())
-            {
-                return {};
-            }
-
-            int cb = WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                wide.data(),
-                static_cast<int>(wide.size()),
-                nullptr,
-                0,
-                nullptr,
-                nullptr);
-            if (cb <= 0)
-            {
-                return {};
-            }
-
-            std::string utf8;
-            utf8.resize(static_cast<size_t>(cb));
-            WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                wide.data(),
-                static_cast<int>(wide.size()),
-                utf8.data(),
-                cb,
-                nullptr,
-                nullptr);
-            return utf8;
-        }
-    }
-
-    bool Base64StdDecode(std::wstring const& encodedWide, std::vector<BYTE>& outBytes)
-    {
-        outBytes.clear();
-        if (encodedWide.empty())
-        {
-            return false;
-        }
-
-        std::string encoded = WideToUtf8(encodedWide);
-        if (encoded.empty())
-        {
-            return false;
-        }
-
-        DWORD neededBytes = 0;
-        if (!CryptStringToBinaryA(
-            encoded.c_str(),
-            static_cast<DWORD>(encoded.size()),
-            CRYPT_STRING_BASE64,
-            nullptr,
-            &neededBytes,
-            nullptr,
-            nullptr))
-        {
-            return false;
-        }
-
-        outBytes.resize(neededBytes);
-        if (!CryptStringToBinaryA(
-            encoded.c_str(),
-            static_cast<DWORD>(encoded.size()),
-            CRYPT_STRING_BASE64,
-            outBytes.data(),
-            &neededBytes,
-            nullptr,
-            nullptr))
-        {
-            outBytes.clear();
-            return false;
-        }
-
-        outBytes.resize(neededBytes);
-        return true;
-    }
-
-    std::string Base64StdEncode(const uint8_t* data, DWORD dataSize)
-    {
-        DWORD requiredSize = 0;
-        if (!CryptBinaryToStringA(
-            data,
-            dataSize,
-            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
-            nullptr,
-            &requiredSize))
+        if (!bytes || len == 0)
         {
             return {};
         }
 
-        std::string encoded;
-        encoded.resize(requiredSize);
-        if (!CryptBinaryToStringA(
-            data,
-            dataSize,
-            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
-            encoded.data(),
-            &requiredSize))
+        DWORD needed = 0;
+        if (!CryptBinaryToStringW(
+                bytes,
+                wil::safe_cast<DWORD>(len),
+                CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+                nullptr,
+                &needed))
         {
             return {};
         }
 
-        while (!encoded.empty() && (encoded.back() == '\0' || encoded.back() == '\n' || encoded.back() == '\r'))
+        std::wstring encoded(needed, L'\0');
+        if (!CryptBinaryToStringW(
+                bytes,
+                wil::safe_cast<DWORD>(len),
+                CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+                encoded.data(),
+                &needed))
+        {
+            return {};
+        }
+
+        while (!encoded.empty() && encoded.back() == L'\0')
         {
             encoded.pop_back();
         }
@@ -395,42 +234,239 @@ namespace
         return encoded;
     }
 
-    std::wstring FormatAaguid(BYTE const* aaguidBytes, size_t length)
+    std::string Base64UrlEncode(uint8_t const* bytes, size_t len)
     {
-        if (aaguidBytes == nullptr || length != 16)
+        std::wstring base64 = Base64StdEncode(bytes, len);
+        if (base64.empty())
         {
-            return L"";
+            return {};
         }
 
-        std::wstring hex = HexEncodeLower(aaguidBytes, length);
-        if (hex.size() != 32)
+        std::string encoded = winrt::to_string(base64);
+        std::replace(encoded.begin(), encoded.end(), '+', '-');
+        std::replace(encoded.begin(), encoded.end(), '/', '_');
+        while (!encoded.empty() && encoded.back() == '=')
         {
-            return L"";
+            encoded.pop_back();
         }
-
-        return
-            hex.substr(0, 8) + L"-" +
-            hex.substr(8, 4) + L"-" +
-            hex.substr(12, 4) + L"-" +
-            hex.substr(16, 4) + L"-" +
-            hex.substr(20, 12);
+        return encoded;
     }
 
-    bool TryExtractAttestationAaguid(
-        WEBAUTHN_CREDENTIAL_ATTESTATION const* attestation,
-        std::array<BYTE, 16>& outAaguid)
+    bool Base64StdDecode(std::wstring const& b64, std::vector<BYTE>& out)
     {
-        if (attestation == nullptr || attestation->pbAuthenticatorData == nullptr)
-        {
-            return false;
-        }
-        if (attestation->cbAuthenticatorData < (kAuthenticatorDataAttestedDataOffset + outAaguid.size()))
+        out.clear();
+        if (b64.empty())
         {
             return false;
         }
 
-        BYTE flags = attestation->pbAuthenticatorData[kAuthenticatorDataFlagsOffset];
-        if ((flags & kAuthenticatorDataAttestedCredentialFlag) == 0)
+        DWORD needed = 0;
+        if (!CryptStringToBinaryW(
+                b64.c_str(),
+                0,
+                CRYPT_STRING_BASE64,
+                nullptr,
+                &needed,
+                nullptr,
+                nullptr))
+        {
+            return false;
+        }
+
+        out.resize(needed);
+        if (!CryptStringToBinaryW(
+                b64.c_str(),
+                0,
+                CRYPT_STRING_BASE64,
+                out.data(),
+                &needed,
+                nullptr,
+                nullptr))
+        {
+            out.clear();
+            return false;
+        }
+
+        out.resize(needed);
+        return true;
+    }
+
+    bool Base64UrlDecode(std::wstring const& encoded, std::vector<BYTE>& out)
+    {
+        out.clear();
+        if (encoded.empty())
+        {
+            return false;
+        }
+
+        std::wstring normalized = encoded;
+        std::replace(normalized.begin(), normalized.end(), L'-', L'+');
+        std::replace(normalized.begin(), normalized.end(), L'_', L'/');
+        while ((normalized.size() % 4) != 0)
+        {
+            normalized.push_back(L'=');
+        }
+
+        return Base64StdDecode(normalized, out);
+    }
+
+    bool ProtectSecretForLocalUser(std::vector<BYTE> const& plainSecret, std::vector<BYTE>& protectedSecret)
+    {
+        protectedSecret.clear();
+        if (plainSecret.empty())
+        {
+            return false;
+        }
+
+        DATA_BLOB input{};
+        input.pbData = const_cast<BYTE*>(plainSecret.data());
+        input.cbData = wil::safe_cast<DWORD>(plainSecret.size());
+        DATA_BLOB output{};
+        if (!CryptProtectData(&input, L"tsupasswd", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &output))
+        {
+            return false;
+        }
+
+        protectedSecret.assign(output.pbData, output.pbData + output.cbData);
+        if (output.pbData)
+        {
+            LocalFree(output.pbData);
+        }
+        return true;
+    }
+
+    bool UnprotectSecretForLocalUser(std::vector<BYTE> const& protectedSecret, std::vector<BYTE>& plainSecret)
+    {
+        plainSecret.clear();
+        if (protectedSecret.empty())
+        {
+            return false;
+        }
+
+        DATA_BLOB input{};
+        input.pbData = const_cast<BYTE*>(protectedSecret.data());
+        input.cbData = wil::safe_cast<DWORD>(protectedSecret.size());
+        DATA_BLOB output{};
+        if (!CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &output))
+        {
+            return false;
+        }
+
+        plainSecret.assign(output.pbData, output.pbData + output.cbData);
+        if (output.pbData)
+        {
+            LocalFree(output.pbData);
+        }
+        return true;
+    }
+
+    uint32_t ComputeVaultBlobChecksum(std::vector<BYTE> const& cipherText)
+    {
+        uint32_t checksum = 2166136261u;
+        for (BYTE b : cipherText)
+        {
+            checksum ^= static_cast<uint32_t>(b);
+            checksum *= 16777619u;
+        }
+        return checksum;
+    }
+
+    bool BuildVaultBlobWithIntegrity(std::vector<BYTE> const& cipherText, std::vector<BYTE>& framedBlob)
+    {
+        framedBlob.clear();
+        if (cipherText.empty())
+        {
+            return false;
+        }
+
+        framedBlob.reserve(kVaultBlobHeaderBytes + cipherText.size());
+        framedBlob.insert(framedBlob.end(), std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic));
+        framedBlob.push_back(kVaultBlobVersion);
+        AppendUint32LE(framedBlob, static_cast<uint32_t>(cipherText.size()));
+        AppendUint32LE(framedBlob, ComputeVaultBlobChecksum(cipherText));
+        framedBlob.insert(framedBlob.end(), cipherText.begin(), cipherText.end());
+        return true;
+    }
+
+    VaultBlobParseResult TryExtractVaultCipherWithIntegrity(std::vector<BYTE> const& storedBlob, std::vector<BYTE>& vaultCipher)
+    {
+        vaultCipher.clear();
+        if (storedBlob.size() < kVaultBlobHeaderBytes)
+        {
+            vaultCipher = storedBlob;
+            return VaultBlobParseResult::NotFramed;
+        }
+
+        if (!std::equal(std::begin(kVaultBlobMagic), std::end(kVaultBlobMagic), storedBlob.begin()) ||
+            storedBlob[4] != kVaultBlobVersion)
+        {
+            vaultCipher = storedBlob;
+            return VaultBlobParseResult::NotFramed;
+        }
+
+        uint32_t cipherLen =
+            static_cast<uint32_t>(storedBlob[5]) |
+            (static_cast<uint32_t>(storedBlob[6]) << 8) |
+            (static_cast<uint32_t>(storedBlob[7]) << 16) |
+            (static_cast<uint32_t>(storedBlob[8]) << 24);
+        uint32_t expectedChecksum =
+            static_cast<uint32_t>(storedBlob[9]) |
+            (static_cast<uint32_t>(storedBlob[10]) << 8) |
+            (static_cast<uint32_t>(storedBlob[11]) << 16) |
+            (static_cast<uint32_t>(storedBlob[12]) << 24);
+
+        if (storedBlob.size() != kVaultBlobHeaderBytes + cipherLen)
+        {
+            return VaultBlobParseResult::Invalid;
+        }
+
+        vaultCipher.assign(storedBlob.begin() + kVaultBlobHeaderBytes, storedBlob.end());
+        if (ComputeVaultBlobChecksum(vaultCipher) != expectedChecksum)
+        {
+            vaultCipher.clear();
+            return VaultBlobParseResult::Invalid;
+        }
+
+        return VaultBlobParseResult::Ok;
+    }
+
+    std::wstring FormatAaguid(BYTE const* bytes, size_t len)
+    {
+        if (bytes == nullptr || len != 16)
+        {
+            return {};
+        }
+
+        wchar_t buffer[37]{};
+        swprintf_s(
+            buffer,
+            L"%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+            bytes[0],
+            bytes[1],
+            bytes[2],
+            bytes[3],
+            bytes[4],
+            bytes[5],
+            bytes[6],
+            bytes[7],
+            bytes[8],
+            bytes[9],
+            bytes[10],
+            bytes[11],
+            bytes[12],
+            bytes[13],
+            bytes[14],
+            bytes[15]);
+        return buffer;
+    }
+
+    bool TryExtractAttestationAaguid(WEBAUTHN_CREDENTIAL_ATTESTATION const* attestation, std::array<BYTE, 16>& outAaguid)
+    {
+        outAaguid.fill(0);
+        if (attestation == nullptr ||
+            attestation->pbAuthenticatorData == nullptr ||
+            attestation->cbAuthenticatorData < (kAuthenticatorDataAttestedDataOffset + outAaguid.size()) ||
+            (attestation->pbAuthenticatorData[kAuthenticatorDataFlagsOffset] & kAuthenticatorDataAttestedCredentialFlag) == 0)
         {
             return false;
         }
@@ -442,291 +478,23 @@ namespace
         return true;
     }
 
-    std::string Base64UrlEncode(const uint8_t* data, DWORD dataSize)
+    void AppendUint32LE(std::vector<BYTE>& out, uint32_t value)
     {
-        std::string encoded = Base64StdEncode(data, dataSize);
-        if (encoded.empty())
-        {
-            return {};
-        }
-
-        std::replace(encoded.begin(), encoded.end(), '+', '-');
-        std::replace(encoded.begin(), encoded.end(), '/', '_');
-        while (!encoded.empty() && encoded.back() == '=')
-        {
-            encoded.pop_back();
-        }
-
-        return encoded;
+        out.push_back(static_cast<BYTE>(value & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 8) & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 16) & 0xFF));
+        out.push_back(static_cast<BYTE>((value >> 24) & 0xFF));
     }
+}
 
-    bool Base64UrlDecode(std::wstring const& encodedWide, std::vector<BYTE>& outBytes)
-    {
-        outBytes.clear();
-        if (encodedWide.empty())
-        {
-            return false;
-        }
-
-        std::string encoded = winrt::to_string(encodedWide);
-        std::replace(encoded.begin(), encoded.end(), '-', '+');
-        std::replace(encoded.begin(), encoded.end(), '_', '/');
-        while ((encoded.size() % 4) != 0)
-        {
-            encoded.push_back('=');
-        }
-
-        DWORD required = 0;
-        if (!CryptStringToBinaryA(
-            encoded.c_str(),
-            static_cast<DWORD>(encoded.size()),
-            CRYPT_STRING_BASE64,
-            nullptr,
-            &required,
-            nullptr,
-            nullptr))
-        {
-            return false;
-        }
-
-        outBytes.resize(required);
-        if (!CryptStringToBinaryA(
-            encoded.c_str(),
-            static_cast<DWORD>(encoded.size()),
-            CRYPT_STRING_BASE64,
-            outBytes.data(),
-            &required,
-            nullptr,
-            nullptr))
-        {
-            outBytes.clear();
-            return false;
-        }
-
-        outBytes.resize(required);
-        return !outBytes.empty();
-    }
-
-    bool ProtectSecretForLocalUser(std::vector<BYTE> const& plainSecret, std::vector<BYTE>& outProtectedBlob)
-    {
-        outProtectedBlob.clear();
-        if (plainSecret.empty())
-        {
-            return false;
-        }
-
-        DATA_BLOB plainBlob = {
-            .cbData = static_cast<DWORD>(plainSecret.size()),
-            .pbData = const_cast<PBYTE>(plainSecret.data())
-        };
-        DATA_BLOB protectedBlob{};
-        if (!CryptProtectData(
-            &plainBlob,
-            L"tsupasswd_core_hmac_secret",
-            nullptr,
-            nullptr,
-            nullptr,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &protectedBlob))
-        {
-            return false;
-        }
-
-        auto cleanup = wil::scope_exit([&]() {
-            if (protectedBlob.pbData)
-            {
-                LocalFree(protectedBlob.pbData);
-            }
-        });
-
-        outProtectedBlob.assign(protectedBlob.pbData, protectedBlob.pbData + protectedBlob.cbData);
-        return !outProtectedBlob.empty();
-    }
-
-    bool UnprotectSecretForLocalUser(std::vector<BYTE> const& protectedBlobBytes, std::vector<BYTE>& outPlainSecret)
-    {
-        outPlainSecret.clear();
-        if (protectedBlobBytes.empty())
-        {
-            return false;
-        }
-
-        DATA_BLOB protectedBlob = {
-            .cbData = static_cast<DWORD>(protectedBlobBytes.size()),
-            .pbData = const_cast<PBYTE>(protectedBlobBytes.data())
-        };
-        DATA_BLOB plainBlob{};
-        if (!CryptUnprotectData(
-            &protectedBlob,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &plainBlob))
-        {
-            return false;
-        }
-
-        auto cleanup = wil::scope_exit([&]() {
-            if (plainBlob.pbData)
-            {
-                LocalFree(plainBlob.pbData);
-            }
-        });
-
-        outPlainSecret.assign(plainBlob.pbData, plainBlob.pbData + plainBlob.cbData);
-        return !outPlainSecret.empty();
-    }
-
-    std::wstring ClassifySyncFailureKind(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
-    {
-        switch (status.StatusCode)
-        {
-        case 401:
-        case 403:
-            return L"authorization";
-        case 404:
-            return L"not_found";
-        case 409:
-            return L"version_conflict";
-        case 429:
-            return L"rate_limited";
-        default:
-            break;
-        }
-
-        if (status.StatusCode >= 500)
-        {
-            return L"server_error";
-        }
-        if (status.StatusCode > 0)
-        {
-            return L"http_error";
-        }
-        if (status.ErrorCode == L"CLIENT_ERROR")
-        {
-            return L"client_error";
-        }
-        if (status.ErrorCode == L"INSECURE_HTTP_BLOCKED")
-        {
-            return L"client_error";
-        }
-        if (FAILED(hr))
-        {
-            return L"transport_or_unknown";
-        }
-        return L"none";
-    }
-
-    bool IsNameResolutionFailure(HRESULT hr)
-    {
-        return HRESULT_CODE(hr) == 12007;
-    }
-
-    std::wstring ResolveHostForSyncBaseUrl(std::wstring const& syncBaseUrl)
-    {
-        if (syncBaseUrl.empty())
-        {
-            return L"unparsed";
-        }
-
-        try
-        {
-            auto uri = winrt::Windows::Foundation::Uri(winrt::hstring{ syncBaseUrl });
-            auto host = uri.Host();
-            if (!host.empty())
-            {
-                return host.c_str();
-            }
-        }
-        catch (...)
-        {
-        }
-        return L"unparsed";
-    }
-
-    std::wstring BuildSyncFailureStatusMessage(HRESULT hr, tsupasswd::SyncHttpStatus const& status, std::wstring const& syncBaseUrl)
-    {
-        std::wstring detail = L"failure_kind=" + ClassifySyncFailureKind(hr, status) + L" ";
-        switch (status.StatusCode)
-        {
-        case 401:
-            detail += L"sync_failure=unauthorized recovery=check_authorization_header_and_token";
-            break;
-        case 403:
-            detail += L"sync_failure=forbidden recovery=verify_sync_bearer_token";
-            break;
-        case 409:
-            detail += L"sync_failure=version_conflict recovery=refresh_latest_state_and_retry";
-            if (status.ServerVersion >= 0)
-            {
-                detail += L" server_version=" + std::to_wstring(status.ServerVersion);
-            }
-            break;
-        case 429:
-            detail += L"sync_failure=rate_limited recovery=wait_and_retry";
-            break;
-        default:
-            if (status.ErrorCode == L"INSECURE_HTTP_BLOCKED")
-            {
-                detail += L"sync_failure=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only local_save=kept";
-            }
-            else if (IsNameResolutionFailure(hr))
-            {
-                detail += L"sync_failure=name_not_resolved host=" + ResolveHostForSyncBaseUrl(syncBaseUrl) + L" recovery=check_sync_base_url_dns_or_hosts local_save=kept";
-            }
-            else
-            {
-                detail += L"sync_failure=unexpected_or_server_error local_save=kept";
-            }
-            if (status.StatusCode > 0)
-            {
-                detail += L" status=" + std::to_wstring(status.StatusCode);
-            }
-            break;
-        }
-
-        if (!status.ErrorCode.empty())
-        {
-            detail += L" code=" + status.ErrorCode;
-        }
-        if (!status.RequestId.empty())
-        {
-            detail += L" request_id=" + status.RequestId;
-        }
-        if (!status.ErrorMessage.empty())
-        {
-            if (!status.ErrorCode.empty())
-            {
-                detail += L" message_code=" + status.ErrorCode;
-            }
-            else
-            {
-                detail += L" message_code=remote_error_message_present";
-            }
-            detail += L" message=" + status.ErrorMessage;
-        }
-
-        return detail;
-    }
-
-    std::wstring ResolveRequestId(std::wstring const& fallbackRequestId, tsupasswd::SyncHttpStatus const& status)
-    {
-        if (!status.RequestId.empty())
-        {
-            return status.RequestId;
-        }
-        return fallbackRequestId;
-    }
-
-    HRESULT SyncEncryptedVaultWithRetry(
+namespace winrt::PasskeyManager::implementation {
+    HRESULT PluginRegistrationManager::SyncEncryptedVaultWithRetry(
         std::vector<BYTE> const& encryptedVaultData,
         std::wstring const& syncUserId,
         std::function<void(winrt::hstring const&)> const& statusSink)
     {
         std::wstring operation = L"put_vault";
-        std::wstring localRequestId = BuildRequestId(operation);
+        std::wstring localRequestId = tsupasswd::BuildRequestId(operation);
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
         {
@@ -734,9 +502,8 @@ namespace
             return S_FALSE;
         }
 
-        OutputDebugStringW(
-            (L"DEBUG: sync put_vault base_url='" + syncBaseUrl + L"' user_id='" + syncUserId + L"'\n")
-                .c_str());
+        DebugLogIfVerbose(
+            L"DEBUG: sync put_vault base_url='" + syncBaseUrl + L"' user_id='" + syncUserId + L"'\n");
 
         statusSink(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
@@ -744,9 +511,18 @@ namespace
         syncClient.SetApiKind(tsupasswd::SyncApiKind::Axum);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
+        std::vector<uint8_t> sessionKeyBytes;
         if (!bearerToken.empty())
         {
             syncClient.SetBearerToken(bearerToken);
+
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (!recoveryCode.empty())
+            {
+                tsupasswd::SyncHttpStatus loginStatus{};
+                std::wstring issuedToken;
+                (void)syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
+            }
         }
         else
         {
@@ -759,14 +535,20 @@ namespace
 
             tsupasswd::SyncHttpStatus loginStatus{};
             std::wstring issuedToken;
-            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             if (FAILED(hrLogin) || issuedToken.empty())
             {
                 tsupasswd::SyncHttpStatus regStatus{};
-                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                std::vector<uint8_t> regExportKey;
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regExportKey, &regStatus);
+                if (!regExportKey.empty())
+                {
+                    (void)PluginRegistrationManager::getInstance().SetOpaqueExportKey(
+                        std::vector<BYTE>(regExportKey.begin(), regExportKey.end()), localRequestId);
+                }
                 loginStatus = {};
                 issuedToken.clear();
-                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             }
 
             if (SUCCEEDED(hrLogin) && !issuedToken.empty())
@@ -785,7 +567,29 @@ namespace
         putRequest.ExpectedVersion = 0;
         putRequest.NewVersion = 1;
         putRequest.DeviceId = L"tsupasswd_core_windows";
-        putRequest.Blob.CiphertextBase64 = winrt::to_hstring(Base64StdEncode(encryptedVaultData.data(), wil::safe_cast<DWORD>(encryptedVaultData.size()))).c_str();
+        std::vector<uint8_t> cipherPlain(encryptedVaultData.begin(), encryptedVaultData.end());
+        auto buildCipherForSyncBase64 = [&]() -> std::wstring
+        {
+            std::vector<uint8_t> cipherForSync = cipherPlain;
+            PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+            auto exportKey = PluginRegistrationManager::getInstance().GetOpaqueExportKey();
+            if (IsOpaqueSessionWrapEnabled() && !exportKey.empty())
+            {
+                tsupasswd::VaultCryptoError wrapError{};
+                std::vector<uint8_t> wrapped;
+                if (tsupasswd::WrapVaultCipherForSyncV1(cipherForSync, std::vector<uint8_t>(exportKey.begin(), exportKey.end()), wrapped, wrapError))
+                {
+                    cipherForSync = std::move(wrapped);
+                }
+                else
+                {
+                    statusSink(winrt::hstring{ L"WARNING: sync result=warning operation=" + operation + L" reason=sync_wrap_failed code=" + wrapError.Code + L" detail=" + wrapError.Detail + L" request_id=" + localRequestId + L"⚠" });
+                }
+            }
+            return Base64StdEncode(cipherForSync.data(), wil::safe_cast<DWORD>(cipherForSync.size()));
+        };
+
+        putRequest.Blob.CiphertextBase64 = buildCipherForSyncBase64();
         putRequest.Blob.NonceBase64 = L"";
         putRequest.Blob.AadBase64 = L"";
         putRequest.Meta.CreatedAt = GetNowIsoLikeTimestamp();
@@ -815,14 +619,20 @@ namespace
 
             tsupasswd::SyncHttpStatus loginStatus{};
             std::wstring issuedToken;
-            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             if (FAILED(hrLogin) || issuedToken.empty())
             {
                 tsupasswd::SyncHttpStatus regStatus{};
-                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                std::vector<uint8_t> regExportKey;
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regExportKey, &regStatus);
+                if (!regExportKey.empty())
+                {
+                    (void)PluginRegistrationManager::getInstance().SetOpaqueExportKey(
+                        std::vector<BYTE>(regExportKey.begin(), regExportKey.end()), localRequestId);
+                }
                 loginStatus = {};
                 issuedToken.clear();
-                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             }
 
             if (SUCCEEDED(hrLogin) && !issuedToken.empty())
@@ -830,6 +640,7 @@ namespace
                 syncClient.SetBearerToken(issuedToken);
                 ClearProcessEnvironmentVariableValue(kSyncBearerTokenEnv);
                 ClearUserEnvironmentRegistryValue(kSyncBearerTokenEnv);
+                putRequest.Blob.CiphertextBase64 = buildCipherForSyncBase64();
                 statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=opaque_reauth_token_issued request_id=" + ResolveRequestId(localRequestId, loginStatus) + L"ℹ" });
                 return S_OK;
             }
@@ -936,9 +747,6 @@ namespace
         return hrSync;
     }
 
-}
-
-namespace winrt::PasskeyManager::implementation {
     PluginRegistrationManager::PluginRegistrationManager() :
         m_pluginRegistered(false),
         m_initialized(false),
@@ -1019,8 +827,8 @@ namespace winrt::PasskeyManager::implementation {
             .pwszAuthenticatorName = c_pluginName,
             .rclsid = happyfactoryplugin_guid,
             .pwszPluginRpId = c_pluginRpId,
-            .pwszLightThemeLogoSvg = L"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMzAgMCA1MCA4NSIgc3R5bGU9ImZpbGwtcnVsZTpldmVub2RkOyBjbGlwLXJ1bGU6ZXZlbm9kZDsgc2hhcGUtcmVuZGVyaW5nOmdlb21ldHJpY1ByZWNpc2lvbjsgdGV4dC1yZW5kZXJpbmc6Z2VvbWV0cmljUHJlY2lzaW9uOyBpbWFnZS1yZW5kZXJpbmc6b3B0aW1pemVRdWFsaXR5OyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMSIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzRiZTBmYzsgc3RvcC1vcGFjaXR5OjEiIC8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZDIiIHgxPSIxMDAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojNGJlMGZjOyBzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Zz48cG9seWdvbiBwb2ludHM9IjQ4LDI0IDU4LDM2IDQ0LDY3IDMyLDYwIiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjMyLDYwIDQ0LDY3IDMyLjk0LDY4Ljg5IiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjQ0LDY3IDQ3LjE1LDYwIDQ4LDY1LjUiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxwb2x5Z29uIHBvaW50cz0iNDcuMTUsNjAgNTAuMzAsNTMgNTEuMTUsNTguNSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNTUiIGN5PSIyNSIgcj0iMTgiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxjaXJjbGUgY3g9IjcyIiBjeT0iMjUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIgLz48L2c+PGc+PHJlY3QgeD0iNzAiIHk9IjMwIiB3aWR0aD0iMTYiIGhlaWdodD0iNDUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iNzgsODEgNzAsNzUgODYsNzUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iODYsNjcgODYsNzUgODguNSw3MSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PHBvbHlnb24gcG9pbnRzPSI4Niw2NyA4Niw1OSA4OC41LDYzIiBmaWxsPSJ1cmwoI2dyYWQxKSIgLz48Y2lyY2xlIGN4PSI3NyIgY3k9IjI1IiByPSIxOCIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNzciIGN5PSIyMyIgcj0iMyIgZmlsbD0id2hpdGUiIC8+PC9nPjwvc3ZnPg==",
-            .pwszDarkThemeLogoSvg = L"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMzAgMCA1MCA4NSIgc3R5bGU9ImZpbGwtcnVsZTpldmVub2RkOyBjbGlwLXJ1bGU6ZXZlbm9kZDsgc2hhcGUtcmVuZGVyaW5nOmdlb21ldHJpY1ByZWNpc2lvbjsgdGV4dC1yZW5kZXJpbmc6Z2VvbWV0cmljUHJlY2lzaW9uOyBpbWFnZS1yZW5kZXJpbmc6b3B0aW1pemVRdWFsaXR5OyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMSIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzRiZTBmYzsgc3RvcC1vcGFjaXR5OjEiIC8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZDIiIHgxPSIxMDAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojNGJlMGZjOyBzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Zz48cG9seWdvbiBwb2ludHM9IjQ4LDI0IDU4LDM2IDQ0LDY3IDMyLDYwIiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjMyLDYwIDQ0LDY3IDMyLjk0LDY4Ljg5IiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjQ0LDY3IDQ3LjE1LDYwIDQ4LDY1LjUiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxwb2x5Z29uIHBvaW50cz0iNDcuMTUsNjAgNTAuMzAsNTMgNTEuMTUsNTguNSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNTUiIGN5PSIyNSIgcj0iMTgiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxjaXJjbGUgY3g9IjcyIiBjeT0iMjUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIgLz48L2c+PGc+PHJlY3QgeD0iNzAiIHk9IjMwIiB3aWR0aD0iMTYiIGhlaWdodD0iNDUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iNzgsODEgNzAsNzUgODYsNzUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iODYsNjcgODYsNzUgODguNSw3MSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PHBvbHlnb24gcG9pbnRzPSI4Niw2NyA4Niw1OSA4OC41LDYzIiBmaWxsPSJ1cmwoI2dyYWQxKSIgLz48Y2lyY2xlIGN4PSI3NyIgY3k9IjI1IiByPSIxOCIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNzciIGN5PSIyMyIgcj0iMyIgZmlsbD0id2hpdGUiIC8+PC9nPjwvc3ZnPg==",
+            .pwszLightThemeLogoSvg = L"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgd2lkdGg9IjkwcHgiIGhlaWdodD0iOTBweCIgdmlld0JveD0iMzAgMCA1MCA4NSIgc3R5bGU9ImZpbGwtcnVsZTpldmVub2RkOyBjbGlwLXJ1bGU6ZXZlbm9kZDsgc2hhcGUtcmVuZGVyaW5nOmdlb21ldHJpY1ByZWNpc2lvbjsgdGV4dC1yZW5kZXJpbmc6Z2VvbWV0cmljUHJlY2lzaW9uOyBpbWFnZS1yZW5kZXJpbmc6b3B0aW1pemVRdWFsaXR5OyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMSIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzRiZTBmYzsgc3RvcC1vcGFjaXR5OjEiIC8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZDIiIHgxPSIxMDAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojNGJlMGZjOyBzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Zz48cG9seWdvbiBwb2ludHM9IjQ4LDI0IDU4LDM2IDQ0LDY3IDMyLDYwIiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjMyLDYwIDQ0LDY3IDMyLjk0LDY4Ljg5IiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjQ0LDY3IDQ3LjE1LDYwIDQ4LDY1LjUiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxwb2x5Z29uIHBvaW50cz0iNDcuMTUsNjAgNTAuMzAsNTMgNTEuMTUsNTguNSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNTUiIGN5PSIyNSIgcj0iMTgiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxjaXJjbGUgY3g9IjcyIiBjeT0iMjUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIgLz48L2c+PGc+PHJlY3QgeD0iNzAiIHk9IjMwIiB3aWR0aD0iMTYiIGhlaWdodD0iNDUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iNzgsODEgNzAsNzUgODYsNzUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iODYsNjcgODYsNzUgODguNSw3MSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PHBvbHlnb24gcG9pbnRzPSI4Niw2NyA4Niw1OSA4OC41LDYzIiBmaWxsPSJ1cmwoI2dyYWQxKSIgLz48Y2lyY2xlIGN4PSI3NyIgY3k9IjI1IiByPSIxOCIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNzciIGN5PSIyMyIgcj0iMyIgZmlsbD0id2hpdGUiIC8+PC9nPjwvc3ZnPg==",
+            .pwszDarkThemeLogoSvg = L"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgd2lkdGg9IjkwcHgiIGhlaWdodD0iOTBweCIgdmlld0JveD0iMzAgMCA1MCA4NSIgc3R5bGU9ImZpbGwtcnVsZTpldmVub2RkOyBjbGlwLXJ1bGU6ZXZlbm9kZDsgc2hhcGUtcmVuZGVyaW5nOmdlb21ldHJpY1ByZWNpc2lvbjsgdGV4dC1yZW5kZXJpbmc6Z2VvbWV0cmljUHJlY2lzaW9uOyBpbWFnZS1yZW5kZXJpbmc6b3B0aW1pemVRdWFsaXR5OyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkMSIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzRiZTBmYzsgc3RvcC1vcGFjaXR5OjEiIC8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZDIiIHgxPSIxMDAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojNGJlMGZjOyBzdG9wLW9wYWNpdHk6MSIgLz48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMTY5NmUxOyBzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Zz48cG9seWdvbiBwb2ludHM9IjQ4LDI0IDU4LDM2IDQ0LDY3IDMyLDYwIiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjMyLDYwIDQ0LDY3IDMyLjk0LDY4Ljg5IiBmaWxsPSJ1cmwoI2dyYWQyKSIgLz48cG9seWdvbiBwb2ludHM9IjQ0LDY3IDQ3LjE1LDYwIDQ4LDY1LjUiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxwb2x5Z29uIHBvaW50cz0iNDcuMTUsNjAgNTAuMzAsNTMgNTEuMTUsNTguNSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNTUiIGN5PSIyNSIgcj0iMTgiIGZpbGw9InVybCgjZ3JhZDEpIiAvPjxjaXJjbGUgY3g9IjcyIiBjeT0iMjUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIgLz48L2c+PGc+PHJlY3QgeD0iNzAiIHk9IjMwIiB3aWR0aD0iMTYiIGhlaWdodD0iNDUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iNzgsODEgNzAsNzUgODYsNzUiIGZpbGw9InVybCgjZ3JhZDIpIiAvPjxwb2x5Z29uIHBvaW50cz0iODYsNjcgODYsNzUgODguNSw3MSIgZmlsbD0idXJsKCNncmFkMSkiIC8+PHBvbHlnb24gcG9pbnRzPSI4Niw2NyA4Niw1OSA4OC41LDYzIiBmaWxsPSJ1cmwoI2dyYWQxKSIgLz48Y2lyY2xlIGN4PSI3NyIgY3k9IjI1IiByPSIxOCIgZmlsbD0idXJsKCNncmFkMSkiIC8+PGNpcmNsZSBjeD0iNzciIGN5PSIyMyIgcj0iMyIgZmlsbD0id2hpdGUiIC8+PC9nPjwvc3ZnPg==",
             .cbAuthenticatorInfo = static_cast<DWORD>(authenticatorInfo.size()),
             .pbAuthenticatorInfo = authenticatorInfo.data(),
             .cSupportedRpIds = ARRAYSIZE(supportedRpIds),
@@ -1162,7 +970,7 @@ namespace winrt::PasskeyManager::implementation {
         DWORD webauthnApiVersion = WebAuthNGetApiVersionNumber();
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
 
         if (IsTruthySetting(GetEnvironmentVariableValue(kVaultSchemaSelfTestEnv)))
@@ -1650,7 +1458,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
 
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
@@ -1696,6 +1504,49 @@ namespace winrt::PasskeyManager::implementation {
         return S_OK;
     }
 
+    HRESULT PluginRegistrationManager::SetOpaqueExportKey(std::vector<BYTE> exportKey, std::wstring const& requestId)
+    {
+        std::wstring operation = L"key_management";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = tsupasswd::BuildRequestId(operation);
+        }
+
+        std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
+        if (exportKey.empty())
+        {
+            wil::unique_hkey hKey;
+            RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
+            LONG deleteProtected = RegDeleteValue(hKey.get(), c_pluginProtectedOpaqueExportKey);
+            if (deleteProtected != ERROR_SUCCESS && deleteProtected != ERROR_FILE_NOT_FOUND)
+            {
+                RETURN_HR(HRESULT_FROM_WIN32(deleteProtected));
+            }
+            m_opaqueExportKey.clear();
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: audit result=success operation=" + operation + L" event=opaque_export_key_cleared storage=registry request_id=" + localRequestId + L"\u2139" });
+            return S_OK;
+        }
+
+        if (m_opaqueExportKey != exportKey)
+        {
+            std::vector<BYTE> protectedSecret;
+            if (!ProtectSecretForLocalUser(exportKey, protectedSecret))
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + operation + L" event=opaque_export_key_protect_failed reason=dpapi_protect_failed request_id=" + localRequestId + L"\u26a0" });
+                RETURN_HR(E_FAIL);
+            }
+
+            wil::unique_hkey hKey;
+            RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
+            RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginProtectedOpaqueExportKey, 0, REG_BINARY, protectedSecret.data(), static_cast<DWORD>(protectedSecret.size())));
+            m_opaqueExportKey = exportKey;
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: audit result=success operation=" + operation + L" event=opaque_export_key_stored storage=dpapi_protected request_id=" + localRequestId + L"\u2705" });
+        }
+
+        return S_OK;
+    }
+
     void PluginRegistrationManager::ReloadRegistryValues(std::wstring const& requestId)
     {
         std::wstring operation = L"key_registry_reload";
@@ -1703,7 +1554,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
 
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
@@ -1720,37 +1571,52 @@ namespace winrt::PasskeyManager::implementation {
             {
                 UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=prf_secret_unprotect_failed source=dpapi_protected request_id=" + localRequestId + L"⚠" });
             }
-            return;
+        }
+        else
+        {
+            auto legacyOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginHMACSecretInput, REG_BINARY);
+            if (legacyOpt.has_value() && !legacyOpt->empty())
+            {
+                // Migration path from legacy plain-text value.
+                m_hmacSecret = legacyOpt.value();
+                std::vector<BYTE> protectedSecret;
+                if (!ProtectSecretForLocalUser(m_hmacSecret, protectedSecret))
+                {
+                    UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=dpapi_protect_failed request_id=" + localRequestId + L"⚠" });
+                }
+                else
+                {
+                    wil::unique_hkey hKey;
+                    if (RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+                    {
+                        UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=registry_open_failed request_id=" + localRequestId + L"⚠" });
+                    }
+                    else if (RegSetValueEx(hKey.get(), c_pluginProtectedHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(protectedSecret.data()), wil::safe_cast<DWORD>(protectedSecret.size())) != ERROR_SUCCESS)
+                    {
+                        UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=registry_write_failed request_id=" + localRequestId + L"⚠" });
+                    }
+                    else
+                    {
+                        RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
+                        UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: audit result=success operation=" + keyManagementOperation + L" event=legacy_prf_secret_migrated source=registry_plaintext target=dpapi_protected request_id=" + localRequestId + L"✅" });
+                    }
+                }
+            }
         }
 
-        auto legacyOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginHMACSecretInput, REG_BINARY);
-        if (!legacyOpt.has_value() || legacyOpt->empty())
+        auto exportOpt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginProtectedOpaqueExportKey, REG_BINARY);
+        if (exportOpt.has_value() && !exportOpt->empty())
         {
-            return;
+            std::vector<BYTE> plainExport;
+            if (UnprotectSecretForLocalUser(exportOpt.value(), plainExport))
+            {
+                m_opaqueExportKey = std::move(plainExport);
+            }
+            else
+            {
+                UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=opaque_export_key_unprotect_failed reason=dpapi_unprotect_failed request_id=" + localRequestId + L"⚠" });
+            }
         }
-
-        // Migration path from legacy plain-text value.
-        m_hmacSecret = legacyOpt.value();
-        std::vector<BYTE> protectedSecret;
-        if (!ProtectSecretForLocalUser(m_hmacSecret, protectedSecret))
-        {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=dpapi_protect_failed request_id=" + localRequestId + L"⚠" });
-            return;
-        }
-
-        wil::unique_hkey hKey;
-        if (RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
-        {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=registry_open_failed request_id=" + localRequestId + L"⚠" });
-            return;
-        }
-        if (RegSetValueEx(hKey.get(), c_pluginProtectedHMACSecretInput, 0, REG_BINARY, reinterpret_cast<PBYTE>(protectedSecret.data()), wil::safe_cast<DWORD>(protectedSecret.size())) != ERROR_SUCCESS)
-        {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: audit result=failed operation=" + keyManagementOperation + L" event=legacy_prf_secret_migration_failed reason=registry_write_failed request_id=" + localRequestId + L"⚠" });
-            return;
-        }
-        RegDeleteValue(hKey.get(), c_pluginHMACSecretInput);
-        UpdatePasskeyOperationStatusText(winrt::hstring{ L"SUCCESS: audit result=success operation=" + keyManagementOperation + L" event=legacy_prf_secret_migrated source=registry_plaintext target=dpapi_protected request_id=" + localRequestId + L"✅" });
     }
 
     HRESULT PluginRegistrationManager::WriteEncryptedVaultData(std::vector<BYTE> cipherText)
@@ -1774,7 +1640,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         cipherText.clear();
@@ -1783,14 +1649,14 @@ namespace winrt::PasskeyManager::implementation {
         if (!opt)
         {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=restore_snapshot_then_retry request_id=" + localRequestId + L"⚠" });
-            OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_missing source=registry\n").c_str());
+            DebugLogIfVerbose(L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_missing source=registry\n");
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
 
         if (opt->empty())
         {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
-            OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt\n").c_str());
+            DebugLogIfVerbose(L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
@@ -1799,7 +1665,7 @@ namespace winrt::PasskeyManager::implementation {
         if (parseResult == VaultBlobParseResult::Invalid)
         {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
-            OutputDebugStringW((L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed\n").c_str());
+            DebugLogIfVerbose(L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_integrity_check_failed\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
         if (parseResult == VaultBlobParseResult::NotFramed)
@@ -1811,7 +1677,7 @@ namespace winrt::PasskeyManager::implementation {
         {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_small_or_corrupt recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             std::wstring msg = L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_too_small_or_corrupt size=" + std::to_wstring(vaultCipher.size()) + L"\n";
-            OutputDebugStringW(msg.c_str());
+            DebugLogIfVerbose(msg);
             return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
         }
 
@@ -1819,7 +1685,7 @@ namespace winrt::PasskeyManager::implementation {
         {
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_too_large_or_unexpected recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             std::wstring msg = L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_too_large_or_unexpected size=" + std::to_wstring(vaultCipher.size()) + L"\n";
-            OutputDebugStringW(msg.c_str());
+            DebugLogIfVerbose(msg);
             return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
         }
 
@@ -1833,7 +1699,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
 
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
@@ -1866,7 +1732,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
 
         std::wstring syncUserId = GetUserEnvironmentRegistryValue(kSyncUserIdEnv);
@@ -1926,7 +1792,7 @@ namespace winrt::PasskeyManager::implementation {
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = tsupasswd::BuildRequestId(operation);
         }
         std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
         if (syncBaseUrl.empty())
@@ -1947,9 +1813,18 @@ namespace winrt::PasskeyManager::implementation {
         syncClient.SetApiKind(tsupasswd::SyncApiKind::Axum);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         std::wstring bearerToken = GetEnvironmentVariableValue(kSyncBearerTokenEnv);
+        std::vector<uint8_t> sessionKeyBytes;
         if (!bearerToken.empty())
         {
             syncClient.SetBearerToken(bearerToken);
+
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (!recoveryCode.empty())
+            {
+                tsupasswd::SyncHttpStatus loginStatus{};
+                std::wstring issuedToken;
+                (void)syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
+            }
         }
         else
         {
@@ -1962,14 +1837,19 @@ namespace winrt::PasskeyManager::implementation {
 
             tsupasswd::SyncHttpStatus loginStatus{};
             std::wstring issuedToken;
-            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+            HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             if (FAILED(hrLogin) || issuedToken.empty())
             {
                 tsupasswd::SyncHttpStatus regStatus{};
-                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                std::vector<uint8_t> regExportKey;
+                (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regExportKey, &regStatus);
+                if (!regExportKey.empty())
+                {
+                    (void)SetOpaqueExportKey(std::vector<BYTE>(regExportKey.begin(), regExportKey.end()), localRequestId);
+                }
                 loginStatus = {};
                 issuedToken.clear();
-                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             }
 
             if (SUCCEEDED(hrLogin) && !issuedToken.empty())
@@ -1994,14 +1874,19 @@ namespace winrt::PasskeyManager::implementation {
             {
                 tsupasswd::SyncHttpStatus loginStatus{};
                 std::wstring issuedToken;
-                HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                HRESULT hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
                 if (FAILED(hrLogin) || issuedToken.empty())
                 {
                     tsupasswd::SyncHttpStatus regStatus{};
-                    (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regStatus);
+                    std::vector<uint8_t> regExportKey;
+                    (void)syncClient.OpaqueRegister(syncUserId, recoveryCode, &regExportKey, &regStatus);
+                    if (!regExportKey.empty())
+                    {
+                        (void)SetOpaqueExportKey(std::vector<BYTE>(regExportKey.begin(), regExportKey.end()), localRequestId);
+                    }
                     loginStatus = {};
                     issuedToken.clear();
-                    hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &loginStatus);
+                    hrLogin = syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
                 }
 
                 if (SUCCEEDED(hrLogin) && !issuedToken.empty())
@@ -2049,11 +1934,10 @@ namespace winrt::PasskeyManager::implementation {
 
         if (record.Blob.CiphertextBase64.empty())
         {
-            OutputDebugStringW(
-                (L"DEBUG: restore_snapshot empty_ciphertext server_version=" +
-                 std::to_wstring(record.VaultVersion) +
-                 L" updated_at='" + record.Meta.UpdatedAt + L"'\n")
-                    .c_str());
+            DebugLogIfVerbose(
+                L"DEBUG: restore_snapshot empty_ciphertext server_version=" +
+                std::to_wstring(record.VaultVersion) +
+                L" updated_at='" + record.Meta.UpdatedAt + L"'\n");
             UpdatePasskeyOperationStatusText(
                 winrt::hstring{
                     L"WARNING: sync result=failed operation=" + operation +
@@ -2074,16 +1958,44 @@ namespace winrt::PasskeyManager::implementation {
                 {
                     preview = preview.substr(0, 24) + L"...";
                 }
-                OutputDebugStringW(
-                    (L"DEBUG: restore_snapshot invalid_ciphertext base64_len=" +
-                     std::to_wstring(record.Blob.CiphertextBase64.size()) +
-                     L" base64_prefix='" + preview + L"'\n")
-                        .c_str());
+                DebugLogIfVerbose(
+                    L"DEBUG: restore_snapshot invalid_ciphertext base64_len=" +
+                    std::to_wstring(record.Blob.CiphertextBase64.size()) +
+                    L" base64_prefix='" + preview + L"'\n");
 
                 UpdatePasskeyOperationStatusText(
                     winrt::hstring{
                         L"WARNING: sync result=failed operation=" + operation + L" reason=invalid_ciphertext hr=-2147024883 failure_kind=client_error request_id=" +
                         ResolveRequestId(localRequestId, status) +
+                        L"⚠" });
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
+        }
+
+        winrt::PasskeyManager::implementation::PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+        auto exportKey = winrt::PasskeyManager::implementation::PluginRegistrationManager::getInstance().GetOpaqueExportKey();
+        if (IsOpaqueSessionWrapEnabled() && !exportKey.empty())
+        {
+            tsupasswd::VaultCryptoError unwrapError{};
+            std::vector<uint8_t> unwrapped;
+            if (tsupasswd::UnwrapVaultCipherForSyncV1(
+                std::vector<uint8_t>(cipherBytes.begin(), cipherBytes.end()),
+                std::vector<uint8_t>(exportKey.begin(), exportKey.end()),
+                unwrapped,
+                unwrapError))
+            {
+                cipherBytes.assign(unwrapped.begin(), unwrapped.end());
+            }
+            else if (unwrapError.Code != L"not_wrapped")
+            {
+                UpdatePasskeyOperationStatusText(
+                    winrt::hstring{
+                        L"WARNING: sync result=failed operation=" + operation +
+                        L" reason=sync_unwrap_failed code=" + unwrapError.Code +
+                        L" detail=" + unwrapError.Detail +
+                        L" legacy_hint=wrapped_with_old_session_key_or_mismatched_export_key" +
+                        L" recovery=disable_TSUPASSWD_SYNC_OPAQUE_SESSION_WRAP_then_manual_resync_to_overwrite_server" +
+                        L" request_id=" + ResolveRequestId(localRequestId, status) +
                         L"⚠" });
                 return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
             }

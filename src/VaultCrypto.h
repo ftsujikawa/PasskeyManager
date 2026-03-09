@@ -12,6 +12,18 @@ namespace tsupasswd
         std::wstring Detail;
     };
 
+    bool WrapVaultCipherForSyncV1(
+        std::vector<uint8_t> const& vaultCipherPackage,
+        std::vector<uint8_t> const& sessionKeyBytes,
+        std::vector<uint8_t>& outWrappedPackage,
+        VaultCryptoError& outError);
+
+    bool UnwrapVaultCipherForSyncV1(
+        std::vector<uint8_t> const& wrappedPackage,
+        std::vector<uint8_t> const& sessionKeyBytes,
+        std::vector<uint8_t>& outVaultCipherPackage,
+        VaultCryptoError& outError);
+
     bool EncryptVaultV3(
         std::vector<uint8_t> const& plaintext,
         std::vector<uint8_t> const& recoveryCodeBytes,

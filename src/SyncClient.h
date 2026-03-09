@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace tsupasswd
 {
@@ -93,11 +94,13 @@ namespace tsupasswd
             std::wstring const& userId,
             std::wstring const& password,
             std::wstring& outBearerToken,
+            std::vector<uint8_t>* outSessionKeyBytes = nullptr,
             SyncHttpStatus* outStatus = nullptr) const noexcept;
 
         HRESULT OpaqueRegister(
             std::wstring const& userId,
             std::wstring const& password,
+            std::vector<uint8_t>* outExportKeyBytes = nullptr,
             SyncHttpStatus* outStatus = nullptr) const noexcept;
 
         HRESULT GetVault(

@@ -653,8 +653,13 @@ namespace tsupasswd
     HRESULT SyncClient::OpaqueRegister(
         std::wstring const& userId,
         std::wstring const& password,
+        std::vector<uint8_t>* outExportKeyBytes,
         SyncHttpStatus* outStatus) const noexcept
     {
+        if (outExportKeyBytes)
+        {
+            outExportKeyBytes->clear();
+        }
         if (outStatus)
         {
             *outStatus = {};
@@ -781,6 +786,12 @@ namespace tsupasswd
                 return E_FAIL;
             }
 
+            std::vector<uint8_t> exportKeyBytes;
+            if (regSessionKey.size() > 0)
+            {
+                exportKeyBytes.assign(regSessionKey.data(), regSessionKey.data() + regSessionKey.size());
+            }
+
             // POST /v1/auth/register/finish
             winrt::Windows::Data::Json::JsonObject finishBody;
             finishBody.SetNamedValue(L"email", winrt::Windows::Data::Json::JsonValue::CreateStringValue(userId));
@@ -820,7 +831,16 @@ namespace tsupasswd
 
             auto finishRespJson = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(body2));
             bool ok = finishRespJson.GetNamedBoolean(L"ok", false);
-            return ok ? S_OK : E_FAIL;
+            if (!ok)
+            {
+                return E_FAIL;
+            }
+
+            if (outExportKeyBytes)
+            {
+                *outExportKeyBytes = std::move(exportKeyBytes);
+            }
+            return S_OK;
         }
         catch (...)
         {
@@ -837,9 +857,14 @@ namespace tsupasswd
         std::wstring const& userId,
         std::wstring const& password,
         std::wstring& outBearerToken,
+        std::vector<uint8_t>* outSessionKeyBytes,
         SyncHttpStatus* outStatus) const noexcept
     {
         outBearerToken.clear();
+        if (outSessionKeyBytes)
+        {
+            outSessionKeyBytes->clear();
+        }
         if (outStatus)
         {
             *outStatus = {};
@@ -1025,6 +1050,11 @@ namespace tsupasswd
             }
 
             outBearerToken = accessToken;
+
+            if (outSessionKeyBytes)
+            {
+                outSessionKeyBytes->assign(sessionKey.data(), sessionKey.data() + sessionKey.size());
+            }
             return S_OK;
         }
         catch (...)

@@ -246,8 +246,8 @@ pub extern "C" fn tsupasswd_opaque_client_login_finish(
     };
 
     match opaque_core::client_login_finish(pw, &state, &resp) {
-        Ok((fin, sk)) => unsafe {
-            *out_credential_finalization = vec_to_bytebuffer(fin.bytes);
+        Ok((finalization, sk)) => unsafe {
+            *out_credential_finalization = vec_to_bytebuffer(finalization.bytes);
             *out_session_key = vec_to_bytebuffer(sk.bytes);
             true
         },
@@ -446,11 +446,11 @@ pub extern "C" fn tsupasswd_opaque_server_login_finish(
     let state = opaque_core::ServerStateBytes {
         bytes: state_bytes.to_vec(),
     };
-    let fin = opaque_core::MessageBytes {
+    let finalization = opaque_core::MessageBytes {
         bytes: fin_bytes.to_vec(),
     };
 
-    match opaque_core::server_login_finish(&state, &fin) {
+    match opaque_core::server_login_finish(&state, &finalization) {
         Ok(sk) => unsafe {
             *out_session_key = vec_to_bytebuffer(sk.bytes);
             true
@@ -461,3 +461,4 @@ pub extern "C" fn tsupasswd_opaque_server_login_finish(
         }
     }
 }
+

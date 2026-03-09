@@ -76,9 +76,15 @@ namespace winrt::PasskeyManager::implementation
 
         HRESULT CreateVaultPasskey(HWND hwnd, std::wstring const& requestId = L"");
         HRESULT SetHMACSecret(std::vector<BYTE> hmacSecret, std::wstring const& requestId = L"");
+        HRESULT SetOpaqueExportKey(std::vector<BYTE> exportKey, std::wstring const& requestId = L"");
         std::vector<BYTE> GetHMACSecret() const
         {
             return m_hmacSecret;
+        }
+
+        std::vector<BYTE> GetOpaqueExportKey() const
+        {
+            return m_opaqueExportKey;
         }
 
         HRESULT WriteEncryptedVaultData(std::vector<BYTE> cipherText);
@@ -89,12 +95,18 @@ namespace winrt::PasskeyManager::implementation
         void ReloadRegistryValues(std::wstring const& requestId = L"");
 
     private:
+        HRESULT SyncEncryptedVaultWithRetry(
+            std::vector<BYTE> const& encryptedVaultData,
+            std::wstring const& syncUserId,
+            std::function<void(winrt::hstring const&)> const& statusSink);
+
         AUTHENTICATOR_STATE m_pluginState;
         bool m_initialized = false;
         bool m_pluginRegistered = false;
 
         std::mutex m_pluginOperationConfigMutex;
         _Guarded_by_(m_pluginOperationConfigMutex) std::vector<BYTE> m_hmacSecret = {};
+        _Guarded_by_(m_pluginOperationConfigMutex) std::vector<BYTE> m_opaqueExportKey = {};
 
         PluginRegistrationManager();
         ~PluginRegistrationManager();

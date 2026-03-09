@@ -416,6 +416,192 @@ namespace tsupasswd
             outBytes.assign(codeUtf8.begin(), codeUtf8.end());
             return true;
         }
+
+        constexpr uint8_t kSyncWrapMagic[4] = { 'S', 'W', '1', '0' };
+        constexpr uint8_t kSyncWrapVersion = 1;
+
+        bool Sha256(std::vector<uint8_t> const& data, std::vector<uint8_t>& outHash)
+        {
+            outHash.assign(32, 0);
+
+            BCRYPT_ALG_HANDLE hAlg = nullptr;
+            if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0)
+            {
+                return false;
+            }
+            auto algCleanup = wil::scope_exit([&]() {
+                BCryptCloseAlgorithmProvider(hAlg, 0);
+            });
+
+            DWORD objLen = 0;
+            DWORD cbResult = 0;
+            if (BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objLen), sizeof(objLen), &cbResult, 0) != 0)
+            {
+                return false;
+            }
+            std::vector<uint8_t> obj(objLen);
+
+            BCRYPT_HASH_HANDLE hHash = nullptr;
+            if (BCryptCreateHash(hAlg, &hHash, obj.data(), wil::safe_cast<ULONG>(obj.size()), nullptr, 0, 0) != 0)
+            {
+                return false;
+            }
+            auto hashCleanup = wil::scope_exit([&]() {
+                BCryptDestroyHash(hHash);
+            });
+
+            if (!data.empty())
+            {
+                if (BCryptHashData(hHash, const_cast<PUCHAR>(data.data()), wil::safe_cast<ULONG>(data.size()), 0) != 0)
+                {
+                    return false;
+                }
+            }
+
+            if (BCryptFinishHash(hHash, outHash.data(), wil::safe_cast<ULONG>(outHash.size()), 0) != 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        bool DeriveSyncWrapKey(std::vector<uint8_t> const& sessionKeyBytes, std::vector<uint8_t>& outKey32)
+        {
+            if (sessionKeyBytes.empty())
+            {
+                return false;
+            }
+            return Sha256(sessionKeyBytes, outKey32);
+        }
+    }
+
+    bool WrapVaultCipherForSyncV1(
+        std::vector<uint8_t> const& vaultCipherPackage,
+        std::vector<uint8_t> const& sessionKeyBytes,
+        std::vector<uint8_t>& outWrappedPackage,
+        VaultCryptoError& outError)
+    {
+        outWrappedPackage.clear();
+        outError = {};
+
+        if (vaultCipherPackage.empty())
+        {
+            SetError(outError, L"empty_cipher", L"vaultCipherPackage is required");
+            return false;
+        }
+
+        std::vector<uint8_t> wrapKey;
+        if (!DeriveSyncWrapKey(sessionKeyBytes, wrapKey))
+        {
+            SetError(outError, L"invalid_session_key", L"sessionKeyBytes must be non-empty");
+            return false;
+        }
+
+        std::vector<uint8_t> nonce;
+        if (!GenRandom(nonce, kAesGcmNonceBytes))
+        {
+            SetError(outError, L"rng_failed", L"BCryptGenRandom(nonce) failed");
+            return false;
+        }
+
+        std::vector<uint8_t> aad;
+        std::vector<uint8_t> wrappedCipher;
+        std::vector<uint8_t> wrappedTag;
+        if (!Aes256GcmEncrypt(wrapKey, nonce, aad, vaultCipherPackage, wrappedCipher, wrappedTag))
+        {
+            SetError(outError, L"wrap_failed", L"AES-256-GCM wrap failed");
+            return false;
+        }
+
+        outWrappedPackage.clear();
+        outWrappedPackage.insert(outWrappedPackage.end(), std::begin(kSyncWrapMagic), std::end(kSyncWrapMagic));
+        outWrappedPackage.push_back(kSyncWrapVersion);
+
+        AppendUint32LE(outWrappedPackage, wil::safe_cast<uint32_t>(nonce.size()));
+        outWrappedPackage.insert(outWrappedPackage.end(), nonce.begin(), nonce.end());
+
+        AppendUint32LE(outWrappedPackage, wil::safe_cast<uint32_t>(wrappedCipher.size()));
+        outWrappedPackage.insert(outWrappedPackage.end(), wrappedCipher.begin(), wrappedCipher.end());
+
+        AppendUint32LE(outWrappedPackage, wil::safe_cast<uint32_t>(wrappedTag.size()));
+        outWrappedPackage.insert(outWrappedPackage.end(), wrappedTag.begin(), wrappedTag.end());
+
+        return true;
+    }
+
+    bool UnwrapVaultCipherForSyncV1(
+        std::vector<uint8_t> const& wrappedPackage,
+        std::vector<uint8_t> const& sessionKeyBytes,
+        std::vector<uint8_t>& outVaultCipherPackage,
+        VaultCryptoError& outError)
+    {
+        outVaultCipherPackage.clear();
+        outError = {};
+
+        if (wrappedPackage.size() < 5)
+        {
+            SetError(outError, L"invalid_package", L"too small");
+            return false;
+        }
+        if (!std::equal(std::begin(kSyncWrapMagic), std::end(kSyncWrapMagic), wrappedPackage.begin()))
+        {
+            SetError(outError, L"not_wrapped", L"magic mismatch");
+            return false;
+        }
+        if (wrappedPackage[4] != kSyncWrapVersion)
+        {
+            SetError(outError, L"unsupported_version", L"version mismatch");
+            return false;
+        }
+
+        std::vector<uint8_t> wrapKey;
+        if (!DeriveSyncWrapKey(sessionKeyBytes, wrapKey))
+        {
+            SetError(outError, L"invalid_session_key", L"sessionKeyBytes must be non-empty");
+            return false;
+        }
+
+        size_t cursor = 5;
+        auto readBlob = [&](std::vector<uint8_t>& out) -> bool
+        {
+            uint32_t len = 0;
+            if (!ReadUint32LE(wrappedPackage, cursor, len))
+            {
+                return false;
+            }
+            cursor += sizeof(uint32_t);
+            if (cursor + len > wrappedPackage.size())
+            {
+                return false;
+            }
+            out.assign(wrappedPackage.begin() + cursor, wrappedPackage.begin() + cursor + len);
+            cursor += len;
+            return true;
+        };
+
+        std::vector<uint8_t> nonce;
+        std::vector<uint8_t> cipher;
+        std::vector<uint8_t> tag;
+        if (!readBlob(nonce) || !readBlob(cipher) || !readBlob(tag))
+        {
+            SetError(outError, L"invalid_package", L"field parse failed");
+            return false;
+        }
+        if (nonce.size() != kAesGcmNonceBytes || tag.size() != kAesGcmTagBytes)
+        {
+            SetError(outError, L"invalid_package", L"field size invalid");
+            return false;
+        }
+
+        std::vector<uint8_t> aad;
+        if (!Aes256GcmDecrypt(wrapKey, nonce, aad, cipher, tag, outVaultCipherPackage))
+        {
+            SetError(outError, L"unwrap_failed", L"AES-256-GCM unwrap failed");
+            return false;
+        }
+
+        return true;
     }
 
     bool EncryptVaultV3(

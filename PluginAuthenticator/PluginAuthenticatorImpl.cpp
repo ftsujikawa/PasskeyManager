@@ -42,6 +42,22 @@ namespace winrt::PasskeyManager::implementation
 
         bool TryAcquireOperationInProgressFlag(std::atomic<bool>& flag) noexcept;
 
+        wchar_t const* GetNonEmptyStringOrFallback(wchar_t const* value, wchar_t const* fallback) noexcept;
+
+        std::vector<uint8_t> GetRequestSigningPubKey();
+
+        HRESULT VerifySignatureHelper(
+            std::span<const BYTE> dataBuffer,
+            PBYTE pbKeyData,
+            DWORD cbKeyData,
+            PBYTE pbSignature,
+            DWORD cbSignature);
+
+        HRESULT VerifyRequestSignatureIfPresent(
+            std::span<const BYTE> requestBuffer,
+            PBYTE requestSignature,
+            DWORD requestSignatureLength) noexcept;
+
         HRESULT ComputeHmacSha256(
             std::span<const BYTE> key,
             std::span<const BYTE> data,
@@ -287,6 +303,35 @@ namespace winrt::PasskeyManager::implementation
             flag = false;
             expected = false;
             return flag.compare_exchange_strong(expected, true);
+        }
+
+        wchar_t const* GetNonEmptyStringOrFallback(wchar_t const* value, wchar_t const* fallback) noexcept
+        {
+            if (value != nullptr && value[0] != L'\0')
+            {
+                return value;
+            }
+
+            return fallback;
+        }
+
+        HRESULT VerifyRequestSignatureIfPresent(
+            std::span<const BYTE> requestBuffer,
+            PBYTE requestSignature,
+            DWORD requestSignatureLength) noexcept
+        {
+            auto pubKeyData = GetRequestSigningPubKey();
+            if (pubKeyData.empty())
+            {
+                return E_FAIL;
+            }
+
+            return VerifySignatureHelper(
+                requestBuffer,
+                pubKeyData.data(),
+                static_cast<DWORD>(pubKeyData.size()),
+                requestSignature,
+                requestSignatureLength);
         }
 
         bool IsSupportedRpId(wchar_t const* rpId) noexcept
@@ -812,34 +857,23 @@ namespace winrt::PasskeyManager::implementation
             std::wstring rpIdFromRequestW(rpIdFromRequest.begin(), rpIdFromRequest.end());
             bool rpSupported = IsSupportedRpId(rpIdFromRequestW.c_str());
             THROW_HR_IF(NTE_NOT_SUPPORTED, !rpSupported);
-            wchar_t const* rpNameSource = pDecodedMakeCredentialRequest->pRpInformation->pwszName;
-            if (rpNameSource == nullptr || rpNameSource[0] == L'\0')
-            {
-                rpNameSource = L"Unknown RP";
-            }
+            wchar_t const* rpNameSource = GetNonEmptyStringOrFallback(
+                pDecodedMakeCredentialRequest->pRpInformation->pwszName,
+                L"Unknown RP");
             auto rpName = wil::make_cotaskmem_string(rpNameSource);
 
-            wchar_t const* userNameSource = pDecodedMakeCredentialRequest->pUserInformation->pwszName;
-            if (userNameSource == nullptr || userNameSource[0] == L'\0')
-            {
-                userNameSource = L"Unknown User";
-            }
+            wchar_t const* userNameSource = GetNonEmptyStringOrFallback(
+                pDecodedMakeCredentialRequest->pUserInformation->pwszName,
+                L"Unknown User");
             auto userName = wil::make_cotaskmem_string(userNameSource);
             std::vector<BYTE> requestBuffer(
                 pPluginMakeCredentialRequest->pbEncodedRequest,
                 pPluginMakeCredentialRequest->pbEncodedRequest + pPluginMakeCredentialRequest->cbEncodedRequest);
 
-            auto pubKeyData = GetRequestSigningPubKey();
-            HRESULT requestSignResult = E_FAIL;
-            if (!pubKeyData.empty())
-            {
-                requestSignResult = VerifySignatureHelper(
-                    requestBuffer,
-                    pubKeyData.data(),
-                    static_cast<DWORD>(pubKeyData.size()),
-                    pPluginMakeCredentialRequest->pbRequestSignature,
-                    pPluginMakeCredentialRequest->cbRequestSignature);
-            }
+            HRESULT requestSignResult = VerifyRequestSignatureIfPresent(
+                requestBuffer,
+                pPluginMakeCredentialRequest->pbRequestSignature,
+                pPluginMakeCredentialRequest->cbRequestSignature);
 
             {
                 std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);
@@ -1452,17 +1486,10 @@ namespace winrt::PasskeyManager::implementation
                 pPluginGetAssertionRequest->pbEncodedRequest,
                 pPluginGetAssertionRequest->pbEncodedRequest + pPluginGetAssertionRequest->cbEncodedRequest);
 
-            auto pubKeyData = GetRequestSigningPubKey();
-            HRESULT requestSignResult = E_FAIL;
-            if (!pubKeyData.empty())
-            {
-                requestSignResult = VerifySignatureHelper(
-                    requestBuffer,
-                    pubKeyData.data(),
-                    static_cast<DWORD>(pubKeyData.size()),
-                    pPluginGetAssertionRequest->pbRequestSignature,
-                    pPluginGetAssertionRequest->cbRequestSignature);
-            }
+            HRESULT requestSignResult = VerifyRequestSignatureIfPresent(
+                requestBuffer,
+                pPluginGetAssertionRequest->pbRequestSignature,
+                pPluginGetAssertionRequest->cbRequestSignature);
 
             {
                 std::lock_guard<std::mutex> lock(curApp->m_pluginOperationOptionsMutex);

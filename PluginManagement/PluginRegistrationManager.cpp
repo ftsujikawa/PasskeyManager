@@ -135,6 +135,111 @@ namespace
         return IsTruthySetting(GetEnvironmentVariableValue(kSyncAllowInsecureHttpEnv));
     }
 
+    std::wstring NormalizeSyncBaseUrl(std::wstring value)
+    {
+        while (!value.empty() && iswspace(value.front()))
+        {
+            value.erase(value.begin());
+        }
+        while (!value.empty() && iswspace(value.back()))
+        {
+            value.pop_back();
+        }
+        while (!value.empty() && value.back() == L'/')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    bool IsValidSyncBaseUrl(std::wstring const& baseUrl)
+    {
+        if (baseUrl.empty())
+        {
+            return false;
+        }
+
+        auto lower = winrt::to_string(winrt::hstring(baseUrl));
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c)
+        {
+            return static_cast<char>(std::tolower(c));
+        });
+        return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0;
+    }
+
+    bool IsHttpsSyncBaseUrl(std::wstring const& baseUrl)
+    {
+        if (baseUrl.empty())
+        {
+            return false;
+        }
+
+        auto lower = winrt::to_string(winrt::hstring(baseUrl));
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c)
+        {
+            return static_cast<char>(std::tolower(c));
+        });
+        return lower.rfind("https://", 0) == 0;
+    }
+
+    bool IsValidSyncUserId(std::wstring const& userId)
+    {
+        if (userId.empty())
+        {
+            return false;
+        }
+
+        return std::all_of(userId.begin(), userId.end(), [](wchar_t ch)
+        {
+            return (ch >= L'0' && ch <= L'9') ||
+                (ch >= L'a' && ch <= L'z') ||
+                (ch >= L'A' && ch <= L'Z') ||
+                ch == L'-' ||
+                ch == L'_' ||
+                ch == L'.';
+        });
+    }
+
+    HRESULT ValidateSyncRuntimeInputs(
+        std::wstring const& operation,
+        std::wstring const& requestId,
+        std::wstring const& syncBaseUrl,
+        std::wstring const& syncUserId,
+        std::function<void(winrt::hstring const&)> const& statusSink)
+    {
+        if (syncBaseUrl.empty())
+        {
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=base_url_missing recovery=set_sync_base_url_before_using_sync request_id=" + requestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+        }
+
+        if (!IsValidSyncBaseUrl(syncBaseUrl))
+        {
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_base_url recovery=set_http_or_https_sync_base_url request_id=" + requestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+        }
+
+        if (!IsHttpsSyncBaseUrl(syncBaseUrl) && !IsAllowInsecureHttpEnabled())
+        {
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + requestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY);
+        }
+
+        if (syncUserId.empty())
+        {
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=user_id_missing recovery=set_sync_user_id_before_using_sync request_id=" + requestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+        }
+
+        if (!IsValidSyncUserId(syncUserId))
+        {
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id recovery=use_only_alnum_dash_underscore_dot_for_sync_user_id request_id=" + requestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+        }
+
+        return S_OK;
+    }
+
     bool IsOpaqueSessionWrapEnabled()
     {
         return IsTruthySetting(GetEnvironmentVariableValue(kSyncOpaqueSessionWrapEnv));
@@ -522,11 +627,11 @@ namespace winrt::PasskeyManager::implementation {
     {
         std::wstring operation = L"put_vault";
         std::wstring localRequestId = tsupasswd::BuildRequestId(operation);
-        std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
-        if (syncBaseUrl.empty())
+        std::wstring syncBaseUrl = NormalizeSyncBaseUrl(GetEnvironmentVariableValue(kSyncBaseUrlEnv));
+        HRESULT hrValidation = ValidateSyncRuntimeInputs(operation, localRequestId, syncBaseUrl, syncUserId, statusSink);
+        if (FAILED(hrValidation))
         {
-            statusSink(winrt::hstring{ L"INFO: sync result=skipped operation=" + operation + L" reason=base_url_missing hr=1 request_id=" + localRequestId + L"ℹ" });
-            return S_FALSE;
+            return hrValidation;
         }
 
         DebugLogIfVerbose(
@@ -1775,9 +1880,19 @@ namespace winrt::PasskeyManager::implementation {
         {
             syncUserId = GetProcessEnvironmentVariableValue(kSyncUserIdEnv);
         }
-        if (syncUserId.empty())
+        std::wstring syncBaseUrl = NormalizeSyncBaseUrl(GetEnvironmentVariableValue(kSyncBaseUrlEnv));
+        HRESULT hrValidation = ValidateSyncRuntimeInputs(
+            operation,
+            localRequestId,
+            syncBaseUrl,
+            syncUserId,
+            [this](winrt::hstring const& status)
+            {
+                UpdatePasskeyOperationStatusText(status);
+            });
+        if (FAILED(hrValidation))
         {
-            syncUserId = kDefaultSyncUserId;
+            return hrValidation;
         }
 
         std::vector<BYTE> encryptedVaultData;
@@ -1829,17 +1944,21 @@ namespace winrt::PasskeyManager::implementation {
         {
             localRequestId = tsupasswd::BuildRequestId(operation);
         }
-        std::wstring syncBaseUrl = GetEnvironmentVariableValue(kSyncBaseUrlEnv);
-        if (syncBaseUrl.empty())
-        {
-            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=skipped operation=" + operation + L" reason=base_url_missing hr=1 request_id=" + localRequestId + L"⚠" });
-            return S_FALSE;
-        }
+        std::wstring syncBaseUrl = NormalizeSyncBaseUrl(GetEnvironmentVariableValue(kSyncBaseUrlEnv));
 
         std::wstring syncUserId = GetEnvironmentVariableValue(kSyncUserIdEnv);
-        if (syncUserId.empty())
+        HRESULT hrValidation = ValidateSyncRuntimeInputs(
+            operation,
+            localRequestId,
+            syncBaseUrl,
+            syncUserId,
+            [&](winrt::hstring const& status)
+            {
+                UpdatePasskeyOperationStatusText(status);
+            });
+        if (FAILED(hrValidation))
         {
-            syncUserId = kDefaultSyncUserId;
+            return hrValidation;
         }
 
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });

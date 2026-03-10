@@ -131,10 +131,17 @@ namespace winrt::PasskeyManager::implementation
 
         void UpdatePasskeyOperationStatusText(hstring const& statusText)
         {
+            constexpr size_t kUiMaxLogEntries = 1000;
             std::wstring maskedText = MaskSensitiveLogText(statusText.c_str());
             winrt::hstring maskedStatusText{ maskedText };
 
             m_logEntries.push_back(maskedStatusText);
+            if (m_logEntries.size() > kUiMaxLogEntries)
+            {
+                m_logEntries.erase(
+                    m_logEntries.begin(),
+                    m_logEntries.begin() + static_cast<ptrdiff_t>(m_logEntries.size() - kUiMaxLogEntries));
+            }
             if (!m_isRestoringLogHistory)
             {
                 PersistSyncHistoryEntry(maskedStatusText);

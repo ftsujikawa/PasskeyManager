@@ -1883,8 +1883,34 @@ namespace winrt::PasskeyManager::implementation
         syncBearerTokenBox().Password(token);
         syncUserIdTextBox().Text(userId);
 
-        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" source=process_registry request_id=" + requestId + L"✅" });
-        LogInfo(winrt::hstring{ L"sync result=success operation=" + operation + L" source=process_registry request_id=" + requestId });
+        std::wstring loadedFields;
+        if (!baseUrl.empty())
+        {
+            loadedFields = L"base_url";
+        }
+        if (!token.empty())
+        {
+            if (!loadedFields.empty())
+            {
+                loadedFields += L",";
+            }
+            loadedFields += L"token";
+        }
+        if (!userId.empty())
+        {
+            if (!loadedFields.empty())
+            {
+                loadedFields += L",";
+            }
+            loadedFields += L"user_id";
+        }
+        if (loadedFields.empty())
+        {
+            loadedFields = L"none";
+        }
+
+        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" source=process_registry fields=" + loadedFields + L" request_id=" + requestId + L"✅" });
+        LogInfo(winrt::hstring{ L"sync result=success operation=" + operation + L" source=process_registry fields=" + loadedFields + L" request_id=" + requestId });
         co_return;
     }
 
@@ -1932,8 +1958,34 @@ namespace winrt::PasskeyManager::implementation
             co_return;
         }
 
-        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" fields=base_url,token,user_id request_id=" + requestId + L"✅" });
-        LogSuccess(winrt::hstring{ L"sync result=success operation=" + operation + L" fields=base_url,token,user_id request_id=" + requestId });
+        std::wstring savedFields;
+        if (!baseUrl.empty())
+        {
+            savedFields = L"base_url";
+        }
+        if (!token.empty())
+        {
+            if (!savedFields.empty())
+            {
+                savedFields += L",";
+            }
+            savedFields += L"token";
+        }
+        if (!userId.empty())
+        {
+            if (!savedFields.empty())
+            {
+                savedFields += L",";
+            }
+            savedFields += L"user_id";
+        }
+        if (savedFields.empty())
+        {
+            savedFields = L"none";
+        }
+
+        syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" fields=" + savedFields + L" request_id=" + requestId + L"✅" });
+        LogSuccess(winrt::hstring{ L"sync result=success operation=" + operation + L" fields=" + savedFields + L" request_id=" + requestId });
         co_return;
     }
 
@@ -2913,6 +2965,7 @@ namespace winrt::PasskeyManager::implementation
     {
         std::wstring visibleLogs;
         bool first = true;
+        std::wstring previousDisplayLine;
 
         for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
         {
@@ -2928,11 +2981,17 @@ namespace winrt::PasskeyManager::implementation
                 displayLine = L"  -> " + line;
             }
 
+            if (!previousDisplayLine.empty() && displayLine == previousDisplayLine)
+            {
+                continue;
+            }
+
             if (!first)
             {
                 visibleLogs += L"\r\n";
             }
             visibleLogs += displayLine;
+            previousDisplayLine = displayLine;
             first = false;
         }
 

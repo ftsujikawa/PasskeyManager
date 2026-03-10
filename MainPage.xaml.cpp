@@ -1438,6 +1438,7 @@ namespace winrt::PasskeyManager::implementation
         m_credentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         m_filteredCredentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         DataContext(m_credentialListViewModel);
+        SetHomeViewVisible(true);
 
         auto weakThis = get_weak();
         m_registryWatcher = wil::make_registry_watcher(
@@ -3282,6 +3283,12 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::backToHomeButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         SetHomeViewVisible(true);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::homeCredentialListView_ItemClick(IInspectable const&, Microsoft::UI::Xaml::Controls::ItemClickEventArgs const&)
+    {
+        SetHomeViewVisible(false);
         co_return;
     }
 

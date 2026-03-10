@@ -71,6 +71,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction copyLatestLogButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction showDetailViewButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction backToHomeButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction homeCredentialListView_ItemClick(IInspectable const& sender, Microsoft::UI::Xaml::Controls::ItemClickEventArgs const& args);
         winrt::IAsyncAction clearPasskeySearchButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction passkeySearchBox_TextChanged(
             Microsoft::UI::Xaml::Controls::AutoSuggestBox const& sender,

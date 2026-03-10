@@ -115,7 +115,8 @@
                     Style="{StaticResource CardStyle}">
                     <ListView
                         x:Name="homeCredentialListView"
-                        IsItemClickEnabled="False"
+                        IsItemClickEnabled="True"
+                        ItemClick="homeCredentialListView_ItemClick"
                         SelectionMode="None">
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="local:Credential">

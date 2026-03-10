@@ -2964,7 +2964,15 @@ namespace winrt::PasskeyManager::implementation
         homeCredentialSummaryTextBlock().Text(winrt::hstring{ summary });
         bool hasResults = m_filteredCredentialListViewModel.credentials().Size() > 0;
         homeCredentialListView().Visibility(hasResults ? Visibility::Visible : Visibility::Collapsed);
-        homeCredentialEmptyStateTextBlock().Visibility(hasResults ? Visibility::Collapsed : Visibility::Visible);
+        homeCredentialEmptyStateContainer().Visibility(hasResults ? Visibility::Collapsed : Visibility::Visible);
+        clearPasskeySearchButton().Visibility(query.empty() ? Visibility::Collapsed : Visibility::Visible);
+        if (!hasResults)
+        {
+            std::wstring emptyStateText = query.empty()
+                ? L"表示できるパスキーがありません。"
+                : L"「" + query + L"」に一致するパスキーがありません。検索条件をクリアしてお試しください。";
+            homeCredentialEmptyStateTextBlock().Text(winrt::hstring{ emptyStateText });
+        }
     }
 
     void MainPage::SetHomeViewVisible(bool isHomeVisible)
@@ -2982,6 +2990,14 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::backToHomeButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         SetHomeViewVisible(true);
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::clearPasskeySearchButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        passkeySearchBox().Text(L"");
+        m_passkeySearchText.clear();
+        ApplyCredentialFilter();
         co_return;
     }
 

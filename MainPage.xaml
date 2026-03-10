@@ -84,11 +84,23 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <AutoSuggestBox
-                            x:Name="passkeySearchBox"
-                            Grid.Row="0"
-                            PlaceholderText="ユーザー名 / RP 名で検索"
-                            TextChanged="passkeySearchBox_TextChanged" />
+                        <Grid Grid.Row="0" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <AutoSuggestBox
+                                x:Name="passkeySearchBox"
+                                Grid.Column="0"
+                                PlaceholderText="ユーザー名 / RP 名で検索"
+                                TextChanged="passkeySearchBox_TextChanged" />
+                            <Button
+                                x:Name="clearPasskeySearchButton"
+                                Grid.Column="1"
+                                Click="clearPasskeySearchButton_Click"
+                                Content="クリア"
+                                Visibility="Collapsed" />
+                        </Grid>
                         <TextBlock
                             x:Name="homeCredentialSummaryTextBlock"
                             Grid.Row="1"
@@ -101,14 +113,6 @@
                 <Grid
                     Grid.Row="2"
                     Style="{StaticResource CardStyle}">
-                    <TextBlock
-                        x:Name="homeCredentialEmptyStateTextBlock"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="一致するパスキーがありません。"
-                        TextWrapping="WrapWholeWords"
-                        Visibility="Collapsed" />
                     <ListView
                         x:Name="homeCredentialListView"
                         IsItemClickEnabled="False"
@@ -170,6 +174,18 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
+                    <Border
+                        x:Name="homeCredentialEmptyStateContainer"
+                        Background="Transparent"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            x:Name="homeCredentialEmptyStateTextBlock"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="一致するパスキーがありません。"
+                            TextWrapping="WrapWholeWords" />
+                    </Border>
                 </Grid>
             </Grid>
 

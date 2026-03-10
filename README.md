@@ -2,6 +2,17 @@
 
 PasskeyManager は、Windows 向けのパスキー管理/検証用アプリケーションです。
 
+## App Launch
+
+- このアプリは **MSIX としてインストール済みのパッケージから起動** してください。
+- `x64\Debug\PasskeyManager\tsupasswd_core.exe` のような出力 exe の直起動では、正しく起動しない場合があります。
+- 通常はスタートメニューの `tsupasswd_core` から起動してください。
+- PowerShell から起動する場合は次を使用します。
+
+```powershell
+Start-Process "shell:AppsFolder\HappyFactory.tsupasswdcore_9mczghra51jcj!tsupasswdcore"
+```
+
 ## Documentation
 
 - `./docs/README.md`（運用ドキュメントの入口）

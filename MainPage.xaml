@@ -213,7 +213,25 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Plugin" />
+            <Grid Grid.ColumnSpan="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="詳細" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="プラグイン状態、同期設定、ログ、パスキー管理をまとめて確認できます。"
+                        TextWrapping="WrapWholeWords" />
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Plugin" />
+                </StackPanel>
+                <Button
+                    x:Name="backToHomeButton"
+                    Grid.Column="1"
+                    Click="backToHomeButton_Click"
+                    Content="ホームへ戻る" />
+            </Grid>
             <Grid
                 Grid.Row="1"
                 Grid.ColumnSpan="2"
@@ -683,16 +701,11 @@
                         TextWrapping="Wrap" />
                 </Grid>
             </Grid>
-
             <StackPanel
                 Grid.Row="5"
                 Grid.Column="1"
                 Orientation="Horizontal"
                 Spacing="8">
-                <Button
-                    x:Name="backToHomeButton"
-                    Click="backToHomeButton_Click"
-                    Content="ホームへ戻る" />
                 <ComboBox
                     x:Name="logsFilterCombo"
                     MinWidth="160"

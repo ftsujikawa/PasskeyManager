@@ -279,6 +279,25 @@ namespace {
             line.rfind(L"INFO: Self-hosted sync retry ", 0) == 0;
     }
 
+    bool IsLowValueObservedStatusLine(std::wstring const& line)
+    {
+        if (line.find(L"summary state=observed") == std::wstring::npos)
+        {
+            return false;
+        }
+
+        bool isPluginStatusLine =
+            line.find(L"step=plugin_perform_operation_status") != std::wstring::npos ||
+            line.find(L"step=plugin_uv_signature_verification_status") != std::wstring::npos ||
+            line.find(L"step=plugin_request_signature_verification_status") != std::wstring::npos;
+        if (!isPluginStatusLine)
+        {
+            return false;
+        }
+
+        return line.find(L"hr=0") != std::wstring::npos;
+    }
+
     std::wstring GetUserEnvironmentRegistryValue(wchar_t const* name)
     {
         HKEY hKey = nullptr;
@@ -2967,6 +2986,52 @@ namespace winrt::PasskeyManager::implementation
         std::wstring visibleLogs;
         bool first = true;
         std::wstring previousDisplayLine;
+        std::wstring previousRequestId;
+        std::vector<std::wstring> requestGroupLines;
+
+        auto appendVisibleLine = [&](std::wstring const& renderedLine)
+        {
+            if (!first)
+            {
+                visibleLogs += L"\r\n";
+            }
+            visibleLogs += renderedLine;
+            first = false;
+        };
+
+        auto flushRequestGroup = [&]()
+        {
+            if (requestGroupLines.empty())
+            {
+                return;
+            }
+
+            size_t runningIndex = requestGroupLines.size();
+            for (size_t index = 0; index < requestGroupLines.size(); ++index)
+            {
+                if (requestGroupLines[index].find(L"summary state=running") != std::wstring::npos)
+                {
+                    runningIndex = index;
+                    break;
+                }
+            }
+
+            if (runningIndex < requestGroupLines.size())
+            {
+                appendVisibleLine(requestGroupLines[runningIndex]);
+            }
+
+            for (size_t index = 0; index < requestGroupLines.size(); ++index)
+            {
+                if (index == runningIndex)
+                {
+                    continue;
+                }
+                appendVisibleLine(requestGroupLines[index]);
+            }
+
+            requestGroupLines.clear();
+        };
 
         for (auto it = m_logEntries.rbegin(); it != m_logEntries.rend(); ++it)
         {
@@ -2976,8 +3041,19 @@ namespace winrt::PasskeyManager::implementation
                 continue;
             }
 
+            if (IsLowValueObservedStatusLine(line))
+            {
+                continue;
+            }
+
             std::wstring displayLine = line;
-            if (IsSyncRetryDetailLine(line))
+            std::wstring requestId = ExtractLogTokenValue(line, L"request_id=");
+            bool isContinuationOfSameRequest =
+                !requestId.empty() &&
+                !previousRequestId.empty() &&
+                requestId == previousRequestId;
+
+            if (IsSyncRetryDetailLine(line) || isContinuationOfSameRequest)
             {
                 displayLine = L"  -> " + line;
             }
@@ -2987,14 +3063,26 @@ namespace winrt::PasskeyManager::implementation
                 continue;
             }
 
-            if (!first)
+            if (!requestId.empty() && !previousRequestId.empty() && requestId != previousRequestId)
             {
-                visibleLogs += L"\r\n";
+                flushRequestGroup();
             }
-            visibleLogs += displayLine;
+
+            if (!requestId.empty())
+            {
+                requestGroupLines.push_back(displayLine);
+            }
+            else
+            {
+                flushRequestGroup();
+                appendVisibleLine(displayLine);
+            }
+
             previousDisplayLine = displayLine;
-            first = false;
+            previousRequestId = requestId;
         }
+
+        flushRequestGroup();
 
         syncHistoryTextBox().Text(winrt::hstring{ visibleLogs });
 

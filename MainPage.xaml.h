@@ -160,9 +160,104 @@ namespace winrt::PasskeyManager::implementation
                 return buffer;
             };
 
-            if (status.find(L"sync result=success") != std::wstring::npos)
+            auto extractTokenValue = [&](std::wstring const& token) -> std::wstring
+            {
+                size_t start = status.find(token);
+                if (start == std::wstring::npos)
+                {
+                    return {};
+                }
+
+                start += token.size();
+                size_t end = status.find(L' ', start);
+                if (end == std::wstring::npos)
+                {
+                    end = status.size();
+                }
+                return status.substr(start, end - start);
+            };
+
+            auto describeOperation = [](std::wstring const& operation) -> std::wstring
+            {
+                if (operation == L"load_settings") return L"Loading saved sync settings";
+                if (operation == L"save_settings") return L"Saving sync settings";
+                if (operation == L"test_connection") return L"Checking sync connection";
+                if (operation == L"manual_resync") return L"Syncing vault now";
+                if (operation == L"restore_snapshot") return L"Restoring latest snapshot";
+                if (operation == L"restore_selected_snapshot") return L"Restoring selected snapshot";
+                if (operation == L"show_synced_vault") return L"Loading synced vault";
+                return L"Running sync operation";
+            };
+
+            auto buildWarningAction = [&](std::wstring const& reason, std::wstring const& operation) -> std::wstring
+            {
+                if (reason == L"base_url_missing" || reason == L"invalid_base_url")
+                {
+                    return L"Check Sync Base URL.";
+                }
+                if (reason == L"user_id_missing" || reason == L"invalid_user_id")
+                {
+                    return L"Check Sync User ID.";
+                }
+                if (reason == L"https_required")
+                {
+                    return L"Use HTTPS or enable insecure HTTP only for development.";
+                }
+                if (reason == L"recovery_code_missing")
+                {
+                    return L"Set a Vault Recovery Code before retrying.";
+                }
+                if (reason == L"name_not_resolved")
+                {
+                    return L"Check host name and network connectivity.";
+                }
+                if (reason == L"authorization_failed")
+                {
+                    return L"Check token or retry DevLogin.";
+                }
+                if (reason == L"encrypted_vault_data_invalid_or_missing")
+                {
+                    return L"Run Vault Recovery, recreate the vault passkey, then retry.";
+                }
+                if (reason == L"vault_data_missing")
+                {
+                    return L"Restore a snapshot first, then retry.";
+                }
+                if (reason == L"request_failed")
+                {
+                    return L"Check sync server response, endpoint behavior, and retry.";
+                }
+                if (operation == L"manual_resync")
+                {
+                    return L"See Logs for details, then retry sync.";
+                }
+                return L"See Logs for details.";
+            };
+
+            std::wstring operation = extractTokenValue(L"operation=");
+            std::wstring reason = extractTokenValue(L"reason=");
+            std::wstring recovery = extractTokenValue(L"recovery=");
+            std::wstring step = extractTokenValue(L"step=");
+            std::wstring failureKind = extractTokenValue(L"failure_kind=");
+
+            if (status.find(L"summary state=running") != std::wstring::npos)
+            {
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: " + describeOperation(operation) + L"..." });
+            }
+            else if (status.find(L"sync result=success") != std::wstring::npos)
             {
                 syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Success at " + nowLabel() });
+            }
+            else if (status.find(L"sync result=rejected") != std::wstring::npos)
+            {
+                std::wstring action = buildWarningAction(reason, operation);
+                if (recovery == L"check_sync_server_response_and_retry" ||
+                    step == L"opaque_login_failed" ||
+                    failureKind == L"client_error")
+                {
+                    action = L"Check sync server response, endpoint behavior, and retry.";
+                }
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Action needed at " + nowLabel() + L". " + action });
             }
             else if (status.find(L"sync result=failed") != std::wstring::npos &&
                 (status.find(L"status=409") != std::wstring::npos || status.find(L"recovery=manual_resync_now") != std::wstring::npos))
@@ -174,7 +269,33 @@ namespace winrt::PasskeyManager::implementation
             }
             else if (status.find(L"sync result=failed") != std::wstring::npos)
             {
-                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Failed at " + nowLabel() + L" (see Logs)" });
+                std::wstring action = buildWarningAction(reason, operation);
+                if (recovery == L"run_vault_recovery_and_retry")
+                {
+                    action = L"Run Vault Recovery, recreate the vault passkey, then retry.";
+                }
+                else if (recovery == L"restore_snapshot_then_retry")
+                {
+                    action = L"Restore a snapshot first, then retry.";
+                }
+                else if (recovery == L"check_sync_server_response_and_retry" ||
+                    step == L"opaque_login_failed" ||
+                    failureKind == L"client_error")
+                {
+                    action = L"Check sync server response, endpoint behavior, and retry.";
+                }
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Failed at " + nowLabel() + L". " + action });
+            }
+            else if (status.find(L"sync result=warning") != std::wstring::npos)
+            {
+                std::wstring action = buildWarningAction(reason, operation);
+                if (recovery == L"check_sync_server_response_and_retry" ||
+                    step == L"opaque_login_failed" ||
+                    failureKind == L"client_error")
+                {
+                    action = L"Check sync server response, endpoint behavior, and retry.";
+                }
+                syncStatusTextBlock().Text(winrt::hstring{ L"Sync status: Warning at " + nowLabel() + L". " + action });
             }
             else if (status.find(L"sync result=skipped") != std::wstring::npos)
             {
@@ -182,7 +303,10 @@ namespace winrt::PasskeyManager::implementation
             }
 
             bool shouldShowRecoveryHint =
-                status.find(L"operation=read_encrypted_vault_data") != std::wstring::npos ||
+                ((status.find(L"operation=read_encrypted_vault_data") != std::wstring::npos ||
+                    status.find(L"operation=export_decrypted_vault_json") != std::wstring::npos) &&
+                    (status.find(L"reason=vault_data_missing") != std::wstring::npos ||
+                        status.find(L"reason=encrypted_vault_data_invalid_or_missing") != std::wstring::npos)) ||
                 (status.find(L"operation=vault_unlock") != std::wstring::npos &&
                     (status.find(L"reason=encrypted_vault_data_invalid_or_missing") != std::wstring::npos ||
                         status.find(L"reason=decrypt_failed") != std::wstring::npos ||
@@ -190,7 +314,15 @@ namespace winrt::PasskeyManager::implementation
 
             if (shouldShowRecoveryHint)
             {
-                vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
+                if (status.find(L"reason=vault_data_missing") != std::wstring::npos ||
+                    status.find(L"recovery=restore_snapshot_then_retry") != std::wstring::npos)
+                {
+                    vaultRecoveryHintText().Text(L"Vault data is missing. Restore a snapshot first, then retry loading the synced vault.");
+                }
+                else
+                {
+                    vaultRecoveryHintText().Text(L"Vault recovery: set Unlock Method to Passkey, create the vault passkey again, then retry unlock.");
+                }
                 vaultRecoveryHintText().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
                 runVaultRecoveryButton().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
             }

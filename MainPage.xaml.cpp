@@ -3228,12 +3228,23 @@ namespace winrt::PasskeyManager::implementation
 
         std::wstring query = TrimCopy(m_passkeySearchText);
         std::wstring loweredQuery = ToLowerCopy(query);
+        uint32_t autofillCount = 0;
+        uint32_t staleCount = 0;
 
         for (auto const& credential : m_allCredentials)
         {
             if (loweredQuery.empty())
             {
                 m_filteredCredentialListViewModel.credentials().Append(credential);
+                auto options = credential.CredentialOptions();
+                if ((options & CredentialOptionFlags::AutofillCapable) == CredentialOptionFlags::AutofillCapable)
+                {
+                    ++autofillCount;
+                }
+                if ((options & CredentialOptionFlags::MetadataValid) != CredentialOptionFlags::MetadataValid)
+                {
+                    ++staleCount;
+                }
                 continue;
             }
 
@@ -3243,12 +3254,23 @@ namespace winrt::PasskeyManager::implementation
                 rpName.find(loweredQuery) != std::wstring::npos)
             {
                 m_filteredCredentialListViewModel.credentials().Append(credential);
+                auto options = credential.CredentialOptions();
+                if ((options & CredentialOptionFlags::AutofillCapable) == CredentialOptionFlags::AutofillCapable)
+                {
+                    ++autofillCount;
+                }
+                if ((options & CredentialOptionFlags::MetadataValid) != CredentialOptionFlags::MetadataValid)
+                {
+                    ++staleCount;
+                }
             }
         }
 
         std::wstring summary = std::to_wstring(m_filteredCredentialListViewModel.credentials().Size()) +
             L" / " + std::to_wstring(m_allCredentials.size()) +
             L" 件のパスキーを表示中";
+        summary += L" ・ Autofill " + std::to_wstring(autofillCount) + L"件";
+        summary += L" ・ Stale " + std::to_wstring(staleCount) + L"件";
         if (!query.empty())
         {
             summary += L"（検索: " + query + L"）";

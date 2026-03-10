@@ -416,6 +416,8 @@ namespace {
         return IsTruthySetting(ReadSyncSettingValue(kSyncAllowInsecureHttpEnv));
     }
 
+    bool IsNameResolutionFailure(HRESULT hr);
+
     bool TryGetSyncBaseUrlHost(std::wstring const& baseUrl, std::wstring& outHost)
     {
         outHost.clear();
@@ -510,6 +512,135 @@ namespace {
                 ch == L'_' ||
                 ch == L'.';
         });
+    }
+
+    struct SyncSettingsValidationResult
+    {
+        bool isValid{ false };
+        std::wstring reason;
+        std::wstring recovery;
+    };
+
+    SyncSettingsValidationResult ValidateSyncSettings(
+        std::wstring const& baseUrl,
+        std::wstring const& token,
+        std::wstring const& userId,
+        bool allowAllEmpty)
+    {
+        bool hasBaseUrl = !baseUrl.empty();
+        bool hasToken = !token.empty();
+        bool hasUserId = !userId.empty();
+
+        if (!hasBaseUrl && !hasToken && !hasUserId)
+        {
+            if (allowAllEmpty)
+            {
+                return { true, L"", L"" };
+            }
+
+            return { false, L"base_url_missing", L"set_sync_base_url_token_and_user_id" };
+        }
+
+        if (!hasBaseUrl)
+        {
+            return { false, L"base_url_missing", L"set_sync_base_url_before_using_sync" };
+        }
+
+        if (!IsValidSyncBaseUrl(baseUrl))
+        {
+            return { false, L"invalid_base_url", L"set_http_or_https_sync_base_url" };
+        }
+
+        if (!IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
+        {
+            return { false, L"https_required", L"set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only" };
+        }
+
+        if (!hasUserId)
+        {
+            return { false, L"user_id_missing", L"set_sync_user_id_before_using_sync" };
+        }
+
+        if (!IsValidSyncUserId(userId))
+        {
+            return { false, L"invalid_user_id", L"use_only_alnum_dash_underscore_dot_for_sync_user_id" };
+        }
+
+        return { true, L"", L"" };
+    }
+
+    struct SyncConnectionOutcome
+    {
+        std::wstring result;
+        std::wstring outcome;
+        std::wstring recovery;
+    };
+
+    SyncConnectionOutcome DescribeTestConnectionOutcome(HRESULT hr, tsupasswd::SyncHttpStatus const& status)
+    {
+        if (SUCCEEDED(hr))
+        {
+            return { L"success", L"reachable", L"" };
+        }
+
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            return { L"success", L"vault_not_found", L"create_or_restore_vault_before_syncing" };
+        }
+
+        if (IsNameResolutionFailure(hr))
+        {
+            return { L"warning", L"name_not_resolved", L"check_sync_base_url_dns_or_hosts" };
+        }
+
+        if (hr == HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED) || status.StatusCode == 401 || status.StatusCode == 403)
+        {
+            return { L"warning", L"authentication_failed", L"check_sync_token_and_user_id" };
+        }
+
+        if (status.StatusCode >= 500 && status.StatusCode < 600)
+        {
+            return { L"warning", L"server_error", L"check_sync_server_health_and_retry" };
+        }
+
+        if (status.StatusCode == 429)
+        {
+            return { L"warning", L"rate_limited", L"wait_and_retry" };
+        }
+
+        return { L"warning", L"request_failed", L"check_sync_server_response_and_retry" };
+    }
+
+    SyncSettingsValidationResult ValidateSyncConnectionInputs(
+        std::wstring const& baseUrl,
+        std::wstring const& userId)
+    {
+        if (baseUrl.empty())
+        {
+            return { false, L"base_url_missing", L"set_sync_base_url_before_using_sync" };
+        }
+
+        if (!IsValidSyncBaseUrl(baseUrl))
+        {
+            return { false, L"invalid_base_url", L"set_http_or_https_sync_base_url" };
+        }
+
+        if (!IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
+        {
+            return { false, L"https_required", L"set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only" };
+        }
+
+        if (userId.empty())
+        {
+            return { false, L"user_id_missing", L"set_sync_user_id_before_using_sync" };
+        }
+
+        if (!IsValidSyncUserId(userId))
+        {
+            return { false, L"invalid_user_id", L"use_only_alnum_dash_underscore_dot_for_sync_user_id" };
+        }
+
+        return { true, L"", L"" };
     }
 
     std::wstring NormalizeSyncBaseUrl(std::wstring baseUrl)
@@ -1767,22 +1898,19 @@ namespace winrt::PasskeyManager::implementation
 
         syncBaseUrlTextBox().Text(baseUrl);
 
-        if (!baseUrl.empty() && !IsValidSyncBaseUrl(baseUrl))
+        SyncSettingsValidationResult validation = ValidateSyncSettings(baseUrl, token, userId, true);
+        if (!validation.isValid)
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + requestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + requestId });
-            co_return;
-        }
-        if (!baseUrl.empty() && !IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
-        {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required request_id=" + requestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + requestId });
-            co_return;
-        }
-        if (!userId.empty() && !IsValidSyncUserId(userId))
-        {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + requestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + requestId });
+            std::wstring detail =
+                L"sync result=rejected operation=" + operation +
+                L" reason=" + validation.reason;
+            if (!validation.recovery.empty())
+            {
+                detail += L" recovery=" + validation.recovery;
+            }
+            detail += L" request_id=" + requestId;
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + detail + L"⚠" });
+            LogWarning(winrt::hstring{ detail });
             co_return;
         }
 
@@ -1821,28 +1949,19 @@ namespace winrt::PasskeyManager::implementation
 
         syncBaseUrlTextBox().Text(baseUrl);
 
-        if (!IsValidSyncBaseUrl(baseUrl))
+        SyncSettingsValidationResult validation = ValidateSyncConnectionInputs(baseUrl, userId);
+        if (!validation.isValid)
         {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_base_url request_id=" + testConnectionRequestId });
-            co_return;
-        }
-        if (!IsHttpsSyncBaseUrl(baseUrl) && !IsAllowInsecureHttpEnabled())
-        {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=https_required request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=https_required recovery=set_https_url_or_enable_TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP_for_dev_only request_id=" + testConnectionRequestId });
-            co_return;
-        }
-        if (token.empty())
-        {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=token_missing request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=token_missing request_id=" + testConnectionRequestId });
-            co_return;
-        }
-        if (!IsValidSyncUserId(userId))
-        {
-            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + testConnectionRequestId + L"⚠" });
-            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_user_id request_id=" + testConnectionRequestId });
+            std::wstring detail =
+                L"sync result=rejected operation=" + operation +
+                L" reason=" + validation.reason;
+            if (!validation.recovery.empty())
+            {
+                detail += L" recovery=" + validation.recovery;
+            }
+            detail += L" request_id=" + testConnectionRequestId;
+            syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + detail + L"⚠" });
+            LogWarning(winrt::hstring{ detail });
             co_return;
         }
 
@@ -1854,6 +1973,79 @@ namespace winrt::PasskeyManager::implementation
         co_await winrt::resume_background();
         tsupasswd::SyncClient syncClient(baseUrl);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
+        tsupasswd::SyncHttpStatus loginStatus{};
+        bool usedAutoToken = false;
+        if (token.empty())
+        {
+            HRESULT loginHr = syncClient.DevLogin(userId, token, &loginStatus);
+            if (FAILED(loginHr))
+            {
+                std::wstring resolvedLoginRequestId = loginStatus.RequestId.empty() ? testConnectionRequestId : loginStatus.RequestId;
+
+                co_await wil::resume_foreground(DispatcherQueue());
+                auto self = weakThis.get();
+                if (!self)
+                {
+                    co_return;
+                }
+
+                self->testSyncConnectionButton().IsEnabled(true);
+                SyncConnectionOutcome loginOutcome = DescribeTestConnectionOutcome(loginHr, loginStatus);
+                std::wstring loginDetail =
+                    L"sync result=failed operation=" + operation + L" stage=dev_login attempts=1 hr=" +
+                    std::to_wstring(static_cast<int>(loginHr));
+                loginDetail += L" failure_kind=" + ClassifySyncFailureKind(loginHr, loginStatus);
+                loginDetail += L" outcome=" + loginOutcome.outcome;
+                if (!loginOutcome.recovery.empty())
+                {
+                    loginDetail += L" recovery=" + loginOutcome.recovery;
+                }
+                if (IsNameResolutionFailure(loginHr))
+                {
+                    loginDetail += L" sync_failure=name_not_resolved host=" + parsedHostValue;
+                }
+                if (loginStatus.StatusCode > 0)
+                {
+                    loginDetail += L" status=" + std::to_wstring(loginStatus.StatusCode);
+                }
+                if (!loginStatus.ErrorCode.empty())
+                {
+                    loginDetail += L" code=" + loginStatus.ErrorCode;
+                }
+                loginDetail += L" request_id=" + resolvedLoginRequestId;
+                if (!loginStatus.ErrorMessage.empty())
+                {
+                    if (!loginStatus.ErrorCode.empty())
+                    {
+                        loginDetail += L" message_code=" + loginStatus.ErrorCode;
+                    }
+                    else
+                    {
+                        loginDetail += L" message_code=remote_error_message_present";
+                    }
+                    loginDetail += L" message=" + loginStatus.ErrorMessage;
+                }
+
+                std::wstring loginStatusFields =
+                    L"sync result=warning operation=" + operation +
+                    L" stage=dev_login outcome=" + loginOutcome.outcome;
+                if (!loginOutcome.recovery.empty())
+                {
+                    loginStatusFields += L" recovery=" + loginOutcome.recovery;
+                }
+                loginStatusFields += L" request_id=" + resolvedLoginRequestId;
+                if (IsNameResolutionFailure(loginHr))
+                {
+                    loginStatusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedLoginRequestId, false);
+                }
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + loginStatusFields + L"⚠" });
+                self->LogWarning(winrt::hstring{ loginDetail });
+                co_return;
+            }
+
+            usedAutoToken = true;
+        }
+
         syncClient.SetBearerToken(token);
         tsupasswd::VaultRecord record{};
         tsupasswd::SyncHttpStatus status{};
@@ -1868,10 +2060,27 @@ namespace winrt::PasskeyManager::implementation
         }
 
         self->testSyncConnectionButton().IsEnabled(true);
-        if (SUCCEEDED(hr) || hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        SyncConnectionOutcome outcome = DescribeTestConnectionOutcome(hr, status);
+        if (outcome.result == L"success")
         {
-            self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: sync result=success operation=" + operation + L" outcome=reachable_or_not_found request_id=" + resolvedRequestId + L"✅" });
-            self->LogSuccess(winrt::hstring{ L"sync result=success operation=" + operation + L" outcome=reachable_or_not_found request_id=" + resolvedRequestId });
+            std::wstring detail =
+                L"sync result=success operation=" + operation +
+                L" outcome=" + outcome.outcome;
+            if (usedAutoToken)
+            {
+                detail += L" auth=dev_login_auto_token";
+            }
+            if (status.StatusCode > 0)
+            {
+                detail += L" status=" + std::to_wstring(status.StatusCode);
+            }
+            if (!outcome.recovery.empty())
+            {
+                detail += L" recovery=" + outcome.recovery;
+            }
+            detail += L" request_id=" + resolvedRequestId;
+            self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: " + detail + L"✅" });
+            self->LogSuccess(winrt::hstring{ detail });
             co_return;
         }
 
@@ -1879,9 +2088,18 @@ namespace winrt::PasskeyManager::implementation
             L"sync result=failed operation=" + operation + L" attempts=1 hr=" +
             std::to_wstring(static_cast<int>(hr));
         detail += L" failure_kind=" + ClassifySyncFailureKind(hr, status);
+        detail += L" outcome=" + outcome.outcome;
+        if (usedAutoToken)
+        {
+            detail += L" auth=dev_login_auto_token";
+        }
+        if (!outcome.recovery.empty())
+        {
+            detail += L" recovery=" + outcome.recovery;
+        }
         if (IsNameResolutionFailure(hr))
         {
-            detail += L" sync_failure=name_not_resolved host=" + parsedHostValue + L" recovery=check_sync_base_url_dns_or_hosts";
+            detail += L" sync_failure=name_not_resolved host=" + parsedHostValue;
         }
         if (status.StatusCode > 0)
         {
@@ -1904,10 +2122,25 @@ namespace winrt::PasskeyManager::implementation
             }
             detail += L" message=" + status.ErrorMessage;
         }
-        std::wstring statusFields = BuildSyncWarningOutcomeLogFields(operation, resolvedRequestId);
+        std::wstring statusFields =
+            L"sync result=warning operation=" + operation +
+            L" outcome=" + outcome.outcome;
+        if (usedAutoToken)
+        {
+            statusFields += L" auth=dev_login_auto_token";
+        }
+        if (!outcome.recovery.empty())
+        {
+            statusFields += L" recovery=" + outcome.recovery;
+        }
+        statusFields += L" request_id=" + resolvedRequestId;
         if (IsNameResolutionFailure(hr))
         {
             statusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedRequestId, false);
+        }
+        if (usedAutoToken && !token.empty())
+        {
+            self->syncBearerTokenBox().Password(winrt::hstring{ token });
         }
         self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + statusFields + L"⚠" });
         self->LogWarning(winrt::hstring{ detail });

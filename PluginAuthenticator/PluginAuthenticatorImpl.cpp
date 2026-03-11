@@ -1927,6 +1927,17 @@ namespace winrt::PasskeyManager::implementation
                 THROW_HR_IF_NULL(E_OUTOFMEMORY, response->pbEncodedResponse);
                 memcpy_s(response->pbEncodedResponse, cbAssertionBuffer, pbAssertionBuffer.get(), cbAssertionBuffer);
             }
+
+            if (selectedCredential != nullptr &&
+                selectedCredential->cbCredentialID > 0 &&
+                selectedCredential->pbCredentialID != nullptr)
+            {
+                std::vector<UINT8> accessedCredentialId(
+                    selectedCredential->pbCredentialID,
+                    selectedCredential->pbCredentialID + selectedCredential->cbCredentialID);
+                (void)credManager.MarkCredentialAccessed(accessedCredentialId);
+            }
+
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D04));
             PersistLastMakeCredentialStatus(S_OK);
             return S_OK;

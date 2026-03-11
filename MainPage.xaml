@@ -131,9 +131,10 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <FontIcon
-                                        Grid.RowSpan="2"
+                                        Grid.RowSpan="3"
                                         Grid.Column="0"
                                         FontSize="16"
                                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
@@ -145,8 +146,18 @@
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind RpName}" />
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}">
+                                        <Run Text="作成: " />
+                                        <Run Text="{x:Bind CreatedAtDisplay}" />
+                                        <Run Text="  更新: " />
+                                        <Run Text="{x:Bind UpdatedAtDisplay}" />
+                                    </TextBlock>
                                     <Border
-                                        Grid.RowSpan="2"
+                                        Grid.RowSpan="3"
                                         Grid.Column="2"
                                         Padding="4"
                                         VerticalAlignment="Center"
@@ -158,7 +169,7 @@
                                         <TextBlock FontSize="12" Text="Autofill" />
                                     </Border>
                                     <Border
-                                        Grid.RowSpan="2"
+                                        Grid.RowSpan="3"
                                         Grid.Column="3"
                                         Padding="4"
                                         VerticalAlignment="Center"
@@ -173,7 +184,7 @@
                                             Text="Stale" />
                                     </Border>
                                     <StackPanel
-                                        Grid.RowSpan="2"
+                                        Grid.RowSpan="3"
                                         Grid.Column="4"
                                         Margin="8,0,0,0"
                                         VerticalAlignment="Center"
@@ -639,9 +650,10 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <FontIcon
-                                    Grid.RowSpan="2"
+                                    Grid.RowSpan="3"
                                     Grid.Column="0"
                                     FontSize="16"
                                     Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
@@ -653,8 +665,18 @@
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind RpName}" />
+                                <TextBlock
+                                    Grid.Row="2"
+                                    Grid.Column="1"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}">
+                                    <Run Text="作成: " />
+                                    <Run Text="{x:Bind CreatedAtDisplay}" />
+                                    <Run Text="  更新: " />
+                                    <Run Text="{x:Bind UpdatedAtDisplay}" />
+                                </TextBlock>
                                 <Border
-                                    Grid.RowSpan="2"
+                                    Grid.RowSpan="3"
                                     Grid.Column="2"
                                     Padding="4"
                                     VerticalAlignment="Center"
@@ -666,7 +688,7 @@
                                     <TextBlock FontSize="12" Text="Autofill" />
                                 </Border>
                                 <Border
-                                    Grid.RowSpan="2"
+                                    Grid.RowSpan="3"
                                     Grid.Column="3"
                                     Padding="4"
                                     VerticalAlignment="Center"

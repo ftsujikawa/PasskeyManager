@@ -1,0 +1,15 @@
+LIBRARY opaque_ffi
+EXPORTS
+    tsupasswd_opaque_free_bytes
+    tsupasswd_opaque_free_cstring
+    tsupasswd_opaque_last_error
+    tsupasswd_opaque_version
+    tsupasswd_opaque_client_register_start
+    tsupasswd_opaque_client_register_finish
+    tsupasswd_opaque_client_login_start
+    tsupasswd_opaque_client_login_finish
+    tsupasswd_opaque_server_setup_new
+    tsupasswd_opaque_server_register_start
+    tsupasswd_opaque_server_register_finish
+    tsupasswd_opaque_server_login_start
+    tsupasswd_opaque_server_login_finish

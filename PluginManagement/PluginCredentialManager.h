@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <fstream>
+#include <optional>
 #include <windows.h>
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
@@ -22,6 +23,13 @@ namespace winrt {
 const DWORD maxWebAuthnWStringSize = 64;
 constexpr wchar_t c_pluginLocalAppDataDBDir[] = L"CredentialsDB";
 constexpr wchar_t c_credentialsFileName[] = L"credentials.dat";
+constexpr wchar_t c_credentialsMetadataFileName[] = L"credentials.metadata.dat";
+
+struct CredentialTimestampMetadata
+{
+    uint64_t createdAtUnixSeconds = 0;
+    uint64_t updatedAtUnixSeconds = 0;
+};
 
 struct PluginCredentialDetailsDeleter {
     void operator()(PWEBAUTHN_PLUGIN_CREDENTIAL_DETAILS p) noexcept {
@@ -122,7 +130,9 @@ namespace winrt::PasskeyManager::implementation
 
         // Local credential metadata management
         bool GetCredentialStorageFilePath(std::wstring& filePath);
+        bool GetCredentialMetadataStorageFilePath(std::wstring& filePath);
         bool SaveCredentialMetadataToMockDB(const WEBAUTHN_CREDENTIAL_DETAILS& newCredential);
+        bool MarkCredentialAccessed(std::vector<UINT8> const& credentialId);
         void GetLocalCredsByRpIdAndAllowList(PCWSTR rpId, PWEBAUTHN_CREDENTIAL_EX* ppCredentialList, DWORD pcCredentials, std::vector<const WEBAUTHN_CREDENTIAL_DETAILS *>& matchingCredentials);
         bool ResetLocalCredentialsStore();
         DWORD GetLocalCredentialCount()
@@ -172,10 +182,15 @@ namespace winrt::PasskeyManager::implementation
         //Local Credential Metadata Management
         bool LoadSavedCredentialsFromMockDatabase();
         bool RecreateCredentialMetadataFile();
+        bool LoadCredentialTimestampMetadata();
+        bool PersistCredentialTimestampMetadata();
+        CredentialTimestampMetadata UpsertCredentialTimestampMetadata(std::vector<UINT8> const& credentialId);
+        std::optional<CredentialTimestampMetadata> GetCredentialTimestampMetadata(std::vector<UINT8> const& credentialId) const;
         bool ExportBridgeCorePasskeysJson();
         std::mutex m_pluginLocalCredentialsOperationMutex;
         _Guarded_by_(m_pluginLocalCredentialsOperationMutex) bool m_localCredentialsLoaded = false;
         _Guarded_by_(m_pluginLocalCredentialsOperationMutex) std::map<std::vector<UINT8>, unique_credential_details> m_pluginLocalCredentialMetadataMap;
+        _Guarded_by_(m_pluginLocalCredentialsOperationMutex) std::map<std::vector<UINT8>, CredentialTimestampMetadata> m_pluginLocalCredentialTimestampMetadataMap;
 
         //Cached Credential Metadata Management
         mutable std::mutex m_pluginCachedCredentialsOperationMutex;

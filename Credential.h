@@ -1,6 +1,8 @@
 #pragma once
 #include "Credential.g.h"
 
+#include <Windows.h>
+
 namespace winrt::PasskeyManager::implementation
 {
     struct Credential : CredentialT<Credential, winrt::non_agile>
@@ -8,9 +10,17 @@ namespace winrt::PasskeyManager::implementation
         Credential(hstring const& userName, hstring const& rpName, const Windows::Storage::Streams::IBuffer& credentialId);
         Credential(hstring const& userName, hstring const& rpName, const Windows::Storage::Streams::IBuffer& credentialId,
             CredentialOptionFlags options);
+        Credential(hstring const& userName,
+            hstring const& rpName,
+            hstring const& createdAtDisplay,
+            hstring const& updatedAtDisplay,
+            const Windows::Storage::Streams::IBuffer& credentialId,
+            CredentialOptionFlags options);
 
         hstring UserName();
         hstring RpName();
+        hstring CreatedAtDisplay();
+        hstring UpdatedAtDisplay();
         Windows::Storage::Streams::IBuffer CredentialId();
         void CredentialOptions(CredentialOptionFlags value);
         CredentialOptionFlags CredentialOptions();
@@ -19,6 +29,8 @@ namespace winrt::PasskeyManager::implementation
         Credential() = default;
         hstring m_userName;
         hstring m_rpName;
+        hstring m_createdAtDisplay;
+        hstring m_updatedAtDisplay;
         Windows::Storage::Streams::IBuffer m_credentialId;
         CredentialOptionFlags m_options = CredentialOptionFlags::None;
     };

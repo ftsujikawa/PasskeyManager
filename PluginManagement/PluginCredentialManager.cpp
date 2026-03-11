@@ -14,6 +14,9 @@
 #include <algorithm>
 #include <memory>
 #include <cstdlib>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 namespace winrt::PasskeyManager::implementation
 {
@@ -133,6 +136,31 @@ namespace winrt::PasskeyManager::implementation
                 }
             }
             return escaped;
+        }
+
+        uint64_t GetCurrentUnixSeconds()
+        {
+            using namespace std::chrono;
+            return static_cast<uint64_t>(duration_cast<seconds>(system_clock::now().time_since_epoch()).count());
+        }
+
+        std::wstring FormatUnixSecondsForDisplay(uint64_t unixSeconds)
+        {
+            if (unixSeconds == 0)
+            {
+                return std::wstring{ L"-" };
+            }
+
+            std::time_t rawTime = static_cast<std::time_t>(unixSeconds);
+            std::tm localTime{};
+            if (localtime_s(&localTime, &rawTime) != 0)
+            {
+                return std::wstring{ L"-" };
+            }
+
+            std::wostringstream stream;
+            stream << std::put_time(&localTime, L"%Y-%m-%d %H:%M:%S");
+            return stream.str();
         }
 
         std::string Base64Encode(std::span<const UINT8> bytes)
@@ -597,9 +625,20 @@ namespace winrt::PasskeyManager::implementation
                 writer.WriteBytes(credentialId); // Direct vector write
                 auto credentialIdBuffer = writer.DetachBuffer();
 
+                auto timestampMetadata = GetCredentialTimestampMetadata(credentialId);
+                std::wstring createdAtDisplay = L"-";
+                std::wstring updatedAtDisplay = L"-";
+                if (timestampMetadata.has_value())
+                {
+                    createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->createdAtUnixSeconds) };
+                    updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->updatedAtUnixSeconds) };
+                }
+
                 auto credentialViewListItem = winrt::make_self<PasskeyManager::implementation::Credential>(
                     savedCredential->pUserInformation->pwszName, 
                     savedCredential->pRpInformation->pwszName, 
+                    createdAtDisplay.c_str(),
+                    updatedAtDisplay.c_str(),
                     credentialIdBuffer, 
                     credentialOptions);
                 credentialViewList.emplace_back(std::move(credentialViewListItem));
@@ -632,10 +671,21 @@ namespace winrt::PasskeyManager::implementation
                 writer.WriteBytes(cachedCredentialId);
                 auto credentialIdBuffer = writer.DetachBuffer();
 
+                auto timestampMetadata = GetCredentialTimestampMetadata(cachedCredentialId);
+                std::wstring createdAtDisplay = L"-";
+                std::wstring updatedAtDisplay = L"-";
+                if (timestampMetadata.has_value())
+                {
+                    createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->createdAtUnixSeconds) };
+                    updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->updatedAtUnixSeconds) };
+                }
+
                 // Create credential view item from cached credential data
                 auto credentialViewListItem = winrt::make_self<PasskeyManager::implementation::Credential>(
                     cachedCredential->pwszUserName, 
                     cachedCredential->pwszRpName, 
+                    createdAtDisplay.c_str(),
+                    updatedAtDisplay.c_str(),
                     credentialIdBuffer, 
                     credentialOptions);
                 credentialViewList.emplace_back(std::move(credentialViewListItem));
@@ -725,6 +775,7 @@ namespace winrt::PasskeyManager::implementation
         std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
         m_localCredentialsLoaded = false;
         m_pluginLocalCredentialMetadataMap.clear();
+        m_pluginLocalCredentialTimestampMetadataMap.clear();
 
         while (file.good() && !file.eof())
         {
@@ -811,6 +862,7 @@ namespace winrt::PasskeyManager::implementation
         }
 
         file.close();
+        LoadCredentialTimestampMetadata();
         m_localCredentialsLoaded = true;
         return true;
     }
@@ -953,6 +1005,34 @@ namespace winrt::PasskeyManager::implementation
         }
     }
 
+    bool PluginCredentialManager::GetCredentialMetadataStorageFilePath(std::wstring& filePath)
+    {
+        try
+        {
+            std::wstring directoryPath;
+            if (!GetCredentialStorageFolderPath(directoryPath))
+            {
+                return false;
+            }
+
+            std::error_code ec;
+            if (!std::filesystem::exists(directoryPath, ec))
+            {
+                if (!std::filesystem::create_directories(directoryPath, ec) || ec)
+                {
+                    return false;
+                }
+            }
+
+            filePath = directoryPath + L"\\" + c_credentialsMetadataFileName;
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
     bool PluginCredentialManager::SaveCredentialMetadataToMockDB(const WEBAUTHN_CREDENTIAL_DETAILS& newCredential)
     {
         // Validate input parameters
@@ -969,6 +1049,8 @@ namespace winrt::PasskeyManager::implementation
         {
             return false;
         }
+
+        std::vector<UINT8> credentialId(newCredential.pbCredentialID, newCredential.pbCredentialID + newCredential.cbCredentialID);
 
         try {
             std::ofstream file(filePath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
@@ -1010,11 +1092,145 @@ namespace winrt::PasskeyManager::implementation
             file.write(reinterpret_cast<const char*>(&len), sizeof(len));
             file.write(reinterpret_cast<const char*>(newCredential.pRpInformation->pwszName), len);
 
-            return file.good();
+            if (!file.good())
+            {
+                return false;
+            }
+
+            UpsertCredentialTimestampMetadata(credentialId);
+            return PersistCredentialTimestampMetadata();
         }
         catch (...) {
             return false;
         }
+    }
+
+    bool PluginCredentialManager::MarkCredentialAccessed(std::vector<UINT8> const& credentialId)
+    {
+        std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
+
+        auto credentialIter = m_pluginLocalCredentialMetadataMap.find(credentialId);
+        if (credentialIter == m_pluginLocalCredentialMetadataMap.end())
+        {
+            return false;
+        }
+
+        auto metadataIter = m_pluginLocalCredentialTimestampMetadataMap.find(credentialId);
+        if (metadataIter == m_pluginLocalCredentialTimestampMetadataMap.end())
+        {
+            auto now = GetCurrentUnixSeconds();
+            m_pluginLocalCredentialTimestampMetadataMap.emplace(credentialId, CredentialTimestampMetadata{ now, now });
+        }
+        else
+        {
+            metadataIter->second.updatedAtUnixSeconds = GetCurrentUnixSeconds();
+            if (metadataIter->second.createdAtUnixSeconds == 0)
+            {
+                metadataIter->second.createdAtUnixSeconds = metadataIter->second.updatedAtUnixSeconds;
+            }
+        }
+
+        return PersistCredentialTimestampMetadata();
+    }
+
+    bool PluginCredentialManager::LoadCredentialTimestampMetadata()
+    {
+        std::wstring filePath;
+        if (!GetCredentialMetadataStorageFilePath(filePath))
+        {
+            return false;
+        }
+
+        std::ifstream file(filePath, std::ifstream::in | std::ifstream::binary);
+        if (!file.is_open())
+        {
+            return true;
+        }
+
+        m_pluginLocalCredentialTimestampMetadataMap.clear();
+
+        while (file.good() && !file.eof())
+        {
+            DWORD credentialIdSize = 0;
+            file.read(reinterpret_cast<char*>(&credentialIdSize), sizeof(credentialIdSize));
+            if (!file.good())
+            {
+                break;
+            }
+
+            if (credentialIdSize == 0)
+            {
+                break;
+            }
+
+            std::vector<UINT8> credentialId(credentialIdSize);
+            file.read(reinterpret_cast<char*>(credentialId.data()), credentialIdSize);
+            if (!file.good())
+            {
+                break;
+            }
+
+            CredentialTimestampMetadata metadata{};
+            file.read(reinterpret_cast<char*>(&metadata.createdAtUnixSeconds), sizeof(metadata.createdAtUnixSeconds));
+            file.read(reinterpret_cast<char*>(&metadata.updatedAtUnixSeconds), sizeof(metadata.updatedAtUnixSeconds));
+            if (!file.good())
+            {
+                break;
+            }
+
+            m_pluginLocalCredentialTimestampMetadataMap[std::move(credentialId)] = metadata;
+        }
+
+        return true;
+    }
+
+    bool PluginCredentialManager::PersistCredentialTimestampMetadata()
+    {
+        std::wstring filePath;
+        if (!GetCredentialMetadataStorageFilePath(filePath))
+        {
+            return false;
+        }
+
+        std::ofstream file(filePath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+        if (!file.is_open())
+        {
+            return false;
+        }
+
+        for (auto const& [credentialId, metadata] : m_pluginLocalCredentialTimestampMetadataMap)
+        {
+            DWORD credentialIdSize = static_cast<DWORD>(credentialId.size());
+            file.write(reinterpret_cast<const char*>(&credentialIdSize), sizeof(credentialIdSize));
+            file.write(reinterpret_cast<const char*>(credentialId.data()), credentialIdSize);
+            file.write(reinterpret_cast<const char*>(&metadata.createdAtUnixSeconds), sizeof(metadata.createdAtUnixSeconds));
+            file.write(reinterpret_cast<const char*>(&metadata.updatedAtUnixSeconds), sizeof(metadata.updatedAtUnixSeconds));
+        }
+
+        return file.good();
+    }
+
+    CredentialTimestampMetadata PluginCredentialManager::UpsertCredentialTimestampMetadata(std::vector<UINT8> const& credentialId)
+    {
+        auto now = GetCurrentUnixSeconds();
+        auto& entry = m_pluginLocalCredentialTimestampMetadataMap[credentialId];
+        if (entry.createdAtUnixSeconds == 0)
+        {
+            entry.createdAtUnixSeconds = now;
+        }
+        entry.updatedAtUnixSeconds = now;
+        return entry;
+    }
+
+    std::optional<CredentialTimestampMetadata> PluginCredentialManager::GetCredentialTimestampMetadata(std::vector<UINT8> const& credentialId) const
+    {
+        auto iter = m_pluginLocalCredentialTimestampMetadataMap.find(credentialId);
+        if (iter == m_pluginLocalCredentialTimestampMetadataMap.end())
+        {
+            return std::nullopt;
+        }
+
+        return iter->second;
     }
 
     void PluginCredentialManager::GetLocalCredsByRpIdAndAllowList(PCWSTR rpId, PWEBAUTHN_CREDENTIAL_EX* ppCredentialList, DWORD pcCredentials, std::vector<const WEBAUTHN_CREDENTIAL_DETAILS *>& matchingCredentials)
@@ -1314,16 +1530,65 @@ namespace winrt::PasskeyManager::implementation
             return false;
         }
 
+        std::wstring metadataFilePath;
+        if (!GetCredentialMetadataStorageFilePath(metadataFilePath))
+        {
+            return false;
+        }
+
+        std::ofstream metadataFile{};
+        metadataFile.open(metadataFilePath, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+        if (metadataFile.is_open())
+        {
+            metadataFile.close();
+        }
+        else
+        {
+            return false;
+        }
+
         std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
         // iterating over all the saved credentials and writing them to the file
         for (const auto& credEntry : m_pluginLocalCredentialMetadataMap)
         {
-            if (!SaveCredentialMetadataToMockDB(*credEntry.second.get()))
+            auto const& savedCredential = *credEntry.second.get();
+            std::ofstream appendFile(filePath, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
+            if (!appendFile.is_open())
+            {
+                return false;
+            }
+
+            DWORD len = savedCredential.pUserInformation->cbId;
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pUserInformation->pbId), len);
+
+            len = static_cast<DWORD>((wcslen(savedCredential.pUserInformation->pwszName) + 1) * sizeof(WCHAR));
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pUserInformation->pwszName), len);
+
+            len = static_cast<DWORD>((wcslen(savedCredential.pUserInformation->pwszDisplayName) + 1) * sizeof(WCHAR));
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pUserInformation->pwszDisplayName), len);
+
+            len = savedCredential.cbCredentialID;
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pbCredentialID), len);
+
+            len = static_cast<DWORD>((wcslen(savedCredential.pRpInformation->pwszId) + 1) * sizeof(WCHAR));
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pRpInformation->pwszId), len);
+
+            len = static_cast<DWORD>((wcslen(savedCredential.pRpInformation->pwszName) + 1) * sizeof(WCHAR));
+            appendFile.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            appendFile.write(reinterpret_cast<const char*>(savedCredential.pRpInformation->pwszName), len);
+
+            if (!appendFile.good())
             {
                 return false;
             }
         }
-        return true;
+
+        return PersistCredentialTimestampMetadata();
     }
 
     bool PluginCredentialManager::ResetLocalCredentialsStore()
@@ -1331,6 +1596,7 @@ namespace winrt::PasskeyManager::implementation
         {
             std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
             m_pluginLocalCredentialMetadataMap.clear();
+            m_pluginLocalCredentialTimestampMetadataMap.clear();
         }
         if (!RecreateCredentialMetadataFile())
         {

@@ -10,14 +10,29 @@ namespace winrt {
 namespace winrt::PasskeyManager::implementation
 {
     Credential::Credential(winrt::hstring const& userName, hstring const& rpName, const winrt::IBuffer& credentialId) :
-        m_userName(userName), m_rpName(rpName), m_credentialId(credentialId), m_options(CredentialOptionFlags::MetadataValid)
+        Credential(userName, rpName, L"-", L"-", credentialId, CredentialOptionFlags::MetadataValid)
     {
     }
 
     Credential::Credential(hstring const& userName,
         hstring const& rpName,
         const winrt::IBuffer& credentialId,
-        CredentialOptionFlags options) : m_userName(userName), m_rpName(rpName), m_credentialId(credentialId), m_options(options)
+        CredentialOptionFlags options) : Credential(userName, rpName, L"-", L"-", credentialId, options)
+    {
+    }
+
+    Credential::Credential(hstring const& userName,
+        hstring const& rpName,
+        hstring const& createdAtDisplay,
+        hstring const& updatedAtDisplay,
+        const winrt::IBuffer& credentialId,
+        CredentialOptionFlags options) :
+        m_userName(userName),
+        m_rpName(rpName),
+        m_createdAtDisplay(createdAtDisplay),
+        m_updatedAtDisplay(updatedAtDisplay),
+        m_credentialId(credentialId),
+        m_options(options)
     {
     }
 
@@ -29,6 +44,16 @@ namespace winrt::PasskeyManager::implementation
     hstring Credential::RpName()
     {
         return m_rpName;
+    }
+
+    hstring Credential::CreatedAtDisplay()
+    {
+        return m_createdAtDisplay;
+    }
+
+    hstring Credential::UpdatedAtDisplay()
+    {
+        return m_updatedAtDisplay;
     }
     
     winrt::IBuffer Credential::CredentialId()

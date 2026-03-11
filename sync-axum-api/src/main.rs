@@ -15,15 +15,15 @@ use opaque_core::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
-    Pool, Sqlite,
+    postgres::PgPoolOptions,
+    Pool, Postgres,
 };
-use std::{env, net::SocketAddr, path::Path as FsPath, sync::Arc};
+use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{error, info};
 
 #[derive(Clone)]
 struct AppState {
-    db: Pool<Sqlite>,
+    db: Pool<Postgres>,
     jwt_encoding_key: Arc<EncodingKey>,
     jwt_decoding_key: Arc<DecodingKey>,
     opaque_server_setup: Arc<ServerSetupBytes>,
@@ -142,10 +142,10 @@ async fn opaque_register_finish(
     if let Err(e) = sqlx::query(
         r#"
 INSERT INTO users (email, password_file_base64, updated_at)
-VALUES (?, ?, ?)
+VALUES ($1, $2, $3)
 ON CONFLICT(email) DO UPDATE SET
-  password_file_base64 = excluded.password_file_base64,
-  updated_at = excluded.updated_at;
+  password_file_base64 = EXCLUDED.password_file_base64,
+  updated_at = EXCLUDED.updated_at;
 "#,
     )
     .bind(&email)
@@ -205,7 +205,7 @@ async fn opaque_login_start(
     };
 
     let file_bytes_opt = match sqlx::query_as::<_, (String,)>(
-        r#"SELECT password_file_base64 FROM users WHERE email = ?;"#,
+        r#"SELECT password_file_base64 FROM users WHERE email = $1;"#,
     )
     .bind(&email)
     .fetch_optional(&state.db)
@@ -420,16 +420,6 @@ async fn dev_login(
         .into_response()
 }
 
-fn ensure_db_parent_dir_exists(db_path: &str) -> anyhow::Result<()> {
-    let path = FsPath::new(db_path);
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
-    }
-    Ok(())
-}
-
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
     code: &'static str,
@@ -449,7 +439,7 @@ struct Claims {
 struct HealthResponse {
     ok: bool,
     service: &'static str,
-    db_path: String,
+    database_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -534,8 +524,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let db_path = env::var("TSUPASSWD_SYNC_DB_PATH")
-        .unwrap_or_else(|_| "./data/vault-store.db".to_string());
+    let database_url = env::var("DATABASE_URL")
+        .or_else(|_| env::var("TSUPASSWD_SYNC_DATABASE_URL"))
+        .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/tsupasswd_sync".to_string());
     let bind = env::var("TSUPASSWD_SYNC_BIND").unwrap_or_else(|_| "127.0.0.1:8088".to_string());
 
     let jwt_secret = env::var("TSUPASSWD_SYNC_JWT_SECRET").unwrap_or_else(|_| "dev-jwt-secret".to_string());
@@ -544,15 +535,9 @@ async fn main() -> anyhow::Result<()> {
         .map(|v| v.trim().eq_ignore_ascii_case("true") || v.trim() == "1")
         .unwrap_or(true);
 
-    ensure_db_parent_dir_exists(&db_path)?;
-    let connect_options = SqliteConnectOptions::new()
-        .filename(&db_path)
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal);
-
-    let db = SqlitePoolOptions::new()
+    let db = PgPoolOptions::new()
         .max_connections(5)
-        .connect_with(connect_options)
+        .connect(&database_url)
         .await?;
 
     ensure_schema(&db).await?;
@@ -607,7 +592,9 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
         .await
         .is_ok();
 
-    let db_path = env::var("TSUPASSWD_SYNC_DB_PATH").unwrap_or_else(|_| "./data/vault-store.db".to_string());
+    let database_url = env::var("DATABASE_URL")
+        .or_else(|_| env::var("TSUPASSWD_SYNC_DATABASE_URL"))
+        .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/tsupasswd_sync".to_string());
 
     let status = if ok {
         StatusCode::OK
@@ -620,7 +607,7 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
         Json(HealthResponse {
             ok,
             service: "sync-axum-api",
-            db_path,
+            database_url,
         }),
     )
 }
@@ -636,7 +623,7 @@ async fn get_vault(
     }
 
     let row = sqlx::query_as::<_, (i64, String, String)>(
-        r#"SELECT server_version, cipher_blob_base64, updated_at FROM vaults WHERE email = ?;"#,
+        r#"SELECT server_version, cipher_blob_base64, updated_at FROM vaults WHERE email = $1;"#,
     )
     .bind(email)
     .fetch_optional(&state.db)
@@ -707,7 +694,7 @@ async fn put_vault(
         }
     };
 
-    let current = sqlx::query_as::<_, (i64,)>(r#"SELECT server_version FROM vaults WHERE email = ?;"#)
+    let current = sqlx::query_as::<_, (i64,)>(r#"SELECT server_version FROM vaults WHERE email = $1;"#)
         .bind(email.clone())
         .fetch_optional(&mut *tx)
         .await;
@@ -744,11 +731,11 @@ async fn put_vault(
     if let Err(e) = sqlx::query(
         r#"
 INSERT INTO vaults (email, server_version, cipher_blob_base64, updated_at)
-VALUES (?, ?, ?, ?)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT(email) DO UPDATE SET
-  server_version = excluded.server_version,
-  cipher_blob_base64 = excluded.cipher_blob_base64,
-  updated_at = excluded.updated_at;
+  server_version = EXCLUDED.server_version,
+  cipher_blob_base64 = EXCLUDED.cipher_blob_base64,
+  updated_at = EXCLUDED.updated_at;
 "#,
     )
     .bind(email)
@@ -863,22 +850,36 @@ fn sha256_base64(input: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(digest)
 }
 
-async fn ensure_schema(db: &Pool<Sqlite>) -> anyhow::Result<()> {
+async fn ensure_schema(db: &Pool<Postgres>) -> anyhow::Result<()> {
     sqlx::query(
         r#"
 CREATE TABLE IF NOT EXISTS vaults (
   email TEXT PRIMARY KEY,
-  server_version INTEGER NOT NULL,
+  server_version BIGINT NOT NULL,
   cipher_blob_base64 TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+"#,
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        r#"
 CREATE TABLE IF NOT EXISTS users (
   email TEXT PRIMARY KEY,
   password_file_base64 TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+"#,
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        r#"
 CREATE TABLE IF NOT EXISTS server_config (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  id BIGINT PRIMARY KEY CHECK (id = 1),
   opaque_server_setup_base64 TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -890,7 +891,7 @@ CREATE TABLE IF NOT EXISTS server_config (
     Ok(())
 }
 
-async fn load_or_create_opaque_server_setup(db: &Pool<Sqlite>) -> anyhow::Result<ServerSetupBytes> {
+async fn load_or_create_opaque_server_setup(db: &Pool<Postgres>) -> anyhow::Result<ServerSetupBytes> {
     let row = sqlx::query_as::<_, (String,)>(
         r#"SELECT opaque_server_setup_base64 FROM server_config WHERE id = 1;"#,
     )
@@ -909,10 +910,10 @@ async fn load_or_create_opaque_server_setup(db: &Pool<Sqlite>) -> anyhow::Result
     sqlx::query(
         r#"
 INSERT INTO server_config (id, opaque_server_setup_base64, updated_at)
-VALUES (1, ?, ?)
+VALUES (1, $1, $2)
 ON CONFLICT(id) DO UPDATE SET
-  opaque_server_setup_base64 = excluded.opaque_server_setup_base64,
-  updated_at = excluded.updated_at;
+  opaque_server_setup_base64 = EXCLUDED.opaque_server_setup_base64,
+  updated_at = EXCLUDED.updated_at;
 "#,
     )
     .bind(setup_b64)

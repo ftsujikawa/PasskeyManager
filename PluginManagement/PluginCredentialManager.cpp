@@ -93,6 +93,8 @@ namespace winrt::PasskeyManager::implementation
             std::string user;
             std::string displayName;
             std::string source;
+            uint64_t createdAtUnixSeconds = 0;
+            uint64_t updatedAtUnixSeconds = 0;
             bool backedUp = false;
             bool removable = false;
         };
@@ -893,6 +895,11 @@ namespace winrt::PasskeyManager::implementation
                 item.source = "tsupasswd_core_local";
                 item.backedUp = false;
                 item.removable = true;
+                if (auto timestampMetadata = GetCredentialTimestampMetadata(credentialId); timestampMetadata.has_value())
+                {
+                    item.createdAtUnixSeconds = timestampMetadata->createdAtUnixSeconds;
+                    item.updatedAtUnixSeconds = timestampMetadata->updatedAtUnixSeconds;
+                }
 
                 merged.emplace(credentialId, std::move(item));
             }
@@ -942,6 +949,8 @@ namespace winrt::PasskeyManager::implementation
             out << "      \"rpId\": \"" << EscapeJsonString(item.rpId) << "\",\n";
             out << "      \"user\": \"" << EscapeJsonString(item.user) << "\",\n";
             out << "      \"displayName\": \"" << EscapeJsonString(item.displayName) << "\",\n";
+            out << "      \"createdAtUnixSeconds\": " << item.createdAtUnixSeconds << ",\n";
+            out << "      \"updatedAtUnixSeconds\": " << item.updatedAtUnixSeconds << ",\n";
             out << "      \"backedUp\": " << (item.backedUp ? "true" : "false") << ",\n";
             out << "      \"removable\": " << (item.removable ? "true" : "false") << ",\n";
             out << "      \"source\": \"" << EscapeJsonString(item.source) << "\"\n";

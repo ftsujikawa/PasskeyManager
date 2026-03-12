@@ -608,6 +608,7 @@ namespace winrt::PasskeyManager::implementation
         {
             std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
             credentialViewList.reserve(credentialViewList.size() + m_pluginLocalCredentialMetadataMap.size());
+            bool timestampMetadataChanged = false;
             
             for (const auto& [credentialId, savedCredential] : m_pluginLocalCredentialMetadataMap)
             {
@@ -635,6 +636,13 @@ namespace winrt::PasskeyManager::implementation
                     createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->createdAtUnixSeconds) };
                     updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->updatedAtUnixSeconds) };
                 }
+                else
+                {
+                    auto upserted = UpsertCredentialTimestampMetadata(credentialId);
+                    timestampMetadataChanged = true;
+                    createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(upserted.createdAtUnixSeconds) };
+                    updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(upserted.updatedAtUnixSeconds) };
+                }
 
                 auto credentialViewListItem = winrt::make_self<PasskeyManager::implementation::Credential>(
                     savedCredential->pUserInformation->pwszName, 
@@ -645,6 +653,11 @@ namespace winrt::PasskeyManager::implementation
                     credentialOptions);
                 credentialViewList.emplace_back(std::move(credentialViewListItem));
             }
+
+            if (timestampMetadataChanged)
+            {
+                (void)PersistCredentialTimestampMetadata();
+            }
         }
 
         // Process cached credentials that aren't already in local storage
@@ -652,6 +665,8 @@ namespace winrt::PasskeyManager::implementation
         {
             std::lock_guard<std::mutex> lock1(m_pluginCachedCredentialsOperationMutex);
             std::lock_guard<std::mutex> lock2(m_pluginLocalCredentialsOperationMutex);
+
+            bool timestampMetadataChanged = false;
 
             for (const auto& [cachedCredentialId, cachedCredential] : m_pluginCachedCredentialMetadataMap)
             {
@@ -681,6 +696,13 @@ namespace winrt::PasskeyManager::implementation
                     createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->createdAtUnixSeconds) };
                     updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(timestampMetadata->updatedAtUnixSeconds) };
                 }
+                else
+                {
+                    auto upserted = UpsertCredentialTimestampMetadata(cachedCredentialId);
+                    timestampMetadataChanged = true;
+                    createdAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(upserted.createdAtUnixSeconds) };
+                    updatedAtDisplay = std::wstring{ FormatUnixSecondsForDisplay(upserted.updatedAtUnixSeconds) };
+                }
 
                 // Create credential view item from cached credential data
                 auto credentialViewListItem = winrt::make_self<PasskeyManager::implementation::Credential>(
@@ -691,6 +713,11 @@ namespace winrt::PasskeyManager::implementation
                     credentialIdBuffer, 
                     credentialOptions);
                 credentialViewList.emplace_back(std::move(credentialViewListItem));
+            }
+
+            if (timestampMetadataChanged)
+            {
+                (void)PersistCredentialTimestampMetadata();
             }
         }
 

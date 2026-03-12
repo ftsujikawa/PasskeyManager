@@ -467,6 +467,9 @@
     <Filter Include="docs\adr">
       <UniqueIdentifier>{9B6DF3F0-8D65-41A6-AF47-62E96CF45F80}</UniqueIdentifier>
     </Filter>
+    <Filter Include="docs\sync-axum-api-gcp">
+      <UniqueIdentifier>{4D7E9DE2-7C0D-4F39-B9A2-7D7D6D6A9C51}</UniqueIdentifier>
+    </Filter>
     <Filter Include="docs\samples">
       <UniqueIdentifier>{10D85EEA-2B59-409E-B4F7-D5B29E4368B5}</UniqueIdentifier>
     </Filter>
@@ -504,6 +507,24 @@
     </None>
     <None Include="docs\README.md">
       <Filter>docs</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\01_overview.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\02_artifact_registry_and_image.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\03_cloud_sql_and_secrets.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\04_cloud_run_deploy.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\05_troubleshooting.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
+    </None>
+    <None Include="docs\sync-axum-api-gcp\README.md">
+      <Filter>docs\sync-axum-api-gcp</Filter>
     </None>
     <None Include="docs\audit_submission_form.csv">
       <Filter>docs</Filter>

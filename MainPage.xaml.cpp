@@ -40,6 +40,7 @@ namespace {
     constexpr wchar_t kSyncBaseUrlEnv[] = L"TSUPASSWD_SYNC_BASE_URL";
     constexpr wchar_t kSyncBearerTokenEnv[] = L"TSUPASSWD_SYNC_BEARER_TOKEN";
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
+    constexpr wchar_t kVaultRecoveryCodeEnv[] = L"TSUPASSWD_VAULT_RECOVERY_CODE";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kLastSeenPackageVersionRegKeyName[] = L"LastSeenPackageVersion";
 
@@ -2047,75 +2048,157 @@ namespace winrt::PasskeyManager::implementation
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
         tsupasswd::SyncHttpStatus loginStatus{};
         bool usedAutoToken = false;
+        bool usedOpaqueAutoToken = false;
         if (token.empty())
         {
             HRESULT loginHr = syncClient.DevLogin(userId, token, &loginStatus);
             if (FAILED(loginHr))
             {
-                std::wstring resolvedLoginRequestId = loginStatus.RequestId.empty() ? testConnectionRequestId : loginStatus.RequestId;
-
-                co_await wil::resume_foreground(DispatcherQueue());
-                auto self = weakThis.get();
-                if (!self)
+                std::wstring recoveryCode = ReadSyncSettingValue(kVaultRecoveryCodeEnv);
+                if (!recoveryCode.empty())
                 {
-                    co_return;
-                }
-
-                self->testSyncConnectionButton().IsEnabled(true);
-                SyncConnectionOutcome loginOutcome = DescribeTestConnectionOutcome(loginHr, loginStatus);
-                std::wstring loginDetail =
-                    L"sync result=failed operation=" + operation + L" stage=dev_login attempts=1 hr=" +
-                    std::to_wstring(static_cast<int>(loginHr));
-                loginDetail += L" failure_kind=" + ClassifySyncFailureKind(loginHr, loginStatus);
-                loginDetail += L" outcome=" + loginOutcome.outcome;
-                if (!loginOutcome.recovery.empty())
-                {
-                    loginDetail += L" recovery=" + loginOutcome.recovery;
-                }
-                if (IsNameResolutionFailure(loginHr))
-                {
-                    loginDetail += L" sync_failure=name_not_resolved host=" + parsedHostValue;
-                }
-                if (loginStatus.StatusCode > 0)
-                {
-                    loginDetail += L" status=" + std::to_wstring(loginStatus.StatusCode);
-                }
-                if (!loginStatus.ErrorCode.empty())
-                {
-                    loginDetail += L" code=" + loginStatus.ErrorCode;
-                }
-                loginDetail += L" request_id=" + resolvedLoginRequestId;
-                if (!loginStatus.ErrorMessage.empty())
-                {
-                    if (!loginStatus.ErrorCode.empty())
+                    tsupasswd::SyncHttpStatus opaqueLoginStatus{};
+                    std::wstring opaqueToken;
+                    std::vector<uint8_t> opaqueSessionKeyBytes;
+                    HRESULT opaqueLoginHr = syncClient.OpaqueLogin(userId, recoveryCode, opaqueToken, &opaqueSessionKeyBytes, &opaqueLoginStatus);
+                    if (SUCCEEDED(opaqueLoginHr) && !opaqueToken.empty())
                     {
-                        loginDetail += L" message_code=" + loginStatus.ErrorCode;
+                        token = std::move(opaqueToken);
+                        loginStatus = opaqueLoginStatus;
+                        usedOpaqueAutoToken = true;
                     }
                     else
                     {
-                        loginDetail += L" message_code=remote_error_message_present";
-                    }
-                    loginDetail += L" message=" + loginStatus.ErrorMessage;
-                }
+                        std::wstring resolvedLoginRequestId = loginStatus.RequestId.empty() ? testConnectionRequestId : loginStatus.RequestId;
 
-                std::wstring loginStatusFields =
-                    L"sync result=warning operation=" + operation +
-                    L" stage=dev_login outcome=" + loginOutcome.outcome;
-                if (!loginOutcome.recovery.empty())
-                {
-                    loginStatusFields += L" recovery=" + loginOutcome.recovery;
+                        co_await wil::resume_foreground(DispatcherQueue());
+                        auto self = weakThis.get();
+                        if (!self)
+                        {
+                            co_return;
+                        }
+
+                        self->testSyncConnectionButton().IsEnabled(true);
+                        SyncConnectionOutcome loginOutcome = DescribeTestConnectionOutcome(loginHr, loginStatus);
+                        std::wstring loginDetail =
+                            L"sync result=failed operation=" + operation + L" stage=dev_login attempts=1 hr=" +
+                            std::to_wstring(static_cast<int>(loginHr));
+                        loginDetail += L" failure_kind=" + ClassifySyncFailureKind(loginHr, loginStatus);
+                        loginDetail += L" outcome=" + loginOutcome.outcome;
+                        if (!loginOutcome.recovery.empty())
+                        {
+                            loginDetail += L" recovery=" + loginOutcome.recovery;
+                        }
+                        if (IsNameResolutionFailure(loginHr))
+                        {
+                            loginDetail += L" sync_failure=name_not_resolved host=" + parsedHostValue;
+                        }
+                        if (loginStatus.StatusCode > 0)
+                        {
+                            loginDetail += L" status=" + std::to_wstring(loginStatus.StatusCode);
+                        }
+                        if (!loginStatus.ErrorCode.empty())
+                        {
+                            loginDetail += L" code=" + loginStatus.ErrorCode;
+                        }
+                        loginDetail += L" request_id=" + resolvedLoginRequestId;
+                        if (!loginStatus.ErrorMessage.empty())
+                        {
+                            if (!loginStatus.ErrorCode.empty())
+                            {
+                                loginDetail += L" message_code=" + loginStatus.ErrorCode;
+                            }
+                            else
+                            {
+                                loginDetail += L" message_code=remote_error_message_present";
+                            }
+                            loginDetail += L" message=" + loginStatus.ErrorMessage;
+                        }
+
+                        std::wstring loginStatusFields =
+                            L"sync result=warning operation=" + operation +
+                            L" stage=dev_login outcome=" + loginOutcome.outcome;
+                        if (!loginOutcome.recovery.empty())
+                        {
+                            loginStatusFields += L" recovery=" + loginOutcome.recovery;
+                        }
+                        loginStatusFields += L" request_id=" + resolvedLoginRequestId;
+                        if (IsNameResolutionFailure(loginHr))
+                        {
+                            loginStatusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedLoginRequestId, false);
+                        }
+                        self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + loginStatusFields + L"⚠" });
+                        self->LogWarning(winrt::hstring{ loginDetail });
+                        co_return;
+                    }
                 }
-                loginStatusFields += L" request_id=" + resolvedLoginRequestId;
-                if (IsNameResolutionFailure(loginHr))
+                else
                 {
-                    loginStatusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedLoginRequestId, false);
+                    std::wstring resolvedLoginRequestId = loginStatus.RequestId.empty() ? testConnectionRequestId : loginStatus.RequestId;
+
+                    co_await wil::resume_foreground(DispatcherQueue());
+                    auto self = weakThis.get();
+                    if (!self)
+                    {
+                        co_return;
+                    }
+
+                    self->testSyncConnectionButton().IsEnabled(true);
+                    SyncConnectionOutcome loginOutcome = DescribeTestConnectionOutcome(loginHr, loginStatus);
+                    std::wstring loginDetail =
+                        L"sync result=failed operation=" + operation + L" stage=dev_login attempts=1 hr=" +
+                        std::to_wstring(static_cast<int>(loginHr));
+                    loginDetail += L" failure_kind=" + ClassifySyncFailureKind(loginHr, loginStatus);
+                    loginDetail += L" outcome=" + loginOutcome.outcome;
+                    if (!loginOutcome.recovery.empty())
+                    {
+                        loginDetail += L" recovery=" + loginOutcome.recovery;
+                    }
+                    if (IsNameResolutionFailure(loginHr))
+                    {
+                        loginDetail += L" sync_failure=name_not_resolved host=" + parsedHostValue;
+                    }
+                    if (loginStatus.StatusCode > 0)
+                    {
+                        loginDetail += L" status=" + std::to_wstring(loginStatus.StatusCode);
+                    }
+                    if (!loginStatus.ErrorCode.empty())
+                    {
+                        loginDetail += L" code=" + loginStatus.ErrorCode;
+                    }
+                    loginDetail += L" request_id=" + resolvedLoginRequestId;
+                    if (!loginStatus.ErrorMessage.empty())
+                    {
+                        if (!loginStatus.ErrorCode.empty())
+                        {
+                            loginDetail += L" message_code=" + loginStatus.ErrorCode;
+                        }
+                        else
+                        {
+                            loginDetail += L" message_code=remote_error_message_present";
+                        }
+                        loginDetail += L" message=" + loginStatus.ErrorMessage;
+                    }
+
+                    std::wstring loginStatusFields =
+                        L"sync result=warning operation=" + operation +
+                        L" stage=dev_login outcome=" + loginOutcome.outcome;
+                    if (!loginOutcome.recovery.empty())
+                    {
+                        loginStatusFields += L" recovery=" + loginOutcome.recovery;
+                    }
+                    loginStatusFields += L" request_id=" + resolvedLoginRequestId;
+                    if (IsNameResolutionFailure(loginHr))
+                    {
+                        loginStatusFields = BuildSyncNameNotResolvedWarningLogFields(operation, parsedHostValue, resolvedLoginRequestId, false);
+                    }
+                    self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + loginStatusFields + L"⚠" });
+                    self->LogWarning(winrt::hstring{ loginDetail });
+                    co_return;
                 }
-                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: " + loginStatusFields + L"⚠" });
-                self->LogWarning(winrt::hstring{ loginDetail });
-                co_return;
             }
 
-            usedAutoToken = true;
+            usedAutoToken = !usedOpaqueAutoToken;
         }
 
         syncClient.SetBearerToken(token);
@@ -2142,6 +2225,10 @@ namespace winrt::PasskeyManager::implementation
             {
                 detail += L" auth=dev_login_auto_token";
             }
+            else if (usedOpaqueAutoToken)
+            {
+                detail += L" auth=opaque_login_auto_token";
+            }
             if (status.StatusCode > 0)
             {
                 detail += L" status=" + std::to_wstring(status.StatusCode);
@@ -2164,6 +2251,10 @@ namespace winrt::PasskeyManager::implementation
         if (usedAutoToken)
         {
             detail += L" auth=dev_login_auto_token";
+        }
+        else if (usedOpaqueAutoToken)
+        {
+            detail += L" auth=opaque_login_auto_token";
         }
         if (!outcome.recovery.empty())
         {

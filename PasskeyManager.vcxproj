@@ -354,6 +354,12 @@
     </None>
     <None Include="docs\PR_TEMPLATE_SNIPPETS.md" />
     <None Include="docs\README.md" />
+    <None Include="docs\sync-axum-api-gcp\01_overview.md" />
+    <None Include="docs\sync-axum-api-gcp\02_artifact_registry_and_image.md" />
+    <None Include="docs\sync-axum-api-gcp\03_cloud_sql_and_secrets.md" />
+    <None Include="docs\sync-axum-api-gcp\04_cloud_run_deploy.md" />
+    <None Include="docs\sync-axum-api-gcp\05_troubleshooting.md" />
+    <None Include="docs\sync-axum-api-gcp\README.md" />
     <None Include="docs\audit_submission_form.csv" />
     <None Include="docs\check_request_id_gap_blocks.cmd" />
     <None Include="docs\check_request_id_gap_blocks.ps1" />

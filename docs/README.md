@@ -2,6 +2,21 @@
 
 主要な運用ドキュメントへの入口です。
 
+## sync-axum-api GCP Deployment
+
+- `sync-axum-api-gcp/README.md`
+  `sync-axum-api` の GCP デプロイ手順の入口
+- `sync-axum-api-gcp/01_overview.md`
+  全体構成、前提条件、デプロイの流れ
+- `sync-axum-api-gcp/02_artifact_registry_and_image.md`
+  Docker build、Artifact Registry、イメージ push
+- `sync-axum-api-gcp/03_cloud_sql_and_secrets.md`
+  Cloud SQL、Secret Manager、IAM 設定
+- `sync-axum-api-gcp/04_cloud_run_deploy.md`
+  Cloud Run デプロイと再デプロイ手順
+- `sync-axum-api-gcp/05_troubleshooting.md`
+  デプロイ時のトラブルシュート
+
 ## Sync 異常系ログ
 
 - `sync_client_abnormal_log_scenarios.md`  

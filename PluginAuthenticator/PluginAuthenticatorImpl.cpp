@@ -34,9 +34,61 @@ namespace winrt::PasskeyManager::implementation
     constexpr wchar_t c_windowsPluginLastMakeCredentialStatusRegKeyName[] = L"LastMakeCredentialStatus";
     constexpr wchar_t c_windowsPluginLastMakeCredentialSequenceRegKeyName[] = L"LastMakeCredentialSequence";
     constexpr wchar_t c_pluginProtectedHMACSecretInput[] = L"HMACSecretInputProtected";
+    constexpr wchar_t c_pluginProtectedHMACSecretInputSequence[] = L"HMACSecretInputProtectedSequence";
 
     namespace {
         bool IsPluginTempPersistenceEnabled() noexcept;
+
+        std::wstring ReadEnvironmentSettingFromRegistry(PCWSTR name) noexcept
+        {
+            if (name == nullptr || name[0] == L'\0')
+            {
+                return {};
+            }
+
+            constexpr wchar_t kEnvSubkey[] = L"Environment";
+            std::array<HKEY, 2> roots{ HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE };
+            for (HKEY root : roots)
+            {
+                DWORD type = 0;
+                DWORD cb = 0;
+                LONG rc = RegGetValueW(
+                    root,
+                    kEnvSubkey,
+                    name,
+                    RRF_RT_REG_SZ,
+                    &type,
+                    nullptr,
+                    &cb);
+                if (rc != ERROR_SUCCESS || cb < sizeof(wchar_t))
+                {
+                    continue;
+                }
+
+                std::wstring value;
+                value.resize(cb / sizeof(wchar_t));
+                rc = RegGetValueW(
+                    root,
+                    kEnvSubkey,
+                    name,
+                    RRF_RT_REG_SZ,
+                    &type,
+                    value.data(),
+                    &cb);
+                if (rc != ERROR_SUCCESS)
+                {
+                    continue;
+                }
+
+                while (!value.empty() && value.back() == L'\0')
+                {
+                    value.pop_back();
+                }
+                return value;
+            }
+
+            return {};
+        }
 
         void AppendTempLogLine(wchar_t const* fileName, std::wstring const& line) noexcept;
 
@@ -170,6 +222,29 @@ namespace winrt::PasskeyManager::implementation
                 REG_BINARY,
                 outBlob.pbData,
                 outBlob.cbData);
+
+            ULONGLONG sequence = 0;
+            DWORD sequenceSize = sizeof(sequence);
+            if (RegGetValueW(
+                hKey.get(),
+                nullptr,
+                c_pluginProtectedHMACSecretInputSequence,
+                RRF_RT_REG_QWORD,
+                nullptr,
+                &sequence,
+                &sequenceSize) != ERROR_SUCCESS)
+            {
+                sequence = 0;
+            }
+            ++sequence;
+
+            (void)RegSetValueEx(
+                hKey.get(),
+                c_pluginProtectedHMACSecretInputSequence,
+                0,
+                REG_QWORD,
+                reinterpret_cast<const BYTE*>(&sequence),
+                sizeof(sequence));
         }
 
         void PersistLastMakeCredentialStatus(HRESULT hr) noexcept
@@ -260,11 +335,18 @@ namespace winrt::PasskeyManager::implementation
         {
             wchar_t buffer[16]{};
             DWORD written = GetEnvironmentVariableW(L"TSUPASSWD_PLUGIN_PERSIST_GET_ASSERTION_INFO", buffer, static_cast<DWORD>(std::size(buffer)));
-            if (written == 0 || written >= std::size(buffer))
+            if (written > 0 && written < std::size(buffer))
+            {
+                return IsTruthySetting(std::wstring(buffer, written));
+            }
+
+            std::wstring regValue = ReadEnvironmentSettingFromRegistry(L"TSUPASSWD_PLUGIN_PERSIST_GET_ASSERTION_INFO");
+            if (regValue.empty())
             {
                 return false;
             }
-            return IsTruthySetting(std::wstring(buffer, written));
+
+            return IsTruthySetting(std::move(regValue));
         }
 
         void AppendTempLogLine(wchar_t const* fileName, std::wstring const& line) noexcept
@@ -708,6 +790,8 @@ namespace winrt::PasskeyManager::implementation
         const PluginOperationType operationType,
         DWORD cbRpId,
         PBYTE pbRpId,
+        std::span<const BYTE> makeCredentialCredentialId,
+        bool includeMakeCredentialExtensions,
         DWORD& pcbPackedAuthenticatorData,
         wil::unique_hlocal_ptr<BYTE[]>& ppbpackedAuthenticatorData,
         std::vector<uint8_t>& vCredentialIdBuffer);
@@ -753,12 +837,19 @@ namespace winrt::PasskeyManager::implementation
             g_makeCredentialStage = 0x0010;
 
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430010));
-            THROW_IF_FAILED(CoWaitForMultipleHandles(
+            constexpr DWORD kAppReadyWaitTimeoutMs = 5000;
+            HRESULT hrAppReady = CoWaitForMultipleHandles(
                 COWAIT_DISPATCH_WINDOW_MESSAGES | COWAIT_DISPATCH_CALLS,
-                INFINITE,
+                kAppReadyWaitTimeoutMs,
                 1,
                 self->m_hAppReadyForPluginOpEvent.addressof(),
-                &hIndex));
+                &hIndex);
+            const bool appReady = SUCCEEDED(hrAppReady);
+            if (!appReady)
+            {
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43001A));
+                PersistLastMakeCredentialStatus(hrAppReady);
+            }
 
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430011));
 
@@ -790,7 +881,7 @@ namespace winrt::PasskeyManager::implementation
             SetMakeCredentialStage(0x0016);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430016));
 
-            if (!TryAcquireOperationInProgressFlag(curApp->m_isOperationInProgress))
+            if (appReady && !TryAcquireOperationInProgressFlag(curApp->m_isOperationInProgress))
             {
                 SetMakeCredentialStage(0x0017);
                 PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430017));
@@ -803,7 +894,7 @@ namespace winrt::PasskeyManager::implementation
 
             SetMakeCredentialStage(0x0181);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430181));
-            const HWND appHwnd = curApp->GetPluginOperationHwnd();
+            const HWND appHwnd = appReady ? curApp->GetPluginOperationHwnd() : nullptr;
 
             SetMakeCredentialStage(0x0182);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430182));
@@ -812,7 +903,7 @@ namespace winrt::PasskeyManager::implementation
 
             SetMakeCredentialStage(0x0183);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430183));
-            const bool silent = curApp->GetSilentMode();
+            const bool silent = appReady ? curApp->GetSilentMode() : true;
 
             SetMakeCredentialStage(0x0184);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430184));
@@ -826,13 +917,19 @@ namespace winrt::PasskeyManager::implementation
 
             auto clearOperationInProgress = wil::scope_exit([&]
             {
-                curApp->m_isOperationInProgress = false;
+                if (appReady)
+                {
+                    curApp->m_isOperationInProgress = false;
+                }
             });
 
             SetMakeCredentialStage(0x0186);
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D430186));
 
-            curApp->SetPluginTransactionId(pPluginMakeCredentialRequest->transactionId);
+            if (appReady)
+            {
+                curApp->SetPluginTransactionId(pPluginMakeCredentialRequest->transactionId);
+            }
             auto completePluginOperation = wil::SetEvent_scope_exit(self->m_hPluginOpCompletedEvent.get());
 
             g_makeCredentialStage = 0x0013;
@@ -904,17 +1001,25 @@ namespace winrt::PasskeyManager::implementation
 
             THROW_IF_FAILED(NCryptOpenStorageProvider(&hProvider, nullptr, 0));
 
+            // Use a per-credential key name derived from the credentialId so multiple credentials per user/RP
+            // do not overwrite each other. This also keeps the private key aligned with the credentialId used
+            // by the RP for signature verification.
+            std::array<BYTE, 32> makeCredentialCredentialId{};
+            THROW_IF_NTSTATUS_FAILED(BCryptGenRandom(
+                nullptr,
+                makeCredentialCredentialId.data(),
+                static_cast<ULONG>(makeCredentialCredentialId.size()),
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG));
+
             std::wstring keyNameStr = happyfactoryplugin_key_domain;
-            std::wstringstream keyNameStream;
-            THROW_HR_IF(E_INVALIDARG,
-                pDecodedMakeCredentialRequest->pUserInformation->cbId > 0 &&
-                pDecodedMakeCredentialRequest->pUserInformation->pbId == nullptr);
-            for (DWORD idx = 0; idx < pDecodedMakeCredentialRequest->pUserInformation->cbId; idx++)
             {
-                keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<
-                    static_cast<int>(pDecodedMakeCredentialRequest->pUserInformation->pbId[idx]);
+                std::wstringstream keyNameStream;
+                for (BYTE b : makeCredentialCredentialId)
+                {
+                    keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') << static_cast<int>(b);
+                }
+                keyNameStr += keyNameStream.str();
             }
-            keyNameStr += keyNameStream.str();
 
             THROW_IF_FAILED(NCryptCreatePersistedKey(
                 hProvider.get(),
@@ -922,7 +1027,7 @@ namespace winrt::PasskeyManager::implementation
                 BCRYPT_ECDSA_P256_ALGORITHM,
                 keyNameStr.c_str(),
                 0,
-                NCRYPT_OVERWRITE_KEY_FLAG));
+                0));
 
             g_makeCredentialStage = 0x0004;
 
@@ -966,11 +1071,16 @@ namespace winrt::PasskeyManager::implementation
             DWORD cbPackedAuthenticatorData = 0;
             wil::unique_hlocal_ptr<BYTE[]> packedAuthenticatorData;
             std::vector<uint8_t> vCredentialIdBuffer;
+            // Only include MakeCredential extensions for our plugin RP ID (vault recovery). For browser RPs (e.g. webauthn.io),
+            // keep authenticatorData minimal so the platform encoder accepts it.
+            const bool includeMcExtensions = (_wcsicmp(rpIdFromRequestW.c_str(), c_pluginRpId) == 0);
             THROW_IF_FAILED(CreateAuthenticatorData(
                 hKey.get(),
                 PluginOperationType::MakeCredential,
                 pDecodedMakeCredentialRequest->cbRpId,
                 pDecodedMakeCredentialRequest->pbRpId,
+                std::span<const BYTE>(makeCredentialCredentialId.data(), makeCredentialCredentialId.size()),
+                includeMcExtensions,
                 cbPackedAuthenticatorData,
                 packedAuthenticatorData,
                 vCredentialIdBuffer));
@@ -978,53 +1088,50 @@ namespace winrt::PasskeyManager::implementation
             g_makeCredentialStage = 0x0006;
 
             WEBAUTHN_CREDENTIAL_ATTESTATION attestationResponse = {};
-            attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5;
+            attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_4;
             attestationResponse.pwszFormatType = WEBAUTHN_ATTESTATION_TYPE_NONE;
             attestationResponse.cbAttestation = 0;
             attestationResponse.pbAttestation = nullptr;
             attestationResponse.cbAuthenticatorData = 0;
             attestationResponse.pbAuthenticatorData = nullptr;
-            const bool advertisePrfAndHmacSecret = true;
-            attestationResponse.bPrfEnabled = advertisePrfAndHmacSecret ? TRUE : FALSE;
-            BOOL hmacSecretExtensionValue = TRUE;
-            WEBAUTHN_EXTENSION hmacSecretExtension = {};
-            hmacSecretExtension.pwszExtensionIdentifier = WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET;
-            hmacSecretExtension.cbExtension = sizeof(BOOL);
-            hmacSecretExtension.pvExtension = &hmacSecretExtensionValue;
-            attestationResponse.Extensions.cExtensions = advertisePrfAndHmacSecret ? 1 : 0;
-            attestationResponse.Extensions.pExtensions = advertisePrfAndHmacSecret ? &hmacSecretExtension : nullptr;
+            attestationResponse.Extensions.cExtensions = 0;
+            attestationResponse.Extensions.pExtensions = nullptr;
             attestationResponse.pbAuthenticatorData = packedAuthenticatorData.get();
             attestationResponse.cbAuthenticatorData = cbPackedAuthenticatorData;
 
-            DWORD cbAttestationBuffer = 0;
-            wil::unique_cotaskmem_ptr<BYTE[]> pbAttestationBuffer;
-
-            HRESULT encodeHr = E_FAIL;
-            // Prefer EXPERIMENTAL encoder so VERSION_5 fields (e.g. bPrfEnabled) are preserved.
-            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E001));
-            encodeHr = EXPERIMENTAL_WebAuthNEncodeMakeCredentialResponse(
+            // Prefer the platform encoder (produces the expected WebAuthn output for browsers).
+            // Fall back to direct CTAP2 MakeCredential CBOR if the platform rejects our authenticatorData.
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E000));
+            DWORD cbEncoded = 0;
+            wil::unique_cotaskmem_ptr<BYTE[]> pbEncoded;
+            HRESULT hrEncode = WebAuthNEncodeMakeCredentialResponse(
                 &attestationResponse,
-                &cbAttestationBuffer,
-                wil::out_param(pbAttestationBuffer));
-            PersistLastMakeCredentialStatus(encodeHr);
+                &cbEncoded,
+                wil::out_param(pbEncoded));
+            PersistLastMakeCredentialStatus(hrEncode);
 
-            if (encodeHr == E_NOTIMPL || FAILED(encodeHr))
+            std::vector<BYTE> encodedResponse;
+            if (SUCCEEDED(hrEncode) && cbEncoded > 0 && pbEncoded)
             {
-                // Fallback to the stable encoder for older platforms.
-                // Keep PRF/HMAC advertisement enabled for vault recovery compatibility.
-                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E002));
-                attestationResponse.dwVersion = WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION;
-                attestationResponse.bPrfEnabled = advertisePrfAndHmacSecret ? TRUE : FALSE;
-                attestationResponse.Extensions.cExtensions = advertisePrfAndHmacSecret ? 1 : 0;
-                attestationResponse.Extensions.pExtensions = advertisePrfAndHmacSecret ? &hmacSecretExtension : nullptr;
-
-                encodeHr = WebAuthNEncodeMakeCredentialResponse(
-                    &attestationResponse,
-                    &cbAttestationBuffer,
-                    wil::out_param(pbAttestationBuffer));
-                PersistLastMakeCredentialStatus(encodeHr);
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E001));
+                encodedResponse.assign(pbEncoded.get(), pbEncoded.get() + cbEncoded);
             }
-            THROW_IF_FAILED(encodeHr);
+            else
+            {
+                // Encode CTAP2 MakeCredential response directly to avoid platform encoder rejecting our authenticatorData.
+                // CTAP2 MakeCredential response: map{1:fmt,2:authData,3:attStmt}
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E010));
+                (void)CborLite::encodeMapSize(encodedResponse, 3u);
+                (void)CborLite::encodeInteger(encodedResponse, 1);
+                {
+                    (void)CborLite::encodeText(encodedResponse, std::string("none"));
+                }
+                (void)CborLite::encodeInteger(encodedResponse, 2);
+                (void)CborLite::encodeBytes(encodedResponse, std::span<const BYTE>(attestationResponse.pbAuthenticatorData, attestationResponse.cbAuthenticatorData));
+                (void)CborLite::encodeInteger(encodedResponse, 3);
+                (void)CborLite::encodeMapSize(encodedResponse, 0u);
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4D43E011));
+            }
 
             g_makeCredentialStage = 0x0007;
 
@@ -1047,13 +1154,13 @@ namespace winrt::PasskeyManager::implementation
             std::vector<std::vector<UINT8>> credentialIdList{ vCredentialIdBuffer };
             credManager.AddPluginCredentialById(credentialIdList);
 
-            response->cbEncodedResponse = cbAttestationBuffer;
+            response->cbEncodedResponse = static_cast<DWORD>(encodedResponse.size());
             response->pbEncodedResponse = nullptr;
-            if (cbAttestationBuffer > 0)
+            if (!encodedResponse.empty())
             {
-                response->pbEncodedResponse = reinterpret_cast<byte*>(CoTaskMemAlloc(cbAttestationBuffer));
+                response->pbEncodedResponse = reinterpret_cast<byte*>(CoTaskMemAlloc(encodedResponse.size()));
                 THROW_HR_IF_NULL(E_OUTOFMEMORY, response->pbEncodedResponse);
-                memcpy_s(response->pbEncodedResponse, cbAttestationBuffer, pbAttestationBuffer.get(), cbAttestationBuffer);
+                memcpy_s(response->pbEncodedResponse, encodedResponse.size(), encodedResponse.data(), encodedResponse.size());
             }
 
             g_makeCredentialStage = 0x0008;
@@ -1089,6 +1196,8 @@ namespace winrt::PasskeyManager::implementation
         const PluginOperationType operationType,
         DWORD cbRpId,
         PBYTE pbRpId,
+        std::span<const BYTE> makeCredentialCredentialId,
+        bool includeMakeCredentialExtensions,
         DWORD& pcbPackedAuthenticatorData,
         wil::unique_hlocal_ptr<BYTE[]>& ppbpackedAuthenticatorData,
         std::vector<uint8_t>& vCredentialIdBuffer)
@@ -1162,45 +1271,19 @@ namespace winrt::PasskeyManager::implementation
             bufferSize += CborLite::encodeInteger(buffer, yIndex);
             bufferSize += CborLite::encodeBytes(buffer, yCoord);
 
-            wil::unique_bcrypt_hash hashHandle;
-            THROW_IF_NTSTATUS_FAILED(BCryptCreateHash(
-                BCRYPT_SHA256_ALG_HANDLE,
-                wil::out_param(hashHandle),
-                nullptr,
-                0,
-                nullptr,
-                0,
-                0));
-
-            THROW_IF_NTSTATUS_FAILED(BCryptHashData(
-                hashHandle.get(), 
-                reinterpret_cast<PUCHAR>(pbXCoord), 
-                cbXCoord, 
-                0));
-
-            THROW_IF_NTSTATUS_FAILED(BCryptHashData(
-                hashHandle.get(), 
-                reinterpret_cast<PUCHAR>(pbYCoord), 
-                cbYCoord, 
-                0));
-
-            DWORD cbHash = 0;
-            DWORD bytesRead = 0;
-            THROW_IF_NTSTATUS_FAILED(BCryptGetProperty(
-                hashHandle.get(),
-                BCRYPT_HASH_LENGTH,
-                reinterpret_cast<PBYTE>(&cbHash),
-                sizeof(cbHash),
-                &bytesRead,
-                0));
-
-            wil::unique_hlocal_ptr<BYTE[]> pbCredentialId = wil::make_unique_hlocal<BYTE[]>(cbHash);
-
-            THROW_IF_NTSTATUS_FAILED(BCryptFinishHash(
-                hashHandle.get(), 
-                pbCredentialId.get(), 
-                cbHash, 
-                0));
+            // CredentialId is only used in MakeCredential (authenticatorData AT block).
+            // For MakeCredential we take the caller-provided credentialId (used for key name),
+            // so the RP can later reference it for assertions.
+            wil::unique_hlocal_ptr<BYTE[]> pbCredentialId;
+            DWORD cbCredentialId = 0;
+            if (operationType == PluginOperationType::MakeCredential)
+            {
+                THROW_HR_IF(E_INVALIDARG, makeCredentialCredentialId.empty());
+                THROW_HR_IF(E_INVALIDARG, makeCredentialCredentialId.size() > (std::numeric_limits<DWORD>::max)());
+                cbCredentialId = static_cast<DWORD>(makeCredentialCredentialId.size());
+                pbCredentialId = wil::make_unique_hlocal<BYTE[]>(cbCredentialId);
+                memcpy_s(pbCredentialId.get(), cbCredentialId, makeCredentialCredentialId.data(), cbCredentialId);
+            }
 
             // Refer to learn about packing credential data https://www.w3.org/TR/webauthn-3/#sctn-authenticator-data
             constexpr DWORD rpidsha256Size = 32; // SHA256 hash of rpId
@@ -1209,17 +1292,20 @@ namespace winrt::PasskeyManager::implementation
             DWORD cbPackedAuthenticatorData = rpidsha256Size + flagsSize + signCountSize;
 
             std::vector<BYTE> extensionsCbor;
-            const bool includeMakeCredentialExtensions = false;
-            if (includeMakeCredentialExtensions && operationType == PluginOperationType::MakeCredential)
+            if (includeMakeCredentialExtensions)
             {
-                (void)CborLite::encodeMapSize(extensionsCbor, 0u);
+                // Advertise hmac-secret support in authenticatorData extensions.
+                // Encode: { "hmac-secret": true }
+                (void)CborLite::encodeMapSize(extensionsCbor, 1u);
+                (void)CborLite::encodeText(extensionsCbor, std::string("hmac-secret"));
+                (void)CborLite::encodeBool(extensionsCbor, true);
             }
 
             if (operationType == PluginOperationType::MakeCredential)
             {
                 cbPackedAuthenticatorData += sizeof(GUID); // aaGuid
                 cbPackedAuthenticatorData += sizeof(WORD); // credentialId length
-                cbPackedAuthenticatorData += cbHash; // credentialId
+                cbPackedAuthenticatorData += cbCredentialId; // credentialId
                 cbPackedAuthenticatorData += static_cast<DWORD>(buffer.size()); // public key
                 cbPackedAuthenticatorData += static_cast<DWORD>(extensionsCbor.size()); // extensions
             }
@@ -1238,23 +1324,23 @@ namespace winrt::PasskeyManager::implementation
                 rgbRpIdHash->data(),
                 &cbRpIdHash));
 
-            // Flags uv, up, be, and at are set
+            // Flags in authenticatorData
             if (operationType == PluginOperationType::GetAssertion)
             {
                 // Refer https://www.w3.org/TR/webauthn-3/#authdata-flags
-                // Minimal flags: UP + UV (do not claim BE/BS backup state bits).
-                *writer.reserve_space<uint8_t>() = 0x05; // UP(0x01) | UV(0x04)
+                // Minimal flags: UP (do not claim UV unless we actually performed a distinct UV ceremony).
+                *writer.reserve_space<uint8_t>() = 0x01; // UP(0x01)
 
                 // signCount (4 bytes, big-endian)
                 writer.add(std::span<const BYTE>({ 0x00, 0x00, 0x00, 0x00 }));
 
-                vCredentialIdBuffer.assign(pbCredentialId.get(), pbCredentialId.get() + cbHash);
+                vCredentialIdBuffer.clear();
             }
             else
             {
                 // Refer https://www.w3.org/TR/webauthn-3/#authdata-flags
-                // Minimal flags: UP + UV + AT (+ED if extensions are present)
-                uint8_t flags = 0x45; // UP(0x01) | UV(0x04) | AT(0x40)
+                // Minimal flags: UP + AT (+ED if extensions are present). Do not claim UV unless verified.
+                uint8_t flags = 0x41; // UP(0x01) | AT(0x40)
                 if (!extensionsCbor.empty())
                 {
                     flags = static_cast<uint8_t>(flags | 0x80); // ED
@@ -1268,14 +1354,14 @@ namespace winrt::PasskeyManager::implementation
                 writer.add(std::span<const BYTE>(c_pluginAaguidBytes, sizeof(c_pluginAaguidBytes)));
 
                 // Retrieve credential id
-                WORD cbCredentialId = static_cast<WORD>(cbHash);
-                WORD cbCredentialIdBigEndian = _byteswap_ushort(cbCredentialId);
+                WORD cbCredentialIdWord = static_cast<WORD>(cbCredentialId);
+                WORD cbCredentialIdBigEndian = _byteswap_ushort(cbCredentialIdWord);
 
                 *writer.reserve_space<WORD>() = cbCredentialIdBigEndian; // Size of credential id in unsigned big endian of size 2 bytes
 
-                writer.add(std::span<BYTE>(pbCredentialId.get(), cbHash)); // Set credential id
+                writer.add(std::span<BYTE>(pbCredentialId.get(), cbCredentialId)); // Set credential id
 
-                vCredentialIdBuffer.assign(pbCredentialId.get(), pbCredentialId.get() + cbHash);
+                vCredentialIdBuffer.assign(pbCredentialId.get(), pbCredentialId.get() + cbCredentialId);
 
                 writer.add(std::span<BYTE>(buffer.data(), buffer.size())); // Set CBOR encoded public key
 
@@ -1383,16 +1469,48 @@ namespace winrt::PasskeyManager::implementation
             curApp->SetPluginTransactionId(pPluginGetAssertionRequest->transactionId);
             auto completePluginOperation = wil::SetEvent_scope_exit(self->m_hPluginOpCompletedEvent.get());
 
-            PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST pDecodedAssertionRequest;
-
-            THROW_IF_FAILED(WebAuthNDecodeGetAssertionRequest(
+            // Prefer experimental decode: it may surface extension inputs (e.g. hmac-secret salt) more reliably.
+            // Fall back to the stable decode API if experimental is not available.
+            bool usedExperimentalDecode = false;
+            PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST pDecodedAssertionRequest = nullptr;
+            EXPERIMENTAL_PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST pDecodedAssertionRequestEx = nullptr;
+            HRESULT hrDecode = EXPERIMENTAL_WebAuthNDecodeGetAssertionRequest(
                 pPluginGetAssertionRequest->cbEncodedRequest,
                 pPluginGetAssertionRequest->pbEncodedRequest,
-                &pDecodedAssertionRequest));
+                &pDecodedAssertionRequestEx);
+            if (SUCCEEDED(hrDecode) && pDecodedAssertionRequestEx)
+            {
+                usedExperimentalDecode = true;
+            }
+            else
+            {
+                THROW_IF_FAILED(WebAuthNDecodeGetAssertionRequest(
+                    pPluginGetAssertionRequest->cbEncodedRequest,
+                    pPluginGetAssertionRequest->pbEncodedRequest,
+                    &pDecodedAssertionRequest));
+            }
 
             auto cleanup = wil::scope_exit([&] {
-                WebAuthNFreeDecodedGetAssertionRequest(pDecodedAssertionRequest);
+                if (usedExperimentalDecode)
+                {
+                    EXPERIMENTAL_WebAuthNFreeDecodedGetAssertionRequest(pDecodedAssertionRequestEx);
+                }
+                else
+                {
+                    WebAuthNFreeDecodedGetAssertionRequest(pDecodedAssertionRequest);
+                }
             });
+
+            // Normalize the request pointer for the rest of the function.
+            if (usedExperimentalDecode)
+            {
+                pDecodedAssertionRequest = reinterpret_cast<PWEBAUTHN_CTAPCBOR_GET_ASSERTION_REQUEST>(pDecodedAssertionRequestEx);
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4741DE01));
+            }
+            else
+            {
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4741DE00));
+            }
 
             wil::shared_cotaskmem_string rpName = wil::make_cotaskmem_string(pDecodedAssertionRequest->pwszRpId);
 
@@ -1514,15 +1632,20 @@ namespace winrt::PasskeyManager::implementation
 
             PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414D03));
 
-            // convert user handle to a string
+            // Open the key by credentialId (matches MakeCredential key naming scheme).
             std::wstring keyNameStr = happyfactoryplugin_key_domain;
-            std::wstringstream keyNameStream;
-            for (DWORD idx = 0; idx < selectedCredential->pUserInformation->cbId; idx++)
             {
-                keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<
-                    static_cast<int>(selectedCredential->pUserInformation->pbId[idx]);
+                std::wstringstream keyNameStream;
+                THROW_HR_IF(E_INVALIDARG,
+                    selectedCredential->cbCredentialID > 0 &&
+                    selectedCredential->pbCredentialID == nullptr);
+                for (DWORD idx = 0; idx < selectedCredential->cbCredentialID; idx++)
+                {
+                    keyNameStream << std::hex << std::setw(2) << std::setfill(L'0') <<
+                        static_cast<int>(selectedCredential->pbCredentialID[idx]);
+                }
+                keyNameStr += keyNameStream.str();
             }
-            keyNameStr += keyNameStream.str();
 
             //open the key using ncrypt and sign the data
             wil::unique_ncrypt_prov hProvider;
@@ -1561,6 +1684,8 @@ namespace winrt::PasskeyManager::implementation
                 PluginOperationType::GetAssertion,
                 pDecodedAssertionRequest->cbRpId,
                 pDecodedAssertionRequest->pbRpId,
+                std::span<const BYTE>(),
+                false,
                 cbPackedAuthenticatorData,
                 packedAuthenticatorData,
                 vCredentialIdBuffer));
@@ -1724,117 +1849,132 @@ namespace winrt::PasskeyManager::implementation
 
             assertionResponse->dwVersion = WEBAUTHN_ASSERTION_CURRENT_VERSION;
 
-            // Provide PRF/HMAC-secret output for vault recovery.
-            // For now we derive a stable 32-byte secret from the persisted private key and the fixed salt.
-            const bool hasHmacSaltInput =
-                pDecodedAssertionRequest->pbHmacSecretSaltValues != nullptr &&
-                pDecodedAssertionRequest->cbHmacSecretSaltValues >= WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH;
+            const bool isPluginRp = (pDecodedAssertionRequest->pwszRpId != nullptr) &&
+                (_wcsicmp(pDecodedAssertionRequest->pwszRpId, c_pluginRpId) == 0);
 
             std::array<BYTE, 32> prfSecret{};
-            if (hasHmacSaltInput)
+            std::vector<BYTE> authenticatorDataWithExtensions;
+            std::vector<BYTE> unsignedExt;
+            wil::unique_cotaskmem_ptr<BYTE[]> unsignedExtBytes;
+            if (isPluginRp)
             {
-                std::span<const BYTE> prfSaltBytes(
-                    pDecodedAssertionRequest->pbHmacSecretSaltValues,
-                    WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH);
+                // Provide PRF/HMAC-secret output for vault recovery.
+                // For now we derive a stable 32-byte secret from the persisted private key and the fixed salt.
+                const DWORD hmacSaltLen = pDecodedAssertionRequest->cbHmacSecretSaltValues;
+                const bool hmacSaltPtrNonNull = pDecodedAssertionRequest->pbHmacSecretSaltValues != nullptr;
+                // Mark whether the request included a salt input and its length (low 16 bits).
+                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x4741A000 | (hmacSaltPtrNonNull ? 0x010000 : 0) | (hmacSaltLen & 0xFFFF)));
+                const bool hasHmacSaltInput =
+                    hmacSaltPtrNonNull &&
+                    hmacSaltLen >= WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH;
 
-                DWORD cbPriv = 0;
-                THROW_IF_FAILED(NCryptExportKey(
-                    hKey.get(),
-                    0,
-                    BCRYPT_ECCPRIVATE_BLOB,
-                    nullptr,
-                    nullptr,
-                    0,
-                    &cbPriv,
-                    0));
-
-                std::vector<BYTE> priv(cbPriv);
-                THROW_IF_FAILED(NCryptExportKey(
-                    hKey.get(),
-                    0,
-                    BCRYPT_ECCPRIVATE_BLOB,
-                    nullptr,
-                    priv.data(),
-                    cbPriv,
-                    &cbPriv,
-                    0));
-                priv.resize(cbPriv);
-
-                THROW_IF_FAILED(ComputeHmacSha256(priv, prfSaltBytes, prfSecret));
-
-                PersistProtectedHmacSecret(std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
-
-                using HmacSecretOut = std::remove_pointer_t<decltype(assertionResponse->pHmacSecret)>;
-
-                wil::unique_cotaskmem_ptr<BYTE[]> hmacOutBytes(
-                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(HmacSecretOut))));
-                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacOutBytes);
-                auto hmacOut = reinterpret_cast<decltype(assertionResponse->pHmacSecret)>(hmacOutBytes.get());
-                *hmacOut = {};
-                hmacOut->cbFirst = static_cast<DWORD>(prfSecret.size());
-
-                wil::unique_cotaskmem_ptr<BYTE[]> hmacFirst(
-                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(hmacOut->cbFirst)));
-                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacFirst);
-                memcpy_s(hmacFirst.get(), hmacOut->cbFirst, prfSecret.data(), prfSecret.size());
-
-                hmacOut->pbFirst = hmacFirst.get();
-                hmacOut->cbSecond = 0;
-                hmacOut->pbSecond = nullptr;
-                assertionResponse->pHmacSecret = hmacOut;
-            }
-            else
-            {
+                std::span<const BYTE> prfSaltBytes;
                 std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> fallbackSaltBytes{
                     0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
                     0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
-                std::span<const BYTE> prfSaltBytes(fallbackSaltBytes.data(), fallbackSaltBytes.size());
 
-                DWORD cbPriv = 0;
-                THROW_IF_FAILED(NCryptExportKey(
-                    hKey.get(),
-                    0,
-                    BCRYPT_ECCPRIVATE_BLOB,
-                    nullptr,
-                    nullptr,
-                    0,
-                    &cbPriv,
-                    0));
+                if (hasHmacSaltInput)
+                {
+                    prfSaltBytes = std::span<const BYTE>(
+                        pDecodedAssertionRequest->pbHmacSecretSaltValues,
+                        WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH);
+                }
+                else
+                {
+                    // Some decode paths may drop the salt input even when the platform requested hmac-secret.
+                    // Use a fixed salt so we can still return a stable 32-byte secret for vault recovery.
+                    prfSaltBytes = std::span<const BYTE>(fallbackSaltBytes.data(), fallbackSaltBytes.size());
+                }
 
-                std::vector<BYTE> priv(cbPriv);
-                THROW_IF_FAILED(NCryptExportKey(
-                    hKey.get(),
-                    0,
-                    BCRYPT_ECCPRIVATE_BLOB,
-                    nullptr,
-                    priv.data(),
-                    cbPriv,
-                    &cbPriv,
-                    0));
-                priv.resize(cbPriv);
+                {
+                    DWORD cbPriv = 0;
+                    THROW_IF_FAILED(NCryptExportKey(
+                        hKey.get(),
+                        0,
+                        BCRYPT_ECCPRIVATE_BLOB,
+                        nullptr,
+                        nullptr,
+                        0,
+                        &cbPriv,
+                        0));
 
-                THROW_IF_FAILED(ComputeHmacSha256(priv, prfSaltBytes, prfSecret));
+                    std::vector<BYTE> priv(cbPriv);
+                    THROW_IF_FAILED(NCryptExportKey(
+                        hKey.get(),
+                        0,
+                        BCRYPT_ECCPRIVATE_BLOB,
+                        nullptr,
+                        priv.data(),
+                        cbPriv,
+                        &cbPriv,
+                        0));
+                    priv.resize(cbPriv);
+
+                    THROW_IF_FAILED(ComputeHmacSha256(priv, prfSaltBytes, prfSecret));
+                }
 
                 PersistProtectedHmacSecret(std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
 
                 using HmacSecretOut = std::remove_pointer_t<decltype(assertionResponse->pHmacSecret)>;
 
-                wil::unique_cotaskmem_ptr<BYTE[]> hmacOutBytes(
-                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(HmacSecretOut))));
-                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacOutBytes);
-                auto hmacOut = reinterpret_cast<decltype(assertionResponse->pHmacSecret)>(hmacOutBytes.get());
+                auto hmacOut = reinterpret_cast<decltype(assertionResponse->pHmacSecret)>(
+                    CoTaskMemAlloc(sizeof(HmacSecretOut)));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacOut);
                 *hmacOut = {};
                 hmacOut->cbFirst = static_cast<DWORD>(prfSecret.size());
 
-                wil::unique_cotaskmem_ptr<BYTE[]> hmacFirst(
-                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(hmacOut->cbFirst)));
+                auto hmacFirst = reinterpret_cast<BYTE*>(CoTaskMemAlloc(hmacOut->cbFirst));
                 THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacFirst);
-                memcpy_s(hmacFirst.get(), hmacOut->cbFirst, prfSecret.data(), prfSecret.size());
+                memcpy_s(hmacFirst, hmacOut->cbFirst, prfSecret.data(), prfSecret.size());
 
-                hmacOut->pbFirst = hmacFirst.get();
+                hmacOut->pbFirst = hmacFirst;
                 hmacOut->cbSecond = 0;
                 hmacOut->pbSecond = nullptr;
                 assertionResponse->pHmacSecret = hmacOut;
+
+                // Include the hmac-secret extension output in authenticatorData (signed extensions).
+                std::vector<BYTE> signedExt;
+                // Encode: { "hmac-secret": { 1: <32-byte output> } }
+                (void)CborLite::encodeMapSize(signedExt, 1u);
+                (void)CborLite::encodeText(signedExt, std::string("hmac-secret"));
+                (void)CborLite::encodeMapSize(signedExt, 1u);
+                (void)CborLite::encodeUnsigned(signedExt, 1u);
+                (void)CborLite::encodeBytes(signedExt, std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
+
+                authenticatorDataWithExtensions.resize(static_cast<size_t>(cbPackedAuthenticatorData) + signedExt.size());
+                memcpy_s(
+                    authenticatorDataWithExtensions.data(),
+                    authenticatorDataWithExtensions.size(),
+                    packedAuthenticatorData.get(),
+                    cbPackedAuthenticatorData);
+
+                // Set ED flag in the flags byte (offset 32 from start of authData)
+                if (authenticatorDataWithExtensions.size() > 32)
+                {
+                    authenticatorDataWithExtensions[32] = static_cast<BYTE>(authenticatorDataWithExtensions[32] | 0x80);
+                }
+
+                memcpy_s(
+                    authenticatorDataWithExtensions.data() + cbPackedAuthenticatorData,
+                    authenticatorDataWithExtensions.size() - cbPackedAuthenticatorData,
+                    signedExt.data(),
+                    signedExt.size());
+
+                // Prepare unsigned extension outputs for WebAuthNEncodeGetAssertionResponse.
+                (void)CborLite::encodeMapSize(unsignedExt, 1u);
+                (void)CborLite::encodeText(unsignedExt, std::string("hmac-secret"));
+                (void)CborLite::encodeMapSize(unsignedExt, 1u);
+                (void)CborLite::encodeUnsigned(unsignedExt, 1u);
+                (void)CborLite::encodeBytes(unsignedExt, std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
+
+                unsignedExtBytes.reset(reinterpret_cast<BYTE*>(
+                    CoTaskMemAlloc(static_cast<SIZE_T>(unsignedExt.size()))));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, unsignedExtBytes);
+                memcpy_s(unsignedExtBytes.get(), unsignedExt.size(), unsignedExt.data(), unsignedExt.size());
+            }
+            else
+            {
+                assertionResponse->pHmacSecret = nullptr;
             }
 
             // [1] Credential (optional)
@@ -1844,8 +1984,16 @@ namespace winrt::PasskeyManager::implementation
             assertionResponse->Credential.pwszCredentialType = WEBAUTHN_CREDENTIAL_TYPE_PUBLIC_KEY;
 
             // [2] AuthenticatorData
-            assertionResponse->cbAuthenticatorData = cbPackedAuthenticatorData;
-            assertionResponse->pbAuthenticatorData = packedAuthenticatorData.get();
+            if (isPluginRp && !authenticatorDataWithExtensions.empty())
+            {
+                assertionResponse->cbAuthenticatorData = static_cast<DWORD>(authenticatorDataWithExtensions.size());
+                assertionResponse->pbAuthenticatorData = authenticatorDataWithExtensions.data();
+            }
+            else
+            {
+                assertionResponse->cbAuthenticatorData = cbPackedAuthenticatorData;
+                assertionResponse->pbAuthenticatorData = packedAuthenticatorData.get();
+            }
 
             // [3] Signature
             assertionResponse->cbSignature = cbSignature;
@@ -1913,58 +2061,18 @@ namespace winrt::PasskeyManager::implementation
             ctapGetAssertionResponse->pUserInformation = userInfo.get(); // [4] User
             ctapGetAssertionResponse->dwNumberOfCredentials = 1; // [5] NumberOfCredentials
 
-            std::vector<BYTE> ext;
-            wil::unique_cotaskmem_ptr<BYTE[]> extBytes;
-            if (hasHmacSaltInput)
-            {
-                // Encode: { "hmac-secret": { 1: <32-byte output> } }
-                (void)CborLite::encodeMapSize(ext, 1u);
-                (void)CborLite::encodeText(ext, std::string("hmac-secret"));
-                (void)CborLite::encodeMapSize(ext, 1u);
-                (void)CborLite::encodeUnsigned(ext, 1u);
-                (void)CborLite::encodeBytes(ext, std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
-
-                extBytes.reset(reinterpret_cast<BYTE*>(
-                    CoTaskMemAlloc(static_cast<SIZE_T>(ext.size()))));
-                THROW_HR_IF_NULL(E_OUTOFMEMORY, extBytes);
-                memcpy_s(extBytes.get(), ext.size(), ext.data(), ext.size());
-            }
-
-            // Prefer experimental encoder.
+            // Use the stable encoder for best compatibility with extension output mapping.
             DWORD cbAssertionBuffer = 0;
             wil::unique_cotaskmem_ptr<BYTE[]> pbAssertionBuffer;
-            HRESULT encodeHr = E_NOTIMPL;
-            {
-                EXPERIMENTAL_WEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE experimentalResponse = {};
-                experimentalResponse.WebAuthNAssertion = *(assertionResponse.get());
-                experimentalResponse.pUserInformation = userInfo.get();
-                experimentalResponse.dwNumberOfCredentials = 1;
-                experimentalResponse.cbUnsignedExtensionOutputs = static_cast<DWORD>(ext.size());
-                experimentalResponse.pbUnsignedExtensionOutputs = extBytes.get();
+            ctapGetAssertionResponse->cbUnsignedExtensionOutputs = isPluginRp ? static_cast<DWORD>(unsignedExt.size()) : 0;
+            ctapGetAssertionResponse->pbUnsignedExtensionOutputs = isPluginRp ? unsignedExtBytes.get() : nullptr;
 
-                encodeHr = EXPERIMENTAL_WebAuthNEncodeGetAssertionResponse(
-                    &experimentalResponse,
-                    &cbAssertionBuffer,
-                    wil::out_param(pbAssertionBuffer));
-            }
-
-            if (encodeHr == E_NOTIMPL || FAILED(encodeHr))
-            {
-                ctapGetAssertionResponse->cbUnsignedExtensionOutputs = static_cast<DWORD>(ext.size());
-                ctapGetAssertionResponse->pbUnsignedExtensionOutputs = extBytes.get();
-
-                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414E02));
-                encodeHr = WebAuthNEncodeGetAssertionResponse(
-                    (PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE)(ctapGetAssertionResponse.get()),
-                    &cbAssertionBuffer,
-                    wil::out_param(pbAssertionBuffer));
-                PersistLastMakeCredentialStatus(encodeHr);
-            }
-            else
-            {
-                PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414E01));
-                PersistLastMakeCredentialStatus(encodeHr);
-            }
+            PersistLastMakeCredentialStatus(static_cast<HRESULT>(0x47414E02));
+            HRESULT encodeHr = WebAuthNEncodeGetAssertionResponse(
+                (PCWEBAUTHN_CTAPCBOR_GET_ASSERTION_RESPONSE)(ctapGetAssertionResponse.get()),
+                &cbAssertionBuffer,
+                wil::out_param(pbAssertionBuffer));
+            PersistLastMakeCredentialStatus(encodeHr);
 
             THROW_IF_FAILED(encodeHr);
 

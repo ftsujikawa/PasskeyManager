@@ -1253,13 +1253,8 @@ namespace winrt::PasskeyManager::implementation {
         webAuthNCredentialOptions.dwTimeoutMilliseconds = 180 * 1000;
         webAuthNCredentialOptions.CredentialList.cCredentials = 0;
         webAuthNCredentialOptions.CredentialList.pCredentials = nullptr;
-        BOOL hmacSecretExtensionValue = TRUE;
-        WEBAUTHN_EXTENSION hmacSecretExtension = {};
-        hmacSecretExtension.pwszExtensionIdentifier = WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET;
-        hmacSecretExtension.cbExtension = sizeof(BOOL);
-        hmacSecretExtension.pvExtension = &hmacSecretExtensionValue;
-        webAuthNCredentialOptions.Extensions.cExtensions = 1;
-        webAuthNCredentialOptions.Extensions.pExtensions = &hmacSecretExtension;
+        webAuthNCredentialOptions.Extensions.cExtensions = 0;
+        webAuthNCredentialOptions.Extensions.pExtensions = nullptr;
         webAuthNCredentialOptions.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_ANY;
         webAuthNCredentialOptions.bRequireResidentKey = FALSE;
         webAuthNCredentialOptions.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_PREFERRED;
@@ -1433,17 +1428,21 @@ namespace winrt::PasskeyManager::implementation {
             prfSalt.cbSecond = 0;
             prfSalt.pbSecond = nullptr;
 
-            WEBAUTHN_HMAC_SECRET_SALT_VALUES prfSaltValues = {};
-            prfSaltValues.pGlobalHmacSalt = &prfSalt;
-            prfSaltValues.cCredWithHmacSecretSaltList = 0;
-            prfSaltValues.pCredWithHmacSecretSaltList = nullptr;
-
             WEBAUTHN_CREDENTIAL_EX allowCredential = {};
             allowCredential.dwVersion = WEBAUTHN_CREDENTIAL_EX_CURRENT_VERSION;
             allowCredential.cbId = pCredentialAttestation.get()->cbCredentialId;
             allowCredential.pbId = pCredentialAttestation.get()->pbCredentialId;
             allowCredential.pwszCredentialType = WEBAUTHN_CREDENTIAL_TYPE_PUBLIC_KEY;
             allowCredential.dwTransports = 0;
+
+            WEBAUTHN_HMAC_SECRET_SALT_VALUES prfSaltValues = {};
+            prfSaltValues.pGlobalHmacSalt = &prfSalt;
+            WEBAUTHN_CRED_WITH_HMAC_SECRET_SALT credSalt = {};
+            credSalt.cbCredID = allowCredential.cbId;
+            credSalt.pbCredID = allowCredential.pbId;
+            credSalt.pHmacSecretSalt = &prfSalt;
+            prfSaltValues.cCredWithHmacSecretSaltList = 1;
+            prfSaltValues.pCredWithHmacSecretSaltList = &credSalt;
 
             if (allowCredential.cbId == 0 || allowCredential.pbId == nullptr)
             {
@@ -1470,6 +1469,12 @@ namespace winrt::PasskeyManager::implementation {
             getAssertionOptions.pAllowCredentialList = &allowList;
             getAssertionOptions.pHmacSecretSaltValues = &prfSaltValues;
 
+            auto beforeSecretSeq = wil::reg::try_get_value_qword(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                L"HMACSecretInputProtectedSequence");
+            ULONGLONG beforeSeq = beforeSecretSeq.has_value() ? beforeSecretSeq.value() : 0;
+
             UpdatePasskeyOperationStatusText(
                 winrt::hstring{ L"INFO: summary state=running operation=" + operation +
                 L" step=webauthn_get_assertion_start request_id=" + localRequestId + L"ℹ" });
@@ -1483,6 +1488,12 @@ namespace winrt::PasskeyManager::implementation {
                 &getAssertionOptions,
                 &pAssertion);
             getAssertionHr = hr;
+
+            auto afterSecretSeq = wil::reg::try_get_value_qword(
+                HKEY_CURRENT_USER,
+                c_pluginRegistryPath,
+                L"HMACSecretInputProtectedSequence");
+            ULONGLONG afterSeq = afterSecretSeq.has_value() ? afterSecretSeq.value() : 0;
 
             {
                 DWORD prfCbFirst = 0;
@@ -1541,12 +1552,27 @@ namespace winrt::PasskeyManager::implementation {
                     std::vector<BYTE> plainSecret;
                     if (UnprotectSecretForLocalUser(protectedOpt.value(), plainSecret) && !plainSecret.empty())
                     {
-                        prfSecret.assign(plainSecret.begin(), plainSecret.end());
-                        usedRegistryFallback = true;
-                        UpdatePasskeyOperationStatusText(
-                            winrt::hstring{
-                                L"INFO: summary state=observed operation=" + operation +
-                                L" step=prf_hmac_secret_fallback source=registry_dpapi request_id=" + localRequestId + L"ℹ" });
+                        if (afterSeq > beforeSeq)
+                        {
+                            prfSecret.assign(plainSecret.begin(), plainSecret.end());
+                            UpdatePasskeyOperationStatusText(
+                                winrt::hstring{
+                                    L"INFO: summary state=observed operation=" + operation +
+                                    L" step=prf_hmac_secret_from_registry_dpapi_fresh seq_before=" + std::to_wstring(beforeSeq) +
+                                    L" seq_after=" + std::to_wstring(afterSeq) +
+                                    L" request_id=" + localRequestId + L"ℹ" });
+                        }
+                        else
+                        {
+                            prfSecret.assign(plainSecret.begin(), plainSecret.end());
+                            usedRegistryFallback = true;
+                            UpdatePasskeyOperationStatusText(
+                                winrt::hstring{
+                                    L"INFO: summary state=observed operation=" + operation +
+                                    L" step=prf_hmac_secret_fallback source=registry_dpapi seq_before=" + std::to_wstring(beforeSeq) +
+                                    L" seq_after=" + std::to_wstring(afterSeq) +
+                                    L" request_id=" + localRequestId + L"ℹ" });
+                        }
                     }
                 }
             }

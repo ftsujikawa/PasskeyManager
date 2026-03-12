@@ -1836,20 +1836,51 @@ namespace winrt::PasskeyManager::implementation
 
         outJson.clear();
 
+        std::vector<uint8_t> cipherText;
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, localRequestId);
+        if (FAILED(hrReadVaultData))
+        {
+            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");
+            return hrReadVaultData;
+        }
+
         WEBAUTHN_CLIENT_DATA clientData = {};
         clientData.dwVersion = WEBAUTHN_CLIENT_DATA_CURRENT_VERSION;
         clientData.pwszHashAlgId = WEBAUTHN_HASH_ALGORITHM_SHA_256;
 
         PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+        bool requireWebAuthnPrf = false;
         std::vector<uint8_t> prfSecret;
         {
-            auto registrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
-            if (!registrySecret.empty())
+            std::wstring requireWebAuthn = GetEnvironmentVariableValue(L"TSUPASSWD_PRF_REQUIRE_WEBAUTHN");
+            requireWebAuthnPrf =
+                !requireWebAuthn.empty() &&
+                requireWebAuthn != L"0" &&
+                requireWebAuthn != L"false" &&
+                requireWebAuthn != L"False" &&
+                requireWebAuthn != L"FALSE";
+
+            logInfoWithRequestId(
+                L"sync result=info operation=" + operation +
+                L" step=read_env require_webAuthn_prf=" + (requireWebAuthnPrf ? L"true" : L"false") +
+                L" TSUPASSWD_PRF_REQUIRE_WEBAUTHN=\"" + requireWebAuthn + L"\"");
+
+            if (!requireWebAuthnPrf)
             {
-                prfSecret.assign(registrySecret.begin(), registrySecret.end());
+                auto registrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                if (!registrySecret.empty())
+                {
+                    prfSecret.assign(registrySecret.begin(), registrySecret.end());
+                    logInfoWithRequestId(
+                        L"sync result=info operation=" + operation +
+                        L" reason=prf_hmac_secret_fallback_used source=registry");
+                }
+            }
+            else
+            {
                 logInfoWithRequestId(
                     L"sync result=info operation=" + operation +
-                    L" reason=prf_hmac_secret_fallback_used source=registry");
+                    L" reason=prf_hmac_secret_fallback_ignored cause=TSUPASSWD_PRF_REQUIRE_WEBAUTHN");
             }
         }
 
@@ -2049,6 +2080,16 @@ namespace winrt::PasskeyManager::implementation
                     &attemptedClientData,
                     &webAuthNGetAssertionOptions,
                     &pAssertion);
+                UpdateVaultStatusText(
+                    winrt::hstring{
+                        L"INFO: sync state=observed operation=" + operation +
+                        L" step=webauthn_get_assertion_returned rp_id=" + std::wstring(attemptedRpId) +
+                        L" hr=" + std::to_wstring(hrGetAssertion) +
+                        L" assertion=" + std::wstring(pAssertion.get() ? L"non_null" : L"null") +
+                        L" hmac=" + std::wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? L"non_null" : L"null") +
+                        L" cbFirst=" + std::to_wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? pAssertion.get()->pHmacSecret->cbFirst : 0) +
+                        L" request_id=" + localRequestId +
+                        L"ℹ" });
                 attemptedAnyAssertion = true;
                 lastAssertionRpId = attemptedRpId;
 
@@ -2074,6 +2115,16 @@ namespace winrt::PasskeyManager::implementation
                         &attemptedClientData,
                         &retryWithoutAllowListOptions,
                         &pAssertion);
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync state=observed operation=" + operation +
+                            L" step=webauthn_get_assertion_returned rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" assertion=" + std::wstring(pAssertion.get() ? L"non_null" : L"null") +
+                            L" hmac=" + std::wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? L"non_null" : L"null") +
+                            L" cbFirst=" + std::to_wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? pAssertion.get()->pHmacSecret->cbFirst : 0) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
                     retriedWithoutAllowList = true;
                 }
 
@@ -2111,6 +2162,16 @@ namespace winrt::PasskeyManager::implementation
                         &attemptedClientData,
                         &retryDiscoverableAfterCancelledOptions,
                         &pAssertion);
+                    UpdateVaultStatusText(
+                        winrt::hstring{
+                            L"INFO: sync state=observed operation=" + operation +
+                            L" step=webauthn_get_assertion_returned rp_id=" + std::wstring(attemptedRpId) +
+                            L" hr=" + std::to_wstring(hrGetAssertion) +
+                            L" assertion=" + std::wstring(pAssertion.get() ? L"non_null" : L"null") +
+                            L" hmac=" + std::wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? L"non_null" : L"null") +
+                            L" cbFirst=" + std::to_wstring((pAssertion.get() && pAssertion.get()->pHmacSecret) ? pAssertion.get()->pHmacSecret->cbFirst : 0) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
                     retriedDiscoverableAfterCancelledWithLocalCredential = true;
                 }
 
@@ -2203,21 +2264,39 @@ namespace winrt::PasskeyManager::implementation
 
             if (hrGetAssertion == HRESULT_FROM_WIN32(ERROR_CANCELLED))
             {
-                PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
-                auto cancelledRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
-                if (!cancelledRegistrySecret.empty())
+                if (!requireWebAuthnPrf)
                 {
-                    prfSecret.assign(cancelledRegistrySecret.begin(), cancelledRegistrySecret.end());
+                    PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+                    auto cancelledRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                    if (!cancelledRegistrySecret.empty())
+                    {
+                        prfSecret.assign(cancelledRegistrySecret.begin(), cancelledRegistrySecret.end());
+                        logInfoWithRequestId(
+                            L"sync result=info operation=" + operation +
+                            L" reason=prf_hmac_secret_fallback_used_after_cancelled source=registry");
+                    }
+                }
+                else
+                {
                     logInfoWithRequestId(
                         L"sync result=info operation=" + operation +
-                        L" reason=prf_hmac_secret_fallback_used_after_cancelled source=registry");
+                        L" reason=prf_hmac_secret_fallback_ignored_after_cancelled cause=TSUPASSWD_PRF_REQUIRE_WEBAUTHN");
                 }
 
                 if (prfSecret.empty())
                 {
-                    logWarningWithRequestId(
-                        L"sync result=failed operation=" + operation +
-                        L" reason=prf_hmac_secret_missing_after_cancelled source=registry");
+                    if (!requireWebAuthnPrf)
+                    {
+                        logWarningWithRequestId(
+                            L"sync result=failed operation=" + operation +
+                            L" reason=prf_hmac_secret_missing_after_cancelled source=registry");
+                    }
+                    else
+                    {
+                        logWarningWithRequestId(
+                            L"sync result=failed operation=" + operation +
+                            L" reason=prf_hmac_secret_missing_after_cancelled source=webauthn_required");
+                    }
 
                     UpdateVaultStatusText(
                         winrt::hstring{
@@ -2254,24 +2333,25 @@ namespace winrt::PasskeyManager::implementation
 
             if (prfSecret.empty() && SUCCEEDED(hrGetAssertion))
             {
-                PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
-                auto postAssertionRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
-                if (!postAssertionRegistrySecret.empty())
+                if (!requireWebAuthnPrf)
                 {
-                    prfSecret.assign(postAssertionRegistrySecret.begin(), postAssertionRegistrySecret.end());
-                    logWarningWithRequestId(
-                        L"sync result=warning operation=" + operation +
-                        L" reason=prf_hmac_secret_post_assertion_fallback_used source=registry");
+                    PluginRegistrationManager::getInstance().ReloadRegistryValues(localRequestId);
+                    auto postAssertionRegistrySecret = PluginRegistrationManager::getInstance().GetHMACSecret();
+                    if (!postAssertionRegistrySecret.empty())
+                    {
+                        prfSecret.assign(postAssertionRegistrySecret.begin(), postAssertionRegistrySecret.end());
+                        logWarningWithRequestId(
+                            L"sync result=warning operation=" + operation +
+                            L" reason=prf_hmac_secret_post_assertion_fallback_used source=registry");
+                    }
+                }
+                else
+                {
+                    logInfoWithRequestId(
+                        L"sync result=info operation=" + operation +
+                        L" reason=prf_hmac_secret_post_assertion_fallback_ignored cause=TSUPASSWD_PRF_REQUIRE_WEBAUTHN");
                 }
             }
-        }
-
-        std::vector<uint8_t> cipherText;
-        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, localRequestId);
-        if (FAILED(hrReadVaultData))
-        {
-            logWarningWithRequestId(L"sync result=failed operation=" + operation + L" reason=encrypted_vault_data_invalid_or_missing recovery=run_vault_recovery_and_retry");
-            return hrReadVaultData;
         }
 
         std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);

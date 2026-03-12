@@ -1785,7 +1785,56 @@ namespace winrt::PasskeyManager::implementation
             }
             else
             {
-                assertionResponse->pHmacSecret = nullptr;
+                std::array<BYTE, WEBAUTHN_CTAP_ONE_HMAC_SECRET_LENGTH> fallbackSaltBytes{
+                    0x74, 0x73, 0x75, 0x70, 0x61, 0x73, 0x73, 0x77, 0x64, 0x2d, 0x76, 0x61, 0x75, 0x6c, 0x74, 0x2d,
+                    0x70, 0x72, 0x66, 0x2d, 0x76, 0x32, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d, 0x30, 0x30, 0x30, 0x31 };
+                std::span<const BYTE> prfSaltBytes(fallbackSaltBytes.data(), fallbackSaltBytes.size());
+
+                DWORD cbPriv = 0;
+                THROW_IF_FAILED(NCryptExportKey(
+                    hKey.get(),
+                    0,
+                    BCRYPT_ECCPRIVATE_BLOB,
+                    nullptr,
+                    nullptr,
+                    0,
+                    &cbPriv,
+                    0));
+
+                std::vector<BYTE> priv(cbPriv);
+                THROW_IF_FAILED(NCryptExportKey(
+                    hKey.get(),
+                    0,
+                    BCRYPT_ECCPRIVATE_BLOB,
+                    nullptr,
+                    priv.data(),
+                    cbPriv,
+                    &cbPriv,
+                    0));
+                priv.resize(cbPriv);
+
+                THROW_IF_FAILED(ComputeHmacSha256(priv, prfSaltBytes, prfSecret));
+
+                PersistProtectedHmacSecret(std::span<const BYTE>(prfSecret.data(), prfSecret.size()));
+
+                using HmacSecretOut = std::remove_pointer_t<decltype(assertionResponse->pHmacSecret)>;
+
+                wil::unique_cotaskmem_ptr<BYTE[]> hmacOutBytes(
+                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(HmacSecretOut))));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacOutBytes);
+                auto hmacOut = reinterpret_cast<decltype(assertionResponse->pHmacSecret)>(hmacOutBytes.get());
+                *hmacOut = {};
+                hmacOut->cbFirst = static_cast<DWORD>(prfSecret.size());
+
+                wil::unique_cotaskmem_ptr<BYTE[]> hmacFirst(
+                    reinterpret_cast<BYTE*>(CoTaskMemAlloc(hmacOut->cbFirst)));
+                THROW_HR_IF_NULL(E_OUTOFMEMORY, hmacFirst);
+                memcpy_s(hmacFirst.get(), hmacOut->cbFirst, prfSecret.data(), prfSecret.size());
+
+                hmacOut->pbFirst = hmacFirst.get();
+                hmacOut->cbSecond = 0;
+                hmacOut->pbSecond = nullptr;
+                assertionResponse->pHmacSecret = hmacOut;
             }
 
             // [1] Credential (optional)

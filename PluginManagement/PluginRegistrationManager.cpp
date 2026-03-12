@@ -25,6 +25,7 @@ namespace
     constexpr wchar_t kSyncUserIdEnv[] = L"TSUPASSWD_SYNC_USER_ID";
     constexpr wchar_t kSyncAllowInsecureHttpEnv[] = L"TSUPASSWD_SYNC_ALLOW_INSECURE_HTTP";
     constexpr wchar_t kSyncOpaqueSessionWrapEnv[] = L"TSUPASSWD_SYNC_OPAQUE_SESSION_WRAP";
+    constexpr wchar_t kSyncDisableDevLoginEnv[] = L"TSUPASSWD_SYNC_DISABLE_DEV_LOGIN";
     constexpr wchar_t kSyncVerboseDebugEnv[] = L"TSUPASSWD_SYNC_VERBOSE_DEBUG";
     constexpr wchar_t kVaultSchemaSelfTestEnv[] = L"TSUPASSWD_VAULT_SCHEMA_SELF_TEST";
     constexpr wchar_t kVaultRecoveryCodeEnv[] = L"TSUPASSWD_VAULT_RECOVERY_CODE";
@@ -48,6 +49,42 @@ namespace
     {
         HKEY hKey = nullptr;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        {
+            return {};
+        }
+
+        wil::unique_hkey key{ hKey };
+        DWORD type = 0;
+        DWORD cbData = 0;
+        if (RegQueryValueExW(key.get(), name, nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS ||
+            (type != REG_SZ && type != REG_EXPAND_SZ) ||
+            cbData < sizeof(wchar_t))
+        {
+            return {};
+        }
+
+        std::wstring value(cbData / sizeof(wchar_t), L'\0');
+        if (RegQueryValueExW(key.get(), name, nullptr, &type, reinterpret_cast<LPBYTE>(value.data()), &cbData) != ERROR_SUCCESS)
+        {
+            return {};
+        }
+
+        while (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+        return value;
+    }
+
+    std::wstring GetMachineEnvironmentRegistryValue(wchar_t const* name)
+    {
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(
+                HKEY_LOCAL_MACHINE,
+                L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+                0,
+                KEY_READ,
+                &hKey) != ERROR_SUCCESS)
         {
             return {};
         }
@@ -101,7 +138,12 @@ namespace
         {
             return processValue;
         }
-        return GetUserEnvironmentRegistryValue(name);
+        auto userValue = GetUserEnvironmentRegistryValue(name);
+        if (!userValue.empty())
+        {
+            return userValue;
+        }
+        return GetMachineEnvironmentRegistryValue(name);
     }
 
     void ClearProcessEnvironmentVariableValue(wchar_t const* name)
@@ -250,6 +292,11 @@ namespace
         return IsTruthySetting(GetEnvironmentVariableValue(kSyncVerboseDebugEnv));
     }
 
+    bool IsDevLoginDisabled()
+    {
+        return IsTruthySetting(GetEnvironmentVariableValue(kSyncDisableDevLoginEnv));
+    }
+
     void DebugLogIfVerbose(std::wstring const& message)
     {
         if (!IsVerboseSyncDebugEnabled())
@@ -312,6 +359,16 @@ namespace
         std::vector<uint8_t>* sessionKeyBytes = nullptr)
     {
         UNREFERENCED_PARAMETER(sessionKeyBytes);
+
+        std::wstring disableDevLoginRaw = GetEnvironmentVariableValue(kSyncDisableDevLoginEnv);
+        bool disableDevLogin = IsTruthySetting(disableDevLoginRaw);
+        statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=read_env disable_dev_login=" + std::wstring(disableDevLogin ? L"true" : L"false") + L" TSUPASSWD_SYNC_DISABLE_DEV_LOGIN=\"" + disableDevLoginRaw + L"\" request_id=" + localRequestId + L"ℹ" });
+
+        if (disableDevLogin)
+        {
+            statusSink(winrt::hstring{ L"INFO: sync state=observed operation=" + operation + L" step=dev_login_skipped reason=TSUPASSWD_SYNC_DISABLE_DEV_LOGIN request_id=" + localRequestId + L"ℹ" });
+            return false;
+        }
 
         tsupasswd::SyncHttpStatus loginStatus{};
         std::wstring issuedToken;

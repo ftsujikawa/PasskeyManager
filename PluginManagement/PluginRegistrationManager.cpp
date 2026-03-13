@@ -349,6 +349,136 @@ namespace
         return detail;
     }
 
+    bool TryBuildRecoveryBytes(std::vector<uint8_t>& outRecoveryBytes)
+    {
+        outRecoveryBytes.clear();
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            return false;
+        }
+
+        std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
+        outRecoveryBytes.assign(utf8.begin(), utf8.end());
+        return !outRecoveryBytes.empty();
+    }
+
+    bool TryDecryptVaultDocument(
+        std::vector<BYTE> const& cipherBytes,
+        std::vector<uint8_t> const& recoveryBytes,
+        tsupasswd::VaultDocumentV1& outDoc)
+    {
+        outDoc = {};
+        if (cipherBytes.empty() || recoveryBytes.empty())
+        {
+            return false;
+        }
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV3(
+            std::vector<uint8_t>(cipherBytes.begin(), cipherBytes.end()),
+            recoveryBytes,
+            plainBytes,
+            cryptoError))
+        {
+            return false;
+        }
+
+        std::wstring parseError;
+        return tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(
+            plainBytes.data(),
+            plainBytes.size(),
+            outDoc,
+            parseError);
+    }
+
+    bool TryEncryptVaultDocument(
+        tsupasswd::VaultDocumentV1 const& doc,
+        std::vector<uint8_t> const& recoveryBytes,
+        std::vector<BYTE>& outCipherBytes)
+    {
+        outCipherBytes.clear();
+        if (recoveryBytes.empty())
+        {
+            return false;
+        }
+
+        std::vector<BYTE> utf8Bytes;
+        if (!tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(doc, utf8Bytes))
+        {
+            return false;
+        }
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> cipherBytes;
+        if (!tsupasswd::EncryptVaultV3(
+            std::vector<uint8_t>(utf8Bytes.begin(), utf8Bytes.end()),
+            recoveryBytes,
+            cipherBytes,
+            cryptoError))
+        {
+            return false;
+        }
+
+        outCipherBytes.assign(cipherBytes.begin(), cipherBytes.end());
+        return true;
+    }
+
+    std::wstring MaxUpdatedAt(std::wstring const& left, std::wstring const& right)
+    {
+        return left >= right ? left : right;
+    }
+
+    tsupasswd::VaultDocumentV1 MergeVaultDocuments(
+        tsupasswd::VaultDocumentV1 localDoc,
+        tsupasswd::VaultDocumentV1 const& serverDoc,
+        std::wstring const& fallbackVaultId)
+    {
+        if (localDoc.SchemaVersion <= 0)
+        {
+            localDoc.SchemaVersion = 1;
+        }
+        if (localDoc.VaultId.empty())
+        {
+            localDoc.VaultId = !serverDoc.VaultId.empty() ? serverDoc.VaultId : fallbackVaultId;
+        }
+
+        std::map<std::wstring, size_t> localIndexById;
+        for (size_t index = 0; index < localDoc.Items.size(); ++index)
+        {
+            if (!localDoc.Items[index].ItemId.empty())
+            {
+                localIndexById.emplace(localDoc.Items[index].ItemId, index);
+            }
+        }
+
+        for (auto const& serverItem : serverDoc.Items)
+        {
+            if (serverItem.ItemId.empty())
+            {
+                continue;
+            }
+
+            auto found = localIndexById.find(serverItem.ItemId);
+            if (found == localIndexById.end())
+            {
+                localIndexById.emplace(serverItem.ItemId, localDoc.Items.size());
+                localDoc.Items.push_back(serverItem);
+                continue;
+            }
+
+            auto& localItem = localDoc.Items[found->second];
+            if (serverItem.UpdatedAt > localItem.UpdatedAt)
+            {
+                localItem = serverItem;
+            }
+        }
+
+        localDoc.Revision = (std::max)(localDoc.Revision, serverDoc.Revision);
+        return localDoc;
+    }
+
     bool TryIssueDevLoginToken(
         tsupasswd::SyncClient& syncClient,
         std::wstring const& syncUserId,
@@ -1978,6 +2108,13 @@ namespace winrt::PasskeyManager::implementation {
             return hrValidation;
         }
 
+        std::vector<uint8_t> recoveryBytes;
+        if (!TryBuildRecoveryBytes(recoveryBytes))
+        {
+            UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=recovery_code_missing recovery=set_TSUPASSWD_VAULT_RECOVERY_CODE request_id=" + localRequestId + L"⚠" });
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        }
+
         std::vector<BYTE> encryptedVaultData;
         HRESULT hrReadVault = ReadEncryptedVaultData(encryptedVaultData, localRequestId);
         if (FAILED(hrReadVault))
@@ -2005,11 +2142,54 @@ namespace winrt::PasskeyManager::implementation {
             }
         }
 
-        RETURN_IF_FAILED(hrReadVault);
+        tsupasswd::VaultDocumentV1 localDoc{};
+        bool hasLocalVault = SUCCEEDED(hrReadVault);
+        if (hasLocalVault)
+        {
+            if (!TryDecryptVaultDocument(encryptedVaultData, recoveryBytes, localDoc))
+            {
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
+        }
+        else
+        {
+            localDoc.SchemaVersion = 1;
+            localDoc.VaultId = localRequestId;
+            localDoc.Revision = 0;
+        }
+
+        std::wstring restoreRequestId = localRequestId + L"-pull";
+        HRESULT hrRestore = RestoreSelfHostedVaultSnapshot(restoreRequestId);
+        if (SUCCEEDED(hrRestore))
+        {
+            std::vector<BYTE> restoredCipher;
+            HRESULT hrReadRestored = ReadEncryptedVaultData(restoredCipher, restoreRequestId);
+            if (SUCCEEDED(hrReadRestored))
+            {
+                tsupasswd::VaultDocumentV1 serverDoc{};
+                if (TryDecryptVaultDocument(restoredCipher, recoveryBytes, serverDoc))
+                {
+                    localDoc = MergeVaultDocuments(std::move(localDoc), serverDoc, localRequestId);
+                }
+            }
+        }
+        else if (hrRestore != HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            return hrRestore;
+        }
+
+        localDoc.Revision += 1;
+        std::vector<BYTE> mergedCipher;
+        if (!TryEncryptVaultDocument(localDoc, recoveryBytes, mergedCipher))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        RETURN_IF_FAILED(WriteEncryptedVaultData(mergedCipher));
 
         UpdatePasskeyOperationStatusText(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" request_id=" + localRequestId + L"ℹ" });
         auto hrSync = SyncEncryptedVaultWithRetry(
-            encryptedVaultData,
+            mergedCipher,
             syncUserId,
             [this](winrt::hstring const& status)
             {

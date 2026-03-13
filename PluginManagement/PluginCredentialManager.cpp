@@ -1802,7 +1802,8 @@ namespace winrt::PasskeyManager::implementation
                 }
 
                 auto* userInfo = new (std::nothrow) WEBAUTHN_USER_ENTITY_INFORMATION{};
-                WEBAUTHN_RP_ENTITY_INFORMATION* rpInfo = new (std::nothrow) WEBAUTHN_RP_ENTITY_INFORMATION{};
+                WEBAUTHN_RP_ENTITY_INFORMATION* rpInfo = nullptr;
+                rpInfo = new (std::nothrow) WEBAUTHN_RP_ENTITY_INFORMATION{};
                 if (userInfo == nullptr || rpInfo == nullptr)
                 {
                     delete userInfo;

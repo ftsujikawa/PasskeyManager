@@ -1622,8 +1622,20 @@ namespace winrt::PasskeyManager::implementation
     winrt::IAsyncAction MainPage::refreshButton_Click(IInspectable const&, RoutedEventArgs const&)
     {
         UpdatePluginEnableState();
-        UpdateCredentialList();
+        m_cookie = RegisterWebAuthNStatusChangeCallback(static_cast<void*>(this));
         co_return;
+    }
+
+    void MainPage::ResetVaultLoginEditor()
+    {
+        m_editingVaultLoginItemId.clear();
+        vaultLoginTitleTextBox().Text(L"");
+        vaultLoginUserIdTextBox().Text(L"");
+        vaultLoginPasswordBox().Password(L"");
+        vaultLoginUrlTextBox().Text(L"");
+        vaultLoginNotesTextBox().Text(L"");
+        saveVaultLoginItemButton().Content(winrt::box_value(L"Login を Vault に保存して同期"));
+        cancelVaultLoginEditButton().IsEnabled(false);
     }
 
     winrt::fire_and_forget MainPage::UpdateCredentialList()
@@ -2367,7 +2379,8 @@ namespace winrt::PasskeyManager::implementation
 
     winrt::IAsyncAction MainPage::saveVaultLoginItemButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        std::wstring operation = L"save_login_item";
+        bool isEditing = !m_editingVaultLoginItemId.empty();
+        std::wstring operation = isEditing ? L"update_login_item" : L"save_login_item";
         std::wstring requestId = BuildRequestId(operation);
         std::wstring title = TrimCopy(vaultLoginTitleTextBox().Text().c_str());
         std::wstring userId = TrimCopy(vaultLoginUserIdTextBox().Text().c_str());
@@ -2389,14 +2402,29 @@ namespace winrt::PasskeyManager::implementation
         HWND hwnd = curApp->GetNativeWindowHandle();
 
         co_await winrt::resume_background();
-        HRESULT hrSave = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(
-            hwnd,
-            title,
-            userId,
-            password,
-            url,
-            notes,
-            requestId);
+        HRESULT hrSave = S_OK;
+        if (isEditing)
+        {
+            hrSave = PluginCredentialManager::getInstance().UpdateVaultLoginItemById(
+                m_editingVaultLoginItemId,
+                title,
+                userId,
+                password,
+                url,
+                notes,
+                requestId);
+        }
+        else
+        {
+            hrSave = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(
+                hwnd,
+                title,
+                userId,
+                password,
+                url,
+                notes,
+                requestId);
+        }
 
         HRESULT hrSync = S_OK;
         if (SUCCEEDED(hrSave))
@@ -2410,12 +2438,9 @@ namespace winrt::PasskeyManager::implementation
             self->saveVaultLoginItemButton().IsEnabled(true);
             if (SUCCEEDED(hrSave) && SUCCEEDED(hrSync))
             {
-                self->vaultLoginTitleTextBox().Text(L"");
-                self->vaultLoginUserIdTextBox().Text(L"");
-                self->vaultLoginPasswordBox().Password(L"");
-                self->vaultLoginUrlTextBox().Text(L"");
-                self->vaultLoginNotesTextBox().Text(L"");
+                self->ResetVaultLoginEditor();
                 self->ReloadSnapshotCandidates();
+                self->UpdateCredentialList();
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
             }
@@ -2431,6 +2456,66 @@ namespace winrt::PasskeyManager::implementation
             }
         }
 
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::editSelectedVaultLoginItemButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        std::wstring operation = L"edit_login_item";
+        std::wstring requestId = BuildRequestId(operation);
+        auto selectedItem = vaultLoginListView().SelectedItem();
+        if (!selectedItem)
+        {
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=no_selection request_id=" + requestId });
+            co_return;
+        }
+
+        auto credential = selectedItem.as<PasskeyManager::Credential>();
+        auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential.CredentialId());
+        std::vector<uint8_t> itemIdBytes(reader.UnconsumedBufferLength());
+        reader.ReadBytes(itemIdBytes);
+        std::wstring itemId = winrt::to_hstring(std::string(itemIdBytes.begin(), itemIdBytes.end())).c_str();
+        if (itemId.empty())
+        {
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_item_id request_id=" + requestId });
+            co_return;
+        }
+
+        auto weakThis = get_weak();
+        editSelectedVaultLoginItemButton().IsEnabled(false);
+        co_await winrt::resume_background();
+        tsupasswd::VaultItemV1 item{};
+        HRESULT hr = PluginCredentialManager::getInstance().GetVaultLoginItemById(itemId, item);
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->editSelectedVaultLoginItemButton().IsEnabled(true);
+            if (SUCCEEDED(hr))
+            {
+                self->m_editingVaultLoginItemId = item.ItemId;
+                self->vaultLoginTitleTextBox().Text(item.Title.c_str());
+                self->vaultLoginUserIdTextBox().Text(item.Login.Username.c_str());
+                self->vaultLoginPasswordBox().Password(item.Login.Password.c_str());
+                self->vaultLoginUrlTextBox().Text(item.Login.Url.c_str());
+                self->vaultLoginNotesTextBox().Text(item.Notes.c_str());
+                self->saveVaultLoginItemButton().Content(winrt::box_value(L"Login を更新して同期"));
+                self->cancelVaultLoginEditButton().IsEnabled(true);
+                self->LogInfo(winrt::hstring{ L"summary state=ready operation=" + operation + L" request_id=" + requestId });
+            }
+            else
+            {
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hr)) + L" request_id=" + requestId });
+            }
+        }
+
+        co_return;
+    }
+
+    winrt::IAsyncAction MainPage::cancelVaultLoginEditButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        ResetVaultLoginEditor();
+        LogInfo(winrt::hstring{ L"summary state=ready operation=cancel_login_item_edit request_id=" + BuildRequestId(L"cancel_login_item_edit") });
         co_return;
     }
 

@@ -655,10 +655,24 @@
                             x:Name="saveVaultLoginItemButton"
                             Grid.Row="0"
                             Grid.Column="2"
-                            Grid.RowSpan="5"
+                            Margin="0,0,0,8"
                             Click="saveVaultLoginItemButton_Click"
                             Content="Login を Vault に保存して同期"
                             Style="{StaticResource AccentButtonStyle}" />
+                        <Button
+                            x:Name="editSelectedVaultLoginItemButton"
+                            Grid.Row="1"
+                            Grid.Column="2"
+                            Margin="0,0,0,8"
+                            Click="editSelectedVaultLoginItemButton_Click"
+                            Content="選択した Login をフォームに読込" />
+                        <Button
+                            x:Name="cancelVaultLoginEditButton"
+                            Grid.Row="2"
+                            Grid.Column="2"
+                            Click="cancelVaultLoginEditButton_Click"
+                            Content="編集をキャンセル"
+                            IsEnabled="False" />
                     </Grid>
 
                     <TextBox

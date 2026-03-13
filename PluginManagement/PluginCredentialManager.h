@@ -8,6 +8,7 @@
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include "PluginRegistrationManager.h"
+#include "src/VaultModel.h"
 #include <CredentialListViewModel.h>
 #include <Credential.h>
 #include <wil/registry.h>
@@ -175,6 +176,18 @@ namespace winrt::PasskeyManager::implementation
         HRESULT ExportDecryptedVaultJsonWithPasskey(HWND hwnd, std::wstring& outJson, std::wstring const& requestId = L"");
         HRESULT SaveLoginItemToVaultWithPasskey(
             HWND hwnd,
+            std::wstring const& title,
+            std::wstring const& username,
+            std::wstring const& password,
+            std::wstring const& url,
+            std::wstring const& notes,
+            std::wstring const& requestId = L"");
+        HRESULT GetVaultLoginItemById(
+            std::wstring const& itemId,
+            tsupasswd::VaultItemV1& outItem,
+            std::wstring const& requestId = L"");
+        HRESULT UpdateVaultLoginItemById(
+            std::wstring const& itemId,
             std::wstring const& title,
             std::wstring const& username,
             std::wstring const& password,

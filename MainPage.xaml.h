@@ -69,6 +69,8 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction clearLocalVaultButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction manualSyncButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction saveVaultLoginItemButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction editSelectedVaultLoginItemButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction cancelVaultLoginEditButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction deleteSelectedVaultLoginItemButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction restoreSyncSnapshotButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction showSyncedVaultButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
@@ -413,8 +415,10 @@ namespace winrt::PasskeyManager::implementation
         std::optional<DWORD> m_lastObservedMakeCredentialStatus{};
         std::optional<ULONGLONG> m_lastObservedMakeCredentialSequence{};
         std::vector<tsupasswd::SyncSnapshotRecord> m_syncSnapshotCandidates{};
+        std::wstring m_editingVaultLoginItemId{};
         void UpdateVaultUnlockControlText(bool isLocked);
         void SetVaultLockSwitchState(bool isOn);
+        void ResetVaultLoginEditor();
         void RebuildLogView();
         bool ShouldShowLogLine(std::wstring const& line);
         void UpdateLogDetailSummary();

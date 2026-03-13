@@ -2620,6 +2620,8 @@ namespace winrt::PasskeyManager::implementation
         std::wstring const& notes,
         std::wstring const& requestId) try
     {
+        UNREFERENCED_PARAMETER(hwnd);
+
         std::wstring operation = L"save_login_item";
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
@@ -2755,6 +2757,172 @@ namespace winrt::PasskeyManager::implementation
         tsupasswd::VaultCryptoError cryptoError{};
         std::vector<uint8_t> cipherBytes;
         std::vector<uint8_t> plainBytes(utf8Bytes.begin(), utf8Bytes.end());
+        if (!tsupasswd::EncryptVaultV3(plainBytes, recoveryBytes, cipherBytes, cryptoError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
+        return S_OK;
+    }
+    CATCH_RETURN()
+
+    HRESULT PluginCredentialManager::GetVaultLoginItemById(
+        std::wstring const& itemId,
+        tsupasswd::VaultItemV1& outItem,
+        std::wstring const& requestId) try
+    {
+        outItem = {};
+        RETURN_HR_IF(E_INVALIDARG, itemId.empty());
+
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(L"get_login_item");
+        }
+
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        }
+
+        std::vector<uint8_t> recoveryBytes;
+        {
+            std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), recoveryBytes.empty());
+
+        std::vector<uint8_t> existingCipherText;
+        RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ReadEncryptedVaultData(existingCipherText, localRequestId));
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV3(existingCipherText, recoveryBytes, plainBytes, cryptoError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::wstring decryptedJson = winrt::to_hstring(std::string(reinterpret_cast<char const*>(plainBytes.data()), plainBytes.size())).c_str();
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::wstring parseError;
+        if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        for (auto const& item : vaultDoc.Items)
+        {
+            if (item.ItemId == itemId && item.ItemType == tsupasswd::VaultItemType::Login && !item.Deleted)
+            {
+                outItem = item;
+                return S_OK;
+            }
+        }
+
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    }
+    CATCH_RETURN()
+
+    HRESULT PluginCredentialManager::UpdateVaultLoginItemById(
+        std::wstring const& itemId,
+        std::wstring const& title,
+        std::wstring const& username,
+        std::wstring const& password,
+        std::wstring const& url,
+        std::wstring const& notes,
+        std::wstring const& requestId) try
+    {
+        RETURN_HR_IF(E_INVALIDARG, itemId.empty());
+
+        auto trimmedTitle = title;
+        auto trimmedUsername = username;
+        auto trimmedPassword = password;
+        auto trimInPlace = [](std::wstring& value)
+        {
+            auto first = value.find_first_not_of(L" \t\r\n");
+            if (first == std::wstring::npos)
+            {
+                value.clear();
+                return;
+            }
+            auto last = value.find_last_not_of(L" \t\r\n");
+            value = value.substr(first, last - first + 1);
+        };
+        trimInPlace(trimmedTitle);
+        trimInPlace(trimmedUsername);
+        trimInPlace(trimmedPassword);
+        RETURN_HR_IF(E_INVALIDARG, trimmedTitle.empty() || trimmedUsername.empty() || trimmedPassword.empty());
+
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(L"update_login_item");
+        }
+
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        }
+
+        std::vector<uint8_t> recoveryBytes;
+        {
+            std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), recoveryBytes.empty());
+
+        std::vector<uint8_t> existingCipherText;
+        RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ReadEncryptedVaultData(existingCipherText, localRequestId));
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV3(existingCipherText, recoveryBytes, plainBytes, cryptoError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::wstring decryptedJson = winrt::to_hstring(std::string(reinterpret_cast<char const*>(plainBytes.data()), plainBytes.size())).c_str();
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::wstring parseError;
+        if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        bool found = false;
+        std::wstring now = GetNowIsoLikeTimestamp();
+        for (auto& item : vaultDoc.Items)
+        {
+            if (item.ItemId != itemId || item.ItemType != tsupasswd::VaultItemType::Login || item.Deleted)
+            {
+                continue;
+            }
+
+            item.Title = trimmedTitle;
+            item.Notes = notes;
+            item.UpdatedAt = now;
+            item.Login.Username = trimmedUsername;
+            item.Login.Password = trimmedPassword;
+            item.Login.Url = url;
+            item.Login.TotpSecret = L"";
+            found = true;
+            break;
+        }
+
+        RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), !found);
+        vaultDoc.Revision += 1;
+
+        std::vector<BYTE> utf8Bytes;
+        if (!tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, utf8Bytes))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        std::vector<uint8_t> cipherBytes;
+        plainBytes.assign(utf8Bytes.begin(), utf8Bytes.end());
         if (!tsupasswd::EncryptVaultV3(plainBytes, recoveryBytes, cipherBytes, cryptoError))
         {
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);

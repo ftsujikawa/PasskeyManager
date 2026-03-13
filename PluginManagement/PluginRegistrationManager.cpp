@@ -2095,7 +2095,6 @@ namespace winrt::PasskeyManager::implementation {
         {
             syncClient.SetBearerToken(bearerToken);
 
-            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
             if (!recoveryCode.empty())
             {
                 tsupasswd::SyncHttpStatus loginStatus{};

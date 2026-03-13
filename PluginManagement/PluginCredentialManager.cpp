@@ -221,6 +221,38 @@ namespace winrt::PasskeyManager::implementation
             return output;
         }
 
+        bool Base64UrlDecode(std::string encoded, std::vector<UINT8>& outBytes)
+        {
+            outBytes.clear();
+            if (encoded.empty())
+            {
+                return true;
+            }
+
+            std::replace(encoded.begin(), encoded.end(), '-', '+');
+            std::replace(encoded.begin(), encoded.end(), '_', '/');
+            while ((encoded.size() % 4) != 0)
+            {
+                encoded.push_back('=');
+            }
+
+            DWORD required = 0;
+            if (!CryptStringToBinaryA(encoded.c_str(), static_cast<DWORD>(encoded.size()), CRYPT_STRING_BASE64, nullptr, &required, nullptr, nullptr))
+            {
+                return false;
+            }
+
+            outBytes.resize(required);
+            if (!CryptStringToBinaryA(encoded.c_str(), static_cast<DWORD>(encoded.size()), CRYPT_STRING_BASE64, outBytes.data(), &required, nullptr, nullptr))
+            {
+                outBytes.clear();
+                return false;
+            }
+
+            outBytes.resize(required);
+            return true;
+        }
+
         std::wstring ResolveBridgeCorePasskeysPath()
         {
             wchar_t* envPath = nullptr;
@@ -1625,6 +1657,221 @@ namespace winrt::PasskeyManager::implementation
         }
 
         return PersistCredentialTimestampMetadata();
+    }
+
+    bool PluginCredentialManager::MergeLocalCredentialMetadataIntoVaultDocument(tsupasswd::VaultDocumentV1& doc)
+    {
+        std::lock_guard<std::mutex> lock(m_pluginLocalCredentialsOperationMutex);
+
+        doc.Items.erase(
+            std::remove_if(
+                doc.Items.begin(),
+                doc.Items.end(),
+                [](tsupasswd::VaultItemV1 const& item)
+                {
+                    return item.ItemType == tsupasswd::VaultItemType::PasskeyMetadata;
+                }),
+            doc.Items.end());
+
+        for (const auto& [credentialId, savedCredential] : m_pluginLocalCredentialMetadataMap)
+        {
+            if (!savedCredential || !savedCredential->pUserInformation || !savedCredential->pRpInformation)
+            {
+                continue;
+            }
+
+            tsupasswd::VaultItemV1 item{};
+            item.ItemType = tsupasswd::VaultItemType::PasskeyMetadata;
+            item.PasskeyMetadata.CredentialIdBase64 = winrt::to_hstring(Base64Encode(std::span<const UINT8>(credentialId.data(), credentialId.size()))).c_str();
+            if (savedCredential->pUserInformation->pbId != nullptr && savedCredential->pUserInformation->cbId > 0)
+            {
+                item.PasskeyMetadata.UserIdBase64 = winrt::to_hstring(
+                    Base64Encode(
+                        std::span<const UINT8>(
+                            savedCredential->pUserInformation->pbId,
+                            savedCredential->pUserInformation->cbId))).c_str();
+            }
+            item.PasskeyMetadata.RpId = savedCredential->pRpInformation->pwszId ? savedCredential->pRpInformation->pwszId : L"";
+            item.PasskeyMetadata.RpName = savedCredential->pRpInformation->pwszName ? savedCredential->pRpInformation->pwszName : L"";
+            item.PasskeyMetadata.UserName = savedCredential->pUserInformation->pwszName ? savedCredential->pUserInformation->pwszName : L"";
+            item.PasskeyMetadata.UserDisplayName = savedCredential->pUserInformation->pwszDisplayName ? savedCredential->pUserInformation->pwszDisplayName : L"";
+            auto timestampIt = m_pluginLocalCredentialTimestampMetadataMap.find(credentialId);
+            if (timestampIt != m_pluginLocalCredentialTimestampMetadataMap.end())
+            {
+                item.PasskeyMetadata.CreatedAtUnixSeconds = timestampIt->second.createdAtUnixSeconds;
+                item.PasskeyMetadata.UpdatedAtUnixSeconds = timestampIt->second.updatedAtUnixSeconds;
+            }
+
+            item.ItemId = L"passkey:" + item.PasskeyMetadata.CredentialIdBase64;
+            item.Title = !item.PasskeyMetadata.RpName.empty() ? item.PasskeyMetadata.RpName : item.PasskeyMetadata.RpId;
+            item.CreatedAt = FormatUnixSecondsForDisplay(item.PasskeyMetadata.CreatedAtUnixSeconds);
+            item.UpdatedAt = FormatUnixSecondsForDisplay(item.PasskeyMetadata.UpdatedAtUnixSeconds);
+            doc.Items.push_back(std::move(item));
+        }
+
+        return true;
+    }
+
+    bool PluginCredentialManager::HydrateLocalCredentialMetadataFromVaultDocument(tsupasswd::VaultDocumentV1 const& doc)
+    {
+        struct HydrationItem
+        {
+            std::vector<UINT8> credentialId;
+            std::vector<UINT8> userId;
+            std::wstring userName;
+            std::wstring userDisplayName;
+            std::wstring rpId;
+            std::wstring rpName;
+            CredentialTimestampMetadata timestamps;
+        };
+
+        std::vector<HydrationItem> hydrationItems;
+        hydrationItems.reserve(doc.Items.size());
+        for (auto const& item : doc.Items)
+        {
+            if (item.ItemType != tsupasswd::VaultItemType::PasskeyMetadata)
+            {
+                continue;
+            }
+
+            HydrationItem hydrationItem{};
+            if (!Base64UrlDecode(winrt::to_string(winrt::hstring{ item.PasskeyMetadata.CredentialIdBase64 }), hydrationItem.credentialId) ||
+                hydrationItem.credentialId.empty())
+            {
+                continue;
+            }
+            if (!item.PasskeyMetadata.UserIdBase64.empty())
+            {
+                (void)Base64UrlDecode(winrt::to_string(winrt::hstring{ item.PasskeyMetadata.UserIdBase64 }), hydrationItem.userId);
+            }
+            hydrationItem.userName = item.PasskeyMetadata.UserName;
+            hydrationItem.userDisplayName = item.PasskeyMetadata.UserDisplayName;
+            hydrationItem.rpId = item.PasskeyMetadata.RpId;
+            hydrationItem.rpName = item.PasskeyMetadata.RpName;
+            hydrationItem.timestamps.createdAtUnixSeconds = item.PasskeyMetadata.CreatedAtUnixSeconds;
+            hydrationItem.timestamps.updatedAtUnixSeconds = item.PasskeyMetadata.UpdatedAtUnixSeconds;
+            hydrationItems.push_back(std::move(hydrationItem));
+        }
+
+        if (hydrationItems.empty())
+        {
+            return true;
+        }
+
+        auto duplicateWStringBuffer = [](std::wstring const& src) -> PWSTR
+        {
+            const size_t charCount = src.size() + 1;
+            BYTE* rawBuffer = new (std::nothrow) BYTE[charCount * sizeof(WCHAR)];
+            if (rawBuffer == nullptr)
+            {
+                return nullptr;
+            }
+
+            wchar_t* wchars = reinterpret_cast<wchar_t*>(rawBuffer);
+            memcpy_s(wchars, charCount * sizeof(WCHAR), src.c_str(), src.size() * sizeof(WCHAR));
+            wchars[src.size()] = L'\0';
+            return reinterpret_cast<PWSTR>(rawBuffer);
+        };
+
+        bool hydratedLocalAdded = false;
+        {
+            std::lock_guard<std::mutex> localLock(m_pluginLocalCredentialsOperationMutex);
+            for (const auto& item : hydrationItems)
+            {
+                if (item.credentialId.empty() || m_pluginLocalCredentialMetadataMap.find(item.credentialId) != m_pluginLocalCredentialMetadataMap.end())
+                {
+                    if (!item.credentialId.empty())
+                    {
+                        auto& timestamps = m_pluginLocalCredentialTimestampMetadataMap[item.credentialId];
+                        if (timestamps.createdAtUnixSeconds == 0)
+                        {
+                            timestamps.createdAtUnixSeconds = item.timestamps.createdAtUnixSeconds;
+                        }
+                        if (item.timestamps.updatedAtUnixSeconds != 0)
+                        {
+                            timestamps.updatedAtUnixSeconds = item.timestamps.updatedAtUnixSeconds;
+                        }
+                    }
+                    continue;
+                }
+
+                unique_credential_details hydratedCredential(new (std::nothrow) WEBAUTHN_CREDENTIAL_DETAILS{});
+                if (!hydratedCredential)
+                {
+                    continue;
+                }
+
+                auto* userInfo = new (std::nothrow) WEBAUTHN_USER_ENTITY_INFORMATION{};
+                WEBAUTHN_RP_ENTITY_INFORMATION* rpInfo = new (std::nothrow) WEBAUTHN_RP_ENTITY_INFORMATION{};
+                if (userInfo == nullptr || rpInfo == nullptr)
+                {
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+
+                hydratedCredential->cbCredentialID = static_cast<DWORD>(item.credentialId.size());
+                BYTE* credentialIdBuffer = new (std::nothrow) BYTE[hydratedCredential->cbCredentialID];
+                if (credentialIdBuffer == nullptr)
+                {
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+                hydratedCredential->pbCredentialID = credentialIdBuffer;
+                memcpy_s(hydratedCredential->pbCredentialID, hydratedCredential->cbCredentialID, item.credentialId.data(), item.credentialId.size());
+
+                userInfo->cbId = static_cast<DWORD>(item.userId.size());
+                if (userInfo->cbId > 0)
+                {
+                    userInfo->pbId = new (std::nothrow) BYTE[userInfo->cbId];
+                    if (userInfo->pbId == nullptr)
+                    {
+                        delete[] hydratedCredential->pbCredentialID;
+                        hydratedCredential->pbCredentialID = nullptr;
+                        delete userInfo;
+                        delete rpInfo;
+                        continue;
+                    }
+                    memcpy_s(userInfo->pbId, userInfo->cbId, item.userId.data(), item.userId.size());
+                }
+
+                userInfo->pwszName = duplicateWStringBuffer(item.userName);
+                userInfo->pwszDisplayName = duplicateWStringBuffer(item.userDisplayName);
+                rpInfo->pwszId = duplicateWStringBuffer(item.rpId);
+                rpInfo->pwszName = duplicateWStringBuffer(item.rpName);
+                if (userInfo->pwszName == nullptr || userInfo->pwszDisplayName == nullptr || rpInfo->pwszId == nullptr || rpInfo->pwszName == nullptr)
+                {
+                    delete[] hydratedCredential->pbCredentialID;
+                    hydratedCredential->pbCredentialID = nullptr;
+                    delete[] userInfo->pbId;
+                    if (userInfo->pwszName != nullptr) delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(userInfo->pwszName));
+                    if (userInfo->pwszDisplayName != nullptr) delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(userInfo->pwszDisplayName));
+                    if (rpInfo->pwszId != nullptr) delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(rpInfo->pwszId));
+                    if (rpInfo->pwszName != nullptr) delete[] reinterpret_cast<BYTE*>(const_cast<PWSTR>(rpInfo->pwszName));
+                    delete userInfo;
+                    delete rpInfo;
+                    continue;
+                }
+
+                hydratedCredential->pUserInformation = userInfo;
+                hydratedCredential->pRpInformation = rpInfo;
+                m_pluginLocalCredentialMetadataMap.emplace(item.credentialId, std::move(hydratedCredential));
+                m_pluginLocalCredentialTimestampMetadataMap[item.credentialId] = item.timestamps;
+                hydratedLocalAdded = true;
+            }
+        }
+
+        if (hydratedLocalAdded)
+        {
+            if (!RecreateCredentialMetadataFile())
+            {
+                return false;
+            }
+            ExportBridgeCorePasskeysJson();
+        }
+
+        return true;
     }
 
     bool PluginCredentialManager::ResetLocalCredentialsStore()

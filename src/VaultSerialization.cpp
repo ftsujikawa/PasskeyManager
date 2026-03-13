@@ -50,11 +50,6 @@ namespace tsupasswd
                 outType = VaultItemType::Login;
                 return true;
             }
-            if (value == L"passkey_metadata")
-            {
-                outType = VaultItemType::PasskeyMetadata;
-                return true;
-            }
             return false;
         }
 
@@ -64,8 +59,6 @@ namespace tsupasswd
             {
             case VaultItemType::Login:
                 return L"login";
-            case VaultItemType::PasskeyMetadata:
-                return L"passkey_metadata";
             default:
                 return L"unknown";
             }
@@ -91,45 +84,24 @@ namespace tsupasswd
                     outError = L"item_id_required";
                     return false;
                 }
-                if (item.ItemType == VaultItemType::Login)
-                {
-                    if (item.Title.empty())
-                    {
-                        outError = L"title_required";
-                        return false;
-                    }
-                    if (item.Login.Username.empty())
-                    {
-                        outError = L"login_username_required";
-                        return false;
-                    }
-                    if (item.Login.Password.empty())
-                    {
-                        outError = L"login_password_required";
-                        return false;
-                    }
-                }
-                else if (item.ItemType == VaultItemType::PasskeyMetadata)
-                {
-                    if (item.PasskeyMetadata.CredentialIdBase64.empty())
-                    {
-                        outError = L"passkey_credential_id_required";
-                        return false;
-                    }
-                    if (item.PasskeyMetadata.RpId.empty())
-                    {
-                        outError = L"passkey_rp_id_required";
-                        return false;
-                    }
-                    if (item.PasskeyMetadata.UserName.empty())
-                    {
-                        outError = L"passkey_user_name_required";
-                        return false;
-                    }
-                }
-                else
+                if (item.ItemType != VaultItemType::Login)
                 {
                     outError = L"unsupported_item_type";
+                    return false;
+                }
+                if (item.Title.empty())
+                {
+                    outError = L"title_required";
+                    return false;
+                }
+                if (item.Login.Username.empty())
+                {
+                    outError = L"login_username_required";
+                    return false;
+                }
+                if (item.Login.Password.empty())
+                {
+                    outError = L"login_password_required";
                     return false;
                 }
             }
@@ -163,28 +135,12 @@ namespace tsupasswd
             itemObj.SetNamedValue(L"created_at", JsonValue::CreateStringValue(item.CreatedAt));
             itemObj.SetNamedValue(L"updated_at", JsonValue::CreateStringValue(item.UpdatedAt));
 
-            if (item.ItemType == VaultItemType::Login)
-            {
-                JsonObject login;
-                login.SetNamedValue(L"username", JsonValue::CreateStringValue(item.Login.Username));
-                login.SetNamedValue(L"password", JsonValue::CreateStringValue(item.Login.Password));
-                login.SetNamedValue(L"url", JsonValue::CreateStringValue(item.Login.Url));
-                login.SetNamedValue(L"totp_secret", JsonValue::CreateStringValue(item.Login.TotpSecret));
-                itemObj.SetNamedValue(L"login", login);
-            }
-            else if (item.ItemType == VaultItemType::PasskeyMetadata)
-            {
-                JsonObject passkeyMetadata;
-                passkeyMetadata.SetNamedValue(L"credential_id_base64", JsonValue::CreateStringValue(item.PasskeyMetadata.CredentialIdBase64));
-                passkeyMetadata.SetNamedValue(L"user_id_base64", JsonValue::CreateStringValue(item.PasskeyMetadata.UserIdBase64));
-                passkeyMetadata.SetNamedValue(L"rp_id", JsonValue::CreateStringValue(item.PasskeyMetadata.RpId));
-                passkeyMetadata.SetNamedValue(L"rp_name", JsonValue::CreateStringValue(item.PasskeyMetadata.RpName));
-                passkeyMetadata.SetNamedValue(L"user_name", JsonValue::CreateStringValue(item.PasskeyMetadata.UserName));
-                passkeyMetadata.SetNamedValue(L"user_display_name", JsonValue::CreateStringValue(item.PasskeyMetadata.UserDisplayName));
-                passkeyMetadata.SetNamedValue(L"created_at_unix_seconds", JsonValue::CreateNumberValue(static_cast<double>(item.PasskeyMetadata.CreatedAtUnixSeconds)));
-                passkeyMetadata.SetNamedValue(L"updated_at_unix_seconds", JsonValue::CreateNumberValue(static_cast<double>(item.PasskeyMetadata.UpdatedAtUnixSeconds)));
-                itemObj.SetNamedValue(L"passkey_metadata", passkeyMetadata);
-            }
+            JsonObject login;
+            login.SetNamedValue(L"username", JsonValue::CreateStringValue(item.Login.Username));
+            login.SetNamedValue(L"password", JsonValue::CreateStringValue(item.Login.Password));
+            login.SetNamedValue(L"url", JsonValue::CreateStringValue(item.Login.Url));
+            login.SetNamedValue(L"totp_secret", JsonValue::CreateStringValue(item.Login.TotpSecret));
+            itemObj.SetNamedValue(L"login", login);
 
             items.Append(itemObj);
         }
@@ -305,72 +261,26 @@ namespace tsupasswd
             (void)TryGetString(itemObj, L"created_at", item.CreatedAt);
             (void)TryGetString(itemObj, L"updated_at", item.UpdatedAt);
 
-            if (item.ItemType == VaultItemType::Login)
+            auto loginValue = itemObj.GetNamedValue(L"login", nullptr);
+            if (!loginValue || loginValue.ValueType() != JsonValueType::Object)
             {
-                auto loginValue = itemObj.GetNamedValue(L"login", nullptr);
-                if (!loginValue || loginValue.ValueType() != JsonValueType::Object)
-                {
-                    outError = L"login_required";
-                    return false;
-                }
-                auto loginObj = loginValue.GetObjectW();
-
-                if (!TryGetString(loginObj, L"username", item.Login.Username))
-                {
-                    outError = L"login_username_required";
-                    return false;
-                }
-                if (!TryGetString(loginObj, L"password", item.Login.Password))
-                {
-                    outError = L"login_password_required";
-                    return false;
-                }
-                (void)TryGetString(loginObj, L"url", item.Login.Url);
-                (void)TryGetString(loginObj, L"totp_secret", item.Login.TotpSecret);
-            }
-            else if (item.ItemType == VaultItemType::PasskeyMetadata)
-            {
-                auto metadataValue = itemObj.GetNamedValue(L"passkey_metadata", nullptr);
-                if (!metadataValue || metadataValue.ValueType() != JsonValueType::Object)
-                {
-                    outError = L"passkey_metadata_required";
-                    return false;
-                }
-                auto metadataObj = metadataValue.GetObjectW();
-                if (!TryGetString(metadataObj, L"credential_id_base64", item.PasskeyMetadata.CredentialIdBase64))
-                {
-                    outError = L"passkey_credential_id_required";
-                    return false;
-                }
-                (void)TryGetString(metadataObj, L"user_id_base64", item.PasskeyMetadata.UserIdBase64);
-                if (!TryGetString(metadataObj, L"rp_id", item.PasskeyMetadata.RpId))
-                {
-                    outError = L"passkey_rp_id_required";
-                    return false;
-                }
-                (void)TryGetString(metadataObj, L"rp_name", item.PasskeyMetadata.RpName);
-                if (!TryGetString(metadataObj, L"user_name", item.PasskeyMetadata.UserName))
-                {
-                    outError = L"passkey_user_name_required";
-                    return false;
-                }
-                (void)TryGetString(metadataObj, L"user_display_name", item.PasskeyMetadata.UserDisplayName);
-                double createdAtUnixSeconds = 0;
-                if (TryGetNumber(metadataObj, L"created_at_unix_seconds", createdAtUnixSeconds))
-                {
-                    item.PasskeyMetadata.CreatedAtUnixSeconds = static_cast<uint64_t>(createdAtUnixSeconds);
-                }
-                double updatedAtUnixSeconds = 0;
-                if (TryGetNumber(metadataObj, L"updated_at_unix_seconds", updatedAtUnixSeconds))
-                {
-                    item.PasskeyMetadata.UpdatedAtUnixSeconds = static_cast<uint64_t>(updatedAtUnixSeconds);
-                }
-            }
-            else
-            {
-                outError = L"unsupported_item_type";
+                outError = L"login_required";
                 return false;
             }
+            auto loginObj = loginValue.GetObjectW();
+
+            if (!TryGetString(loginObj, L"username", item.Login.Username))
+            {
+                outError = L"login_username_required";
+                return false;
+            }
+            if (!TryGetString(loginObj, L"password", item.Login.Password))
+            {
+                outError = L"login_password_required";
+                return false;
+            }
+            (void)TryGetString(loginObj, L"url", item.Login.Url);
+            (void)TryGetString(loginObj, L"totp_secret", item.Login.TotpSecret);
 
             outDoc.Items.push_back(std::move(item));
         }

@@ -14,7 +14,6 @@
 #include <wil/registry_helpers.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/base.h>
-#include "src/VaultModel.h"
 
 
 namespace winrt {
@@ -160,8 +159,6 @@ namespace winrt::PasskeyManager::implementation
             outPath = localFolderPath + L"\\" + c_pluginLocalAppDataDBDir;
             return true;
         }
-        bool MergeLocalCredentialMetadataIntoVaultDocument(tsupasswd::VaultDocumentV1& doc);
-        bool HydrateLocalCredentialMetadataFromVaultDocument(tsupasswd::VaultDocumentV1 const& doc);
 
         // UI Related Functions
         std::vector< winrt::com_ptr<Credential>> GetCredentialListViewModel();

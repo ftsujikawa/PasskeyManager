@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "MainPage.xaml.h"
 #include "PluginRegistrationManager.h"
-#include "PluginCredentialManager.h"
 #include "src/RequestId.h"
 #include "src/SyncClient.h"
 #include "src/SyncSnapshotStore.h"
@@ -697,45 +696,6 @@ namespace winrt::PasskeyManager::implementation {
 
         statusSink(winrt::hstring{ L"INFO: sync state=start operation=" + operation + L" user_id=" + syncUserId + L" request_id=" + localRequestId + L"ℹ" });
 
-        std::wstring recoveryCodeForVault = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
-        std::vector<BYTE> cipherPlain(encryptedVaultData.begin(), encryptedVaultData.end());
-        if (!recoveryCodeForVault.empty())
-        {
-            std::vector<uint8_t> recoveryBytes;
-            {
-                std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCodeForVault });
-                recoveryBytes.assign(utf8.begin(), utf8.end());
-            }
-
-            if (!recoveryBytes.empty())
-            {
-                std::vector<uint8_t> plainBytes;
-                tsupasswd::VaultCryptoError decryptError{};
-                if (tsupasswd::DecryptVaultV3(std::vector<uint8_t>(cipherPlain.begin(), cipherPlain.end()), recoveryBytes, plainBytes, decryptError))
-                {
-                    tsupasswd::VaultDocumentV1 vaultDoc{};
-                    std::wstring parseError;
-                    if (tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(plainBytes.data(), plainBytes.size(), vaultDoc, parseError))
-                    {
-                        if (PluginCredentialManager::getInstance().MergeLocalCredentialMetadataIntoVaultDocument(vaultDoc))
-                        {
-                            std::vector<BYTE> mergedPlainBytes;
-                            if (tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, mergedPlainBytes))
-                            {
-                                std::vector<uint8_t> mergedCipherBytes;
-                                tsupasswd::VaultCryptoError encryptError{};
-                                if (tsupasswd::EncryptVaultV3(std::vector<uint8_t>(mergedPlainBytes.begin(), mergedPlainBytes.end()), recoveryBytes, mergedCipherBytes, encryptError))
-                                {
-                                    cipherPlain.assign(mergedCipherBytes.begin(), mergedCipherBytes.end());
-                                    (void)WriteEncryptedVaultData(cipherPlain);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         tsupasswd::SyncClient syncClient(syncBaseUrl);
         syncClient.SetApiKind(tsupasswd::SyncApiKind::Axum);
         syncClient.SetAllowInsecureHttp(IsAllowInsecureHttpEnabled());
@@ -745,11 +705,12 @@ namespace winrt::PasskeyManager::implementation {
         {
             syncClient.SetBearerToken(bearerToken);
 
-            if (!recoveryCodeForVault.empty())
+            std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+            if (!recoveryCode.empty())
             {
                 tsupasswd::SyncHttpStatus loginStatus{};
                 std::wstring issuedToken;
-                (void)syncClient.OpaqueLogin(syncUserId, recoveryCodeForVault, issuedToken, &sessionKeyBytes, &loginStatus);
+                (void)syncClient.OpaqueLogin(syncUserId, recoveryCode, issuedToken, &sessionKeyBytes, &loginStatus);
             }
         }
         else
@@ -799,6 +760,7 @@ namespace winrt::PasskeyManager::implementation {
         putRequest.ExpectedVersion = 0;
         putRequest.NewVersion = 1;
         putRequest.DeviceId = L"tsupasswd_core_windows";
+        std::vector<uint8_t> cipherPlain(encryptedVaultData.begin(), encryptedVaultData.end());
         auto buildCipherForSyncBase64 = [&]() -> std::wstring
         {
             std::vector<uint8_t> cipherForSync = cipherPlain;
@@ -1659,7 +1621,6 @@ namespace winrt::PasskeyManager::implementation {
                 vaultDoc.SchemaVersion = 1;
                 vaultDoc.VaultId = localRequestId;
                 vaultDoc.Revision = 1;
-                (void)PluginCredentialManager::getInstance().MergeLocalCredentialMetadataIntoVaultDocument(vaultDoc);
 
                 if (tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, vaultPlaintext))
                 {
@@ -2290,27 +2251,6 @@ namespace winrt::PasskeyManager::implementation {
         }
 
         RETURN_IF_FAILED(WriteEncryptedVaultData(cipherBytes));
-
-        if (!recoveryCode.empty())
-        {
-            std::vector<uint8_t> recoveryBytes;
-            std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
-            recoveryBytes.assign(utf8.begin(), utf8.end());
-            if (!recoveryBytes.empty())
-            {
-                std::vector<uint8_t> plainBytes;
-                tsupasswd::VaultCryptoError decryptError{};
-                if (tsupasswd::DecryptVaultV3(std::vector<uint8_t>(cipherBytes.begin(), cipherBytes.end()), recoveryBytes, plainBytes, decryptError))
-                {
-                    tsupasswd::VaultDocumentV1 vaultDoc{};
-                    std::wstring parseError;
-                    if (tsupasswd::DeserializeVaultDocumentV1FromUtf8Bytes(plainBytes.data(), plainBytes.size(), vaultDoc, parseError))
-                    {
-                        (void)PluginCredentialManager::getInstance().HydrateLocalCredentialMetadataFromVaultDocument(vaultDoc);
-                    }
-                }
-            }
-        }
 
         tsupasswd::SyncSnapshotRecord snapshot{};
         snapshot.SnapshotId = GetNowIsoLikeTimestamp() + L"-server-restore";

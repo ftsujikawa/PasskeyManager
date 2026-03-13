@@ -430,11 +430,54 @@ namespace
         return left >= right ? left : right;
     }
 
-    tsupasswd::VaultDocumentV1 MergeVaultDocuments(
+    std::wstring NormalizeVaultIdentityPart(std::wstring value)
+    {
+        auto first = value.find_first_not_of(L" \t\r\n");
+        if (first == std::wstring::npos)
+        {
+            return {};
+        }
+        auto last = value.find_last_not_of(L" \t\r\n");
+        value = value.substr(first, last - first + 1);
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch)
+        {
+            return static_cast<wchar_t>(towlower(ch));
+        });
+        return value;
+    }
+
+    std::wstring BuildVaultLoginIdentity(tsupasswd::VaultItemV1 const& item)
+    {
+        if (item.ItemType != tsupasswd::VaultItemType::Login)
+        {
+            return {};
+        }
+
+        return NormalizeVaultIdentityPart(item.Title) +
+            L"\n" + NormalizeVaultIdentityPart(item.Login.Username) +
+            L"\n" + NormalizeVaultIdentityPart(item.Login.Url);
+    }
+
+    struct VaultMergeStats
+    {
+        size_t AddedFromServer = 0;
+        size_t UpdatedFromServer = 0;
+        size_t TombstonesApplied = 0;
+        size_t DuplicatesCollapsed = 0;
+    };
+
+    struct VaultMergeResult
+    {
+        tsupasswd::VaultDocumentV1 Document{};
+        VaultMergeStats Stats{};
+    };
+
+    VaultMergeResult MergeVaultDocuments(
         tsupasswd::VaultDocumentV1 localDoc,
         tsupasswd::VaultDocumentV1 const& serverDoc,
         std::wstring const& fallbackVaultId)
     {
+        VaultMergeResult result{};
         if (localDoc.SchemaVersion <= 0)
         {
             localDoc.SchemaVersion = 1;
@@ -465,18 +508,66 @@ namespace
             {
                 localIndexById.emplace(serverItem.ItemId, localDoc.Items.size());
                 localDoc.Items.push_back(serverItem);
+                result.Stats.AddedFromServer += 1;
+                if (serverItem.Deleted)
+                {
+                    result.Stats.TombstonesApplied += 1;
+                }
                 continue;
             }
 
             auto& localItem = localDoc.Items[found->second];
             if (serverItem.UpdatedAt > localItem.UpdatedAt)
             {
+                if (serverItem.Deleted && !localItem.Deleted)
+                {
+                    result.Stats.TombstonesApplied += 1;
+                }
                 localItem = serverItem;
+                result.Stats.UpdatedFromServer += 1;
             }
         }
 
+        std::map<std::wstring, size_t> canonicalIndexByIdentity;
+        std::vector<tsupasswd::VaultItemV1> dedupedItems;
+        dedupedItems.reserve(localDoc.Items.size());
+        for (auto const& item : localDoc.Items)
+        {
+            std::wstring identity = BuildVaultLoginIdentity(item);
+            if (identity.empty())
+            {
+                dedupedItems.push_back(item);
+                continue;
+            }
+
+            auto foundIdentity = canonicalIndexByIdentity.find(identity);
+            if (foundIdentity == canonicalIndexByIdentity.end())
+            {
+                canonicalIndexByIdentity.emplace(identity, dedupedItems.size());
+                dedupedItems.push_back(item);
+                continue;
+            }
+
+            auto& canonicalItem = dedupedItems[foundIdentity->second];
+            if (item.UpdatedAt > canonicalItem.UpdatedAt)
+            {
+                canonicalItem = item;
+            }
+            canonicalItem.CreatedAt = canonicalItem.CreatedAt.empty() ? item.CreatedAt : canonicalItem.CreatedAt;
+            canonicalItem.UpdatedAt = MaxUpdatedAt(canonicalItem.UpdatedAt, item.UpdatedAt);
+            if (canonicalItem.Deleted || item.Deleted)
+            {
+                canonicalItem.Deleted = canonicalItem.Deleted || item.Deleted;
+                canonicalItem.DeletedAt = MaxUpdatedAt(canonicalItem.DeletedAt, item.DeletedAt);
+            }
+            result.Stats.DuplicatesCollapsed += 1;
+        }
+
+        localDoc.Items = std::move(dedupedItems);
+
         localDoc.Revision = (std::max)(localDoc.Revision, serverDoc.Revision);
-        return localDoc;
+        result.Document = std::move(localDoc);
+        return result;
     }
 
     bool TryIssueDevLoginToken(
@@ -2169,7 +2260,17 @@ namespace winrt::PasskeyManager::implementation {
                 tsupasswd::VaultDocumentV1 serverDoc{};
                 if (TryDecryptVaultDocument(restoredCipher, recoveryBytes, serverDoc))
                 {
-                    localDoc = MergeVaultDocuments(std::move(localDoc), serverDoc, localRequestId);
+                    auto mergeResult = MergeVaultDocuments(std::move(localDoc), serverDoc, localRequestId);
+                    localDoc = std::move(mergeResult.Document);
+                    UpdatePasskeyOperationStatusText(
+                        winrt::hstring{
+                            L"INFO: sync state=observed operation=" + operation +
+                            L" step=merge_vault_docs added_from_server=" + std::to_wstring(mergeResult.Stats.AddedFromServer) +
+                            L" updated_from_server=" + std::to_wstring(mergeResult.Stats.UpdatedFromServer) +
+                            L" tombstones_applied=" + std::to_wstring(mergeResult.Stats.TombstonesApplied) +
+                            L" duplicates_collapsed=" + std::to_wstring(mergeResult.Stats.DuplicatesCollapsed) +
+                            L" request_id=" + localRequestId +
+                            L"ℹ" });
                 }
             }
         }

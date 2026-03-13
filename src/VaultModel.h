@@ -27,6 +27,8 @@ namespace tsupasswd
         std::wstring Notes;
         std::wstring CreatedAt;
         std::wstring UpdatedAt;
+        bool Deleted{ false };
+        std::wstring DeletedAt;
         VaultItemLoginV1 Login{};
     };
 

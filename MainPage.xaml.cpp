@@ -2434,6 +2434,67 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::deleteSelectedVaultLoginItemButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        std::wstring operation = L"delete_login_item";
+        std::wstring requestId = BuildRequestId(operation);
+        auto selectedItem = vaultLoginListView().SelectedItem();
+        if (!selectedItem)
+        {
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=no_selection request_id=" + requestId });
+            co_return;
+        }
+
+        auto credential = selectedItem.as<PasskeyManager::Credential>();
+        auto reader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(credential.CredentialId());
+        std::vector<uint8_t> itemIdBytes(reader.UnconsumedBufferLength());
+        reader.ReadBytes(itemIdBytes);
+        std::wstring itemId = winrt::to_hstring(std::string(itemIdBytes.begin(), itemIdBytes.end())).c_str();
+        if (itemId.empty())
+        {
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=invalid_item_id request_id=" + requestId });
+            co_return;
+        }
+
+        auto weakThis = get_weak();
+        deleteSelectedVaultLoginItemButton().IsEnabled(false);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
+
+        co_await winrt::resume_background();
+        HRESULT hrDelete = PluginCredentialManager::getInstance().DeleteVaultLoginItemById(itemId, requestId);
+        HRESULT hrSync = S_OK;
+        if (SUCCEEDED(hrDelete))
+        {
+            hrSync = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
+        }
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->deleteSelectedVaultLoginItemButton().IsEnabled(true);
+            if (SUCCEEDED(hrDelete) && SUCCEEDED(hrSync))
+            {
+                self->vaultLoginListView().SelectedItem(nullptr);
+                self->ReloadSnapshotCandidates();
+                self->UpdateCredentialList();
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else if (FAILED(hrDelete))
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrDelete)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrDelete)) + L" request_id=" + requestId });
+            }
+            else
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId });
+            }
+        }
+
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::runVaultSchemaSelfTestButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         auto weakThis = get_weak();

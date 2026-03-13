@@ -181,6 +181,9 @@ namespace winrt::PasskeyManager::implementation
             std::wstring const& url,
             std::wstring const& notes,
             std::wstring const& requestId = L"");
+        HRESULT DeleteVaultLoginItemById(
+            std::wstring const& itemId,
+            std::wstring const& requestId = L"");
     private:
         PluginCredentialManager();
         ~PluginCredentialManager();

@@ -43,6 +43,23 @@ namespace tsupasswd
             return true;
         }
 
+        bool TryGetBoolean(JsonObject const& obj, wchar_t const* key, bool& out)
+        {
+            if (!obj.HasKey(key))
+            {
+                return false;
+            }
+
+            auto value = obj.GetNamedValue(key, nullptr);
+            if (!value || value.ValueType() != JsonValueType::Boolean)
+            {
+                return false;
+            }
+
+            out = value.GetBoolean();
+            return true;
+        }
+
         bool ParseVaultItemType(std::wstring const& value, VaultItemType& outType)
         {
             if (value == L"login")
@@ -89,6 +106,10 @@ namespace tsupasswd
                     outError = L"unsupported_item_type";
                     return false;
                 }
+                if (item.Deleted)
+                {
+                    continue;
+                }
                 if (item.Title.empty())
                 {
                     outError = L"title_required";
@@ -134,13 +155,18 @@ namespace tsupasswd
             itemObj.SetNamedValue(L"notes", JsonValue::CreateStringValue(item.Notes));
             itemObj.SetNamedValue(L"created_at", JsonValue::CreateStringValue(item.CreatedAt));
             itemObj.SetNamedValue(L"updated_at", JsonValue::CreateStringValue(item.UpdatedAt));
+            itemObj.SetNamedValue(L"deleted", JsonValue::CreateBooleanValue(item.Deleted));
+            itemObj.SetNamedValue(L"deleted_at", JsonValue::CreateStringValue(item.DeletedAt));
 
-            JsonObject login;
-            login.SetNamedValue(L"username", JsonValue::CreateStringValue(item.Login.Username));
-            login.SetNamedValue(L"password", JsonValue::CreateStringValue(item.Login.Password));
-            login.SetNamedValue(L"url", JsonValue::CreateStringValue(item.Login.Url));
-            login.SetNamedValue(L"totp_secret", JsonValue::CreateStringValue(item.Login.TotpSecret));
-            itemObj.SetNamedValue(L"login", login);
+            if (!item.Deleted)
+            {
+                JsonObject login;
+                login.SetNamedValue(L"username", JsonValue::CreateStringValue(item.Login.Username));
+                login.SetNamedValue(L"password", JsonValue::CreateStringValue(item.Login.Password));
+                login.SetNamedValue(L"url", JsonValue::CreateStringValue(item.Login.Url));
+                login.SetNamedValue(L"totp_secret", JsonValue::CreateStringValue(item.Login.TotpSecret));
+                itemObj.SetNamedValue(L"login", login);
+            }
 
             items.Append(itemObj);
         }
@@ -251,15 +277,24 @@ namespace tsupasswd
                 return false;
             }
 
+            (void)TryGetString(itemObj, L"notes", item.Notes);
+            (void)TryGetString(itemObj, L"created_at", item.CreatedAt);
+            (void)TryGetString(itemObj, L"updated_at", item.UpdatedAt);
+            (void)TryGetBoolean(itemObj, L"deleted", item.Deleted);
+            (void)TryGetString(itemObj, L"deleted_at", item.DeletedAt);
+
+            if (item.Deleted)
+            {
+                (void)TryGetString(itemObj, L"title", item.Title);
+                outDoc.Items.push_back(std::move(item));
+                continue;
+            }
+
             if (!TryGetString(itemObj, L"title", item.Title))
             {
                 outError = L"title_required";
                 return false;
             }
-
-            (void)TryGetString(itemObj, L"notes", item.Notes);
-            (void)TryGetString(itemObj, L"created_at", item.CreatedAt);
-            (void)TryGetString(itemObj, L"updated_at", item.UpdatedAt);
 
             auto loginValue = itemObj.GetNamedValue(L"login", nullptr);
             if (!loginValue || loginValue.ValueType() != JsonValueType::Object)
@@ -370,6 +405,38 @@ namespace tsupasswd
             roundtrip.Items[0].Login.Password != item.Login.Password)
         {
             outError = L"roundtrip_value_mismatch";
+            return false;
+        }
+
+        VaultDocumentV1 deletedInput{};
+        deletedInput.SchemaVersion = 1;
+        deletedInput.VaultId = L"regression-vault";
+        deletedInput.Revision = 8;
+        VaultItemV1 deletedItem{};
+        deletedItem.ItemId = L"item-deleted";
+        deletedItem.ItemType = VaultItemType::Login;
+        deletedItem.Deleted = true;
+        deletedItem.DeletedAt = L"2026-01-02T00:00:00Z";
+        deletedItem.UpdatedAt = L"2026-01-02T00:00:00Z";
+        deletedInput.Items.push_back(deletedItem);
+        std::vector<BYTE> deletedUtf8;
+        if (!SerializeVaultDocumentV1ToUtf8Bytes(deletedInput, deletedUtf8))
+        {
+            outError = L"deleted_roundtrip_serialize_failed";
+            return false;
+        }
+        VaultDocumentV1 deletedRoundtrip{};
+        if (!DeserializeVaultDocumentV1FromUtf8Bytes(deletedUtf8.data(), deletedUtf8.size(), deletedRoundtrip, outError))
+        {
+            if (outError.empty())
+            {
+                outError = L"deleted_roundtrip_deserialize_failed";
+            }
+            return false;
+        }
+        if (deletedRoundtrip.Items.size() != 1 || !deletedRoundtrip.Items[0].Deleted || deletedRoundtrip.Items[0].DeletedAt != deletedItem.DeletedAt)
+        {
+            outError = L"deleted_roundtrip_value_mismatch";
             return false;
         }
 

@@ -690,7 +690,7 @@
                             x:Name="vaultLoginListView"
                             MinHeight="180"
                             MaxHeight="240"
-                            SelectionMode="None">
+                            SelectionMode="Single">
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="local:Credential">
                                     <Grid Padding="8" ColumnSpacing="8">
@@ -732,6 +732,11 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <Button
+                            x:Name="deleteSelectedVaultLoginItemButton"
+                            Click="deleteSelectedVaultLoginItemButton_Click"
+                            Content="選択した Login を Vault から削除して同期"
+                            HorizontalAlignment="Left" />
                         <TextBlock
                             Style="{StaticResource BodyStrongTextBlockStyle}"
                             Text="Synced Vault JSON" />

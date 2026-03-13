@@ -162,6 +162,7 @@ namespace winrt::PasskeyManager::implementation
 
         // UI Related Functions
         std::vector< winrt::com_ptr<Credential>> GetCredentialListViewModel();
+        std::vector< winrt::com_ptr<Credential>> GetVaultLoginListViewModel();
 
         // Plugin Operations Toggles
         HRESULT SetVaultLock(bool lock);
@@ -172,6 +173,14 @@ namespace winrt::PasskeyManager::implementation
         VaultUnlockMethod GetVaultUnlockMethod();
         HRESULT UnlockCredentialVaultWithPasskey(HWND hwnd);
         HRESULT ExportDecryptedVaultJsonWithPasskey(HWND hwnd, std::wstring& outJson, std::wstring const& requestId = L"");
+        HRESULT SaveLoginItemToVaultWithPasskey(
+            HWND hwnd,
+            std::wstring const& title,
+            std::wstring const& username,
+            std::wstring const& password,
+            std::wstring const& url,
+            std::wstring const& notes,
+            std::wstring const& requestId = L"");
     private:
         PluginCredentialManager();
         ~PluginCredentialManager();

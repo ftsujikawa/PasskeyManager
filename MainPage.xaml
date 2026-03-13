@@ -348,6 +348,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -565,9 +566,104 @@
                         Text="How to (2 devices / profiles): 1) Set Sync Base URL/Token/User ID + Vault Recovery Code on both devices. 2) On device A, Create Vault Passkey then Resync Now. 3) On device B, Clear Local Vault then Resync Now (auto restore_snapshot)."
                         TextWrapping="WrapWholeWords" />
 
+                    <Grid
+                        Grid.Row="4"
+                        Margin="0,12,0,0"
+                        ColumnSpacing="8"
+                        RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Login Title" />
+                        <TextBox
+                            x:Name="vaultLoginTitleTextBox"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Padding="8,2"
+                            PlaceholderText="GitHub" />
+
+                        <TextBlock
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="User ID" />
+                        <TextBox
+                            x:Name="vaultLoginUserIdTextBox"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Padding="8,2"
+                            PlaceholderText="user@example.com" />
+
+                        <TextBlock
+                            Grid.Row="2"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Password" />
+                        <PasswordBox
+                            x:Name="vaultLoginPasswordBox"
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Padding="8,2"
+                            PlaceholderText="Password" />
+
+                        <TextBlock
+                            Grid.Row="3"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="URL" />
+                        <TextBox
+                            x:Name="vaultLoginUrlTextBox"
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            Padding="8,2"
+                            PlaceholderText="https://github.com/login" />
+
+                        <TextBlock
+                            Grid.Row="4"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Notes" />
+                        <TextBox
+                            x:Name="vaultLoginNotesTextBox"
+                            Grid.Row="4"
+                            Grid.Column="1"
+                            AcceptsReturn="True"
+                            MinHeight="64"
+                            Padding="8,6"
+                            PlaceholderText="Notes" />
+
+                        <Button
+                            x:Name="saveVaultLoginItemButton"
+                            Grid.Row="0"
+                            Grid.Column="2"
+                            Grid.RowSpan="5"
+                            Click="saveVaultLoginItemButton_Click"
+                            Content="Login を Vault に保存して同期"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </Grid>
+
                     <TextBox
                         x:Name="syncedVaultTextBox"
-                        Grid.Row="4"
+                        Grid.Row="5"
                         Margin="0,8,0,0"
                         AcceptsReturn="True"
                         FontFamily="Cascadia Code"
@@ -575,7 +671,80 @@
                         IsReadOnly="True"
                         PlaceholderText="Synced Vault (decrypted) will appear here"
                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                        TextWrapping="Wrap" />
+                        TextWrapping="Wrap"
+                        Visibility="Collapsed" />
+
+                    <StackPanel
+                        Grid.Row="5"
+                        Margin="0,8,0,0"
+                        Spacing="8">
+                        <TextBlock
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="Vault Login Items" />
+                        <TextBlock
+                            x:Name="vaultLoginSummaryTextBlock"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="0 items" />
+                        <ListView
+                            x:Name="vaultLoginListView"
+                            MinHeight="180"
+                            MaxHeight="240"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:Credential">
+                                    <Grid Padding="8" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <FontIcon
+                                            Grid.RowSpan="3"
+                                            Grid.Column="0"
+                                            FontSize="16"
+                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                            Glyph="&#xE72E;" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Text="{x:Bind UserName}" />
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind RpName}" />
+                                        <TextBlock
+                                            Grid.Row="2"
+                                            Grid.Column="1"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}">
+                                            <Run Text="作成: " />
+                                            <Run Text="{x:Bind CreatedAtDisplay}" />
+                                            <Run Text="  更新: " />
+                                            <Run Text="{x:Bind UpdatedAtDisplay}" />
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="Synced Vault JSON" />
+                        <TextBox
+                            x:Name="syncedVaultJsonTextBox"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Code"
+                            FontSize="12"
+                            IsReadOnly="True"
+                            PlaceholderText="Synced Vault (decrypted) will appear here"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
                 </Grid>
             </Grid>
 

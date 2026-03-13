@@ -1457,7 +1457,9 @@ namespace winrt::PasskeyManager::implementation
         InitializeComponent();
         m_credentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         m_filteredCredentialListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
+        m_vaultLoginListViewModel = winrt::make<PasskeyManager::implementation::CredentialListViewModel>();
         DataContext(m_credentialListViewModel);
+        vaultLoginListView().ItemsSource(m_vaultLoginListViewModel.credentials());
         SetHomeViewVisible(true);
 
         auto weakThis = get_weak();
@@ -1628,6 +1630,7 @@ namespace winrt::PasskeyManager::implementation
     {
         m_credentialListViewModel.credentials().Clear();
         m_filteredCredentialListViewModel.credentials().Clear();
+        m_vaultLoginListViewModel.credentials().Clear();
         auto weakThis = get_weak();
         co_await winrt::resume_background();
 
@@ -1636,6 +1639,7 @@ namespace winrt::PasskeyManager::implementation
 
         co_await wil::resume_foreground(DispatcherQueue());
         auto credentialViewList = pluginCredentialManager.GetCredentialListViewModel();
+        auto vaultLoginViewList = pluginCredentialManager.GetVaultLoginListViewModel();
 
         auto self = weakThis.get();
         if (!self)
@@ -1671,6 +1675,13 @@ namespace winrt::PasskeyManager::implementation
             self->m_credentialListViewModel.credentials().Append(credential);
             self->m_allCredentials.push_back(credential);
         }
+        self->m_vaultLoginListViewModel.credentials().Clear();
+        for (auto& vaultLoginListItem : vaultLoginViewList)
+        {
+            auto credential = vaultLoginListItem.as<PasskeyManager::Credential>();
+            self->m_vaultLoginListViewModel.credentials().Append(credential);
+        }
+        self->vaultLoginSummaryTextBlock().Text(winrt::hstring{ std::to_wstring(self->m_vaultLoginListViewModel.credentials().Size()) + L" items" });
         self->ApplyCredentialFilter();
         co_return;
     }
@@ -2354,6 +2365,75 @@ namespace winrt::PasskeyManager::implementation
         co_return;
     }
 
+    winrt::IAsyncAction MainPage::saveVaultLoginItemButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        std::wstring operation = L"save_login_item";
+        std::wstring requestId = BuildRequestId(operation);
+        std::wstring title = TrimCopy(vaultLoginTitleTextBox().Text().c_str());
+        std::wstring userId = TrimCopy(vaultLoginUserIdTextBox().Text().c_str());
+        std::wstring password = TrimCopy(vaultLoginPasswordBox().Password().c_str());
+        std::wstring url = TrimCopy(vaultLoginUrlTextBox().Text().c_str());
+        std::wstring notes = vaultLoginNotesTextBox().Text().c_str();
+
+        if (title.empty() || userId.empty() || password.empty())
+        {
+            LogWarning(winrt::hstring{ L"sync result=rejected operation=" + operation + L" reason=missing_required_login_fields request_id=" + requestId });
+            co_return;
+        }
+
+        auto weakThis = get_weak();
+        saveVaultLoginItemButton().IsEnabled(false);
+        LogInProgress(winrt::hstring{ L"summary state=running operation=" + operation + L" request_id=" + requestId });
+
+        com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+        HWND hwnd = curApp->GetNativeWindowHandle();
+
+        co_await winrt::resume_background();
+        HRESULT hrSave = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(
+            hwnd,
+            title,
+            userId,
+            password,
+            url,
+            notes,
+            requestId);
+
+        HRESULT hrSync = S_OK;
+        if (SUCCEEDED(hrSave))
+        {
+            hrSync = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
+        }
+
+        co_await wil::resume_foreground(DispatcherQueue());
+        if (auto self = weakThis.get())
+        {
+            self->saveVaultLoginItemButton().IsEnabled(true);
+            if (SUCCEEDED(hrSave) && SUCCEEDED(hrSync))
+            {
+                self->vaultLoginTitleTextBox().Text(L"");
+                self->vaultLoginUserIdTextBox().Text(L"");
+                self->vaultLoginPasswordBox().Password(L"");
+                self->vaultLoginUrlTextBox().Text(L"");
+                self->vaultLoginNotesTextBox().Text(L"");
+                self->ReloadSnapshotCandidates();
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
+                self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
+            }
+            else if (FAILED(hrSave))
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrSave)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrSave)) + L" request_id=" + requestId });
+            }
+            else
+            {
+                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId + L"⚠" });
+                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId });
+            }
+        }
+
+        co_return;
+    }
+
     winrt::IAsyncAction MainPage::runVaultSchemaSelfTestButton_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
         auto weakThis = get_weak();
@@ -2468,7 +2548,7 @@ namespace winrt::PasskeyManager::implementation
 
             if (SUCCEEDED(hr))
             {
-                self->syncedVaultTextBox().Text(winrt::hstring{ outJson });
+                self->syncedVaultJsonTextBox().Text(winrt::hstring{ outJson });
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"SUCCESS: summary result=success operation=" + operation + L" request_id=" + requestId + L"✅" });
                 self->LogSuccess(winrt::hstring{ L"summary result=success operation=" + operation + L" request_id=" + requestId });
             }

@@ -41,6 +41,11 @@ namespace winrt::PasskeyManager::implementation
             return m_filteredCredentialListViewModel;
         }
 
+        PasskeyManager::CredentialListViewModel VaultLoginList()
+        {
+            return m_vaultLoginListViewModel;
+        }
+
         winrt::IAsyncAction refreshButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction registerPluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction updatePluginButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
@@ -63,6 +68,7 @@ namespace winrt::PasskeyManager::implementation
         winrt::IAsyncAction runVaultSchemaSelfTestButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction clearLocalVaultButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction manualSyncButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
+        winrt::IAsyncAction saveVaultLoginItemButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction restoreSyncSnapshotButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction showSyncedVaultButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
         winrt::IAsyncAction refreshSnapshotCandidatesButton_Click(IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const& args);
@@ -391,6 +397,7 @@ namespace winrt::PasskeyManager::implementation
     private:
         PasskeyManager::CredentialListViewModel m_credentialListViewModel{ nullptr };
         PasskeyManager::CredentialListViewModel m_filteredCredentialListViewModel{ nullptr };
+        PasskeyManager::CredentialListViewModel m_vaultLoginListViewModel{ nullptr };
         winrt::IMap<winrt::IBuffer, IInspectable> m_selectedCredentialsSet = winrt::single_threaded_map<winrt::IBuffer, IInspectable>();
         std::vector<winrt::hstring> m_logEntries{};
         std::vector<winrt::PasskeyManager::Credential> m_allCredentials{};

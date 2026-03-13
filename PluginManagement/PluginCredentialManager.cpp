@@ -257,6 +257,45 @@ namespace winrt::PasskeyManager::implementation
             return tsupasswd::BuildRequestId(operation);
         }
 
+        std::wstring GetNowIsoLikeTimestamp()
+        {
+            using namespace std::chrono;
+            auto now = system_clock::now();
+            std::time_t raw = system_clock::to_time_t(now);
+            std::tm utcTm{};
+            gmtime_s(&utcTm, &raw);
+            wchar_t buffer[32]{};
+            wcsftime(buffer, ARRAYSIZE(buffer), L"%Y-%m-%dT%H:%M:%SZ", &utcTm);
+            return buffer;
+        }
+
+        std::wstring CreateVaultItemId()
+        {
+            GUID guid{};
+            if (FAILED(CoCreateGuid(&guid)))
+            {
+                return L"item-" + std::to_wstring(GetTickCount64());
+            }
+
+            wchar_t buffer[64]{};
+            int written = StringFromGUID2(guid, buffer, ARRAYSIZE(buffer));
+            if (written <= 0)
+            {
+                return L"item-" + std::to_wstring(GetTickCount64());
+            }
+
+            std::wstring value{ buffer };
+            if (!value.empty() && value.front() == L'{')
+            {
+                value.erase(value.begin());
+            }
+            if (!value.empty() && value.back() == L'}')
+            {
+                value.pop_back();
+            }
+            return value;
+        }
+
         std::wstring EnsureOperationToken(std::wstring message)
         {
             if (message.find(L" operation=") == std::wstring::npos)
@@ -719,6 +758,85 @@ namespace winrt::PasskeyManager::implementation
             {
                 (void)PersistCredentialTimestampMetadata();
             }
+        }
+
+        return credentialViewList;
+    }
+
+    std::vector<winrt::com_ptr<Credential>> PluginCredentialManager::GetVaultLoginListViewModel()
+    {
+        std::vector<winrt::com_ptr<Credential>> credentialViewList;
+
+        std::vector<uint8_t> cipherText;
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(cipherText, L"vault_login_list");
+        if (FAILED(hrReadVaultData))
+        {
+            return credentialViewList;
+        }
+
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            return credentialViewList;
+        }
+
+        std::vector<uint8_t> recoveryBytes;
+        {
+            std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        if (recoveryBytes.empty())
+        {
+            return credentialViewList;
+        }
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> plainBytes;
+        if (!tsupasswd::DecryptVaultV3(cipherText, recoveryBytes, plainBytes, cryptoError))
+        {
+            return credentialViewList;
+        }
+
+        std::wstring decryptedJson = winrt::to_hstring(std::string(reinterpret_cast<char const*>(plainBytes.data()), plainBytes.size())).c_str();
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::wstring parseError;
+        if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+        {
+            return credentialViewList;
+        }
+
+        credentialViewList.reserve(vaultDoc.Items.size());
+        for (auto const& item : vaultDoc.Items)
+        {
+            if (item.ItemType != tsupasswd::VaultItemType::Login)
+            {
+                continue;
+            }
+
+            auto writer = winrt::Windows::Storage::Streams::DataWriter();
+            std::string itemIdUtf8 = winrt::to_string(winrt::hstring{ item.ItemId });
+            std::vector<uint8_t> itemIdBytes(itemIdUtf8.begin(), itemIdUtf8.end());
+            writer.WriteBytes(itemIdBytes);
+            auto idBuffer = writer.DetachBuffer();
+
+            std::wstring secondary = item.Login.Username;
+            if (!item.Login.Url.empty())
+            {
+                if (!secondary.empty())
+                {
+                    secondary += L" @ ";
+                }
+                secondary += item.Login.Url;
+            }
+
+            auto credentialViewListItem = winrt::make_self<PasskeyManager::implementation::Credential>(
+                item.Title.c_str(),
+                secondary.c_str(),
+                item.CreatedAt.c_str(),
+                item.UpdatedAt.c_str(),
+                idBuffer,
+                CredentialOptionFlags::MetadataValid);
+            credentialViewList.emplace_back(std::move(credentialViewListItem));
         }
 
         return credentialViewList;
@@ -2457,6 +2575,126 @@ namespace winrt::PasskeyManager::implementation
         }
 
         outJson = std::move(json);
+        return S_OK;
+    }
+    CATCH_RETURN()
+
+    HRESULT PluginCredentialManager::SaveLoginItemToVaultWithPasskey(
+        HWND hwnd,
+        std::wstring const& title,
+        std::wstring const& username,
+        std::wstring const& password,
+        std::wstring const& url,
+        std::wstring const& notes,
+        std::wstring const& requestId) try
+    {
+        std::wstring operation = L"save_login_item";
+        std::wstring localRequestId = requestId;
+        if (localRequestId.empty())
+        {
+            localRequestId = BuildRequestId(operation);
+        }
+
+        auto trimmedTitle = title;
+        auto trimmedUsername = username;
+        auto trimmedPassword = password;
+        auto trimInPlace = [](std::wstring& value)
+        {
+            auto first = value.find_first_not_of(L" \t\r\n");
+            if (first == std::wstring::npos)
+            {
+                value.clear();
+                return;
+            }
+            auto last = value.find_last_not_of(L" \t\r\n");
+            value = value.substr(first, last - first + 1);
+        };
+        trimInPlace(trimmedTitle);
+        trimInPlace(trimmedUsername);
+        trimInPlace(trimmedPassword);
+
+        if (trimmedTitle.empty() || trimmedUsername.empty() || trimmedPassword.empty())
+        {
+            return E_INVALIDARG;
+        }
+
+        std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
+        if (recoveryCode.empty())
+        {
+            return HRESULT_FROM_WIN32(ERROR_NOT_READY);
+        }
+
+        std::vector<uint8_t> recoveryBytes;
+        {
+            std::string utf8 = winrt::to_string(winrt::hstring{ recoveryCode });
+            recoveryBytes.assign(utf8.begin(), utf8.end());
+        }
+        if (recoveryBytes.empty())
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        tsupasswd::VaultDocumentV1 vaultDoc{};
+        std::vector<uint8_t> existingCipherText;
+        HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(existingCipherText, localRequestId);
+        if (SUCCEEDED(hrReadVaultData))
+        {
+            tsupasswd::VaultCryptoError cryptoError{};
+            std::vector<uint8_t> plainBytes;
+            if (!tsupasswd::DecryptVaultV3(existingCipherText, recoveryBytes, plainBytes, cryptoError))
+            {
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
+
+            std::wstring decryptedJson = winrt::to_hstring(std::string(reinterpret_cast<char const*>(plainBytes.data()), plainBytes.size())).c_str();
+
+            std::wstring parseError;
+            if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
+            {
+                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+            }
+        }
+        else if (hrReadVaultData == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+            hrReadVaultData == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            vaultDoc.SchemaVersion = 1;
+            vaultDoc.VaultId = localRequestId;
+            vaultDoc.Revision = 0;
+        }
+        else
+        {
+            return hrReadVaultData;
+        }
+
+        tsupasswd::VaultItemV1 item{};
+        item.ItemId = CreateVaultItemId();
+        item.ItemType = tsupasswd::VaultItemType::Login;
+        item.Title = trimmedTitle;
+        item.Notes = notes;
+        item.CreatedAt = GetNowIsoLikeTimestamp();
+        item.UpdatedAt = item.CreatedAt;
+        item.Login.Username = trimmedUsername;
+        item.Login.Password = trimmedPassword;
+        item.Login.Url = url;
+        item.Login.TotpSecret = L"";
+        vaultDoc.Items.push_back(std::move(item));
+        vaultDoc.Revision += 1;
+
+        std::vector<BYTE> utf8Bytes;
+        if (!tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, utf8Bytes))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        tsupasswd::VaultCryptoError cryptoError{};
+        std::vector<uint8_t> cipherBytes;
+        std::vector<uint8_t> plainBytes(utf8Bytes.begin(), utf8Bytes.end());
+        if (!tsupasswd::EncryptVaultV3(plainBytes, recoveryBytes, cipherBytes, cryptoError))
+        {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        }
+
+        RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
         return S_OK;
     }
     CATCH_RETURN()

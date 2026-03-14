@@ -40,6 +40,9 @@
     <ClCompile Include="src\VaultSerialization.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\NativeMessagingHost.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -69,6 +72,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="src\VaultSerialization.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\NativeMessagingHost.h">
       <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>

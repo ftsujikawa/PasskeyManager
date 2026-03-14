@@ -115,10 +115,39 @@ namespace winrt::PasskeyManager::implementation
 
         void UpdatePasskeyOperationStatusText(hstring const& statusText)
         {
-            com_ptr<App> curApp = winrt::Microsoft::UI::Xaml::Application::Current().as<App>();
+            auto currentApp = winrt::Microsoft::UI::Xaml::Application::Current();
+            if (!currentApp)
+            {
+                return;
+            }
+
+            auto curApp = currentApp.try_as<App>();
+            if (!curApp)
+            {
+                return;
+            }
+
             curApp->GetDispatcherQueue().TryEnqueue([curApp, statusText]()
             {
-                curApp->m_window.Content().try_as<Microsoft::UI::Xaml::Controls::Frame>().Content().try_as<MainPage>()->UpdatePasskeyOperationStatusText(statusText);
+                auto window = curApp->m_window;
+                if (!window)
+                {
+                    return;
+                }
+
+                auto frame = window.Content().try_as<Microsoft::UI::Xaml::Controls::Frame>();
+                if (!frame)
+                {
+                    return;
+                }
+
+                auto page = frame.Content().try_as<MainPage>();
+                if (!page)
+                {
+                    return;
+                }
+
+                page->UpdatePasskeyOperationStatusText(statusText);
             });
         }
     };

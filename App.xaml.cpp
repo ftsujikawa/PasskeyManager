@@ -11,6 +11,7 @@
 #include "PluginManagement/PluginRegistrationManager.h"
 #include "PluginManagement/PluginCredentialManager.h"
 #include "PluginAuthenticator/PluginAuthenticatorImpl.h"
+#include "src/NativeMessagingHost.h"
 #include <winrt/Microsoft.ui.interop.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Animation.h>
@@ -575,6 +576,12 @@ bool App::PluginCancelAction()
 int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR args, _In_ int)
 {
     winrt::init_apartment(winrt::apartment_type::single_threaded);
+
+    std::wstring argsString = args != nullptr ? std::wstring{ args } : std::wstring{};
+    if (tsupasswd::IsNativeMessagingHostMode(argsString))
+    {
+        return tsupasswd::RunNativeMessagingHost(argsString);
+    }
 
     winrt::check_hresult(CoInitializeSecurity(
         nullptr,

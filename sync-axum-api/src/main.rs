@@ -527,7 +527,11 @@ async fn main() -> anyhow::Result<()> {
     let database_url = env::var("DATABASE_URL")
         .or_else(|_| env::var("TSUPASSWD_SYNC_DATABASE_URL"))
         .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/tsupasswd_sync".to_string());
-    let bind = env::var("TSUPASSWD_SYNC_BIND").unwrap_or_else(|_| "127.0.0.1:8088".to_string());
+    let bind = env::var("TSUPASSWD_SYNC_BIND")
+        .or_else(|_| {
+            env::var("PORT").map(|port| format!("0.0.0.0:{port}"))
+        })
+        .unwrap_or_else(|_| "127.0.0.1:8088".to_string());
 
     let jwt_secret = env::var("TSUPASSWD_SYNC_JWT_SECRET").unwrap_or_else(|_| "dev-jwt-secret".to_string());
     let enable_dev_login = env::var("TSUPASSWD_SYNC_ENABLE_DEV_LOGIN")

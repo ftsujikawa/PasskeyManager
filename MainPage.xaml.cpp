@@ -2428,17 +2428,11 @@ namespace winrt::PasskeyManager::implementation
                 requestId);
         }
 
-        HRESULT hrSync = S_OK;
-        if (SUCCEEDED(hrSave))
-        {
-            hrSync = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
-        }
-
         co_await wil::resume_foreground(DispatcherQueue());
         if (auto self = weakThis.get())
         {
             self->saveVaultLoginItemButton().IsEnabled(true);
-            if (SUCCEEDED(hrSave) && SUCCEEDED(hrSync))
+            if (SUCCEEDED(hrSave))
             {
                 self->ResetVaultLoginEditor();
                 self->ReloadSnapshotCandidates();
@@ -2450,11 +2444,6 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrSave)) + L" request_id=" + requestId + L"⚠" });
                 self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrSave)) + L" request_id=" + requestId });
-            }
-            else
-            {
-                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId + L"⚠" });
-                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId });
             }
         }
 
@@ -2549,17 +2538,12 @@ namespace winrt::PasskeyManager::implementation
 
         co_await winrt::resume_background();
         HRESULT hrDelete = PluginCredentialManager::getInstance().DeleteVaultLoginItemById(itemId, requestId);
-        HRESULT hrSync = S_OK;
-        if (SUCCEEDED(hrDelete))
-        {
-            hrSync = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
-        }
 
         co_await wil::resume_foreground(DispatcherQueue());
         if (auto self = weakThis.get())
         {
             self->deleteSelectedVaultLoginItemButton().IsEnabled(true);
-            if (SUCCEEDED(hrDelete) && SUCCEEDED(hrSync))
+            if (SUCCEEDED(hrDelete))
             {
                 self->vaultLoginListView().SelectedItem(nullptr);
                 self->ReloadSnapshotCandidates();
@@ -2571,11 +2555,6 @@ namespace winrt::PasskeyManager::implementation
             {
                 self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrDelete)) + L" request_id=" + requestId + L"⚠" });
                 self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" hr=" + std::to_wstring(static_cast<int>(hrDelete)) + L" request_id=" + requestId });
-            }
-            else
-            {
-                self->syncStatusTextBlock().Text(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId + L"⚠" });
-                self->LogWarning(winrt::hstring{ L"sync result=failed operation=" + operation + L" step=manual_resync hr=" + std::to_wstring(static_cast<int>(hrSync)) + L" request_id=" + requestId });
             }
         }
 

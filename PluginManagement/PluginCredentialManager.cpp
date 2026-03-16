@@ -2618,17 +2618,15 @@ namespace winrt::PasskeyManager::implementation
         std::wstring const& password,
         std::wstring const& url,
         std::wstring const& notes,
-        std::wstring const& requestId) try
+        std::wstring const& requestId,
+        bool resync) try
     {
         UNREFERENCED_PARAMETER(hwnd);
-
-        std::wstring operation = L"save_login_item";
         std::wstring localRequestId = requestId;
         if (localRequestId.empty())
         {
-            localRequestId = BuildRequestId(operation);
+            localRequestId = BuildRequestId(L"save_login_item");
         }
-
         auto trimmedTitle = title;
         auto trimmedUsername = username;
         auto trimmedPassword = password;
@@ -2763,6 +2761,10 @@ namespace winrt::PasskeyManager::implementation
         }
 
         RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
+        if (resync)
+        {
+            RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(localRequestId + L"-sync"));
+        }
         return S_OK;
     }
     CATCH_RETURN()
@@ -2832,7 +2834,8 @@ namespace winrt::PasskeyManager::implementation
         std::wstring const& password,
         std::wstring const& url,
         std::wstring const& notes,
-        std::wstring const& requestId) try
+        std::wstring const& requestId,
+        bool resync) try
     {
         RETURN_HR_IF(E_INVALIDARG, itemId.empty());
 
@@ -2929,13 +2932,18 @@ namespace winrt::PasskeyManager::implementation
         }
 
         RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
+        if (resync)
+        {
+            RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(localRequestId + L"-sync"));
+        }
         return S_OK;
     }
     CATCH_RETURN()
 
     HRESULT PluginCredentialManager::DeleteVaultLoginItemById(
         std::wstring const& itemId,
-        std::wstring const& requestId) try
+        std::wstring const& requestId,
+        bool resync) try
     {
         if (itemId.empty())
         {
@@ -3018,6 +3026,10 @@ namespace winrt::PasskeyManager::implementation
         }
 
         RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
+        if (resync)
+        {
+            RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(localRequestId + L"-sync"));
+        }
         return S_OK;
     }
     CATCH_RETURN()

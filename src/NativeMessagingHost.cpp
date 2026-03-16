@@ -334,20 +334,10 @@ namespace
         (void)TryGetString(payload, L"notes", notes);
         (void)TryGetBool(payload, L"resync", resync);
 
-        HRESULT hr = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(nullptr, title, username, password, url, notes, requestId);
+        HRESULT hr = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(nullptr, title, username, password, url, notes, requestId, resync);
         if (FAILED(hr))
         {
             return hr;
-        }
-
-        HRESULT hrSync = S_OK;
-        if (resync)
-        {
-            hrSync = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
-            if (FAILED(hrSync))
-            {
-                return hrSync;
-            }
         }
 
         tsupasswd::VaultDocumentV1 vaultDoc{};
@@ -395,19 +385,10 @@ namespace
         (void)TryGetString(payload, L"notes", notes);
         (void)TryGetBool(payload, L"resync", resync);
 
-        HRESULT hr = PluginCredentialManager::getInstance().UpdateVaultLoginItemById(itemId, title, username, password, url, notes, requestId);
+        HRESULT hr = PluginCredentialManager::getInstance().UpdateVaultLoginItemById(itemId, title, username, password, url, notes, requestId, resync);
         if (FAILED(hr))
         {
             return hr;
-        }
-
-        if (resync)
-        {
-            hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
-            if (FAILED(hr))
-            {
-                return hr;
-            }
         }
 
         JsonObject result;
@@ -425,19 +406,10 @@ namespace
         RETURN_HR_IF(E_INVALIDARG, !TryGetString(payload, L"itemId", itemId) || itemId.empty());
         (void)TryGetBool(payload, L"resync", resync);
 
-        HRESULT hr = PluginCredentialManager::getInstance().DeleteVaultLoginItemById(itemId, requestId);
+        HRESULT hr = PluginCredentialManager::getInstance().DeleteVaultLoginItemById(itemId, requestId, resync);
         if (FAILED(hr))
         {
             return hr;
-        }
-
-        if (resync)
-        {
-            hr = PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(requestId + L"-sync");
-            if (FAILED(hr))
-            {
-                return hr;
-            }
         }
 
         JsonObject result;

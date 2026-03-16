@@ -509,6 +509,33 @@ namespace
             L"\n" + NormalizeVaultIdentityPart(item.Login.Username);
     }
 
+    void DebugLogVaultItem(std::wstring const& stage, tsupasswd::VaultItemV1 const& item)
+    {
+        std::wstring identity = BuildVaultLoginIdentity(item);
+        DebugLogIfVerbose(
+            L"DEBUG: vault_item stage=" + stage +
+            L" item_id=" + item.ItemId +
+            L" identity='" + identity + L"'" +
+            L" updated_at='" + item.UpdatedAt + L"'" +
+            L" deleted=" + std::to_wstring(item.Deleted ? 1 : 0) +
+            L" password_len=" + std::to_wstring(item.Login.Password.size()) +
+            L" title='" + item.Title + L"'\n");
+    }
+
+    void DebugLogVaultDocument(std::wstring const& stage, tsupasswd::VaultDocumentV1 const& doc)
+    {
+        DebugLogIfVerbose(
+            L"DEBUG: vault_doc stage=" + stage +
+            L" vault_id='" + doc.VaultId + L"'" +
+            L" revision=" + std::to_wstring(doc.Revision) +
+            L" item_count=" + std::to_wstring(doc.Items.size()) +
+            L"\n");
+        for (auto const& item : doc.Items)
+        {
+            DebugLogVaultItem(stage, item);
+        }
+    }
+
     struct VaultMergeStats
     {
         size_t AddedFromServer = 0;
@@ -537,6 +564,9 @@ namespace
         {
             localDoc.VaultId = !serverDoc.VaultId.empty() ? serverDoc.VaultId : fallbackVaultId;
         }
+
+        DebugLogVaultDocument(L"merge_local_input", localDoc);
+        DebugLogVaultDocument(L"merge_server_input", serverDoc);
 
         std::map<std::wstring, size_t> localIndexById;
         for (size_t index = 0; index < localDoc.Items.size(); ++index)
@@ -568,6 +598,8 @@ namespace
             }
 
             auto& localItem = localDoc.Items[found->second];
+            DebugLogVaultItem(L"merge_by_id_local_before", localItem);
+            DebugLogVaultItem(L"merge_by_id_server_candidate", serverItem);
             if (serverItem.UpdatedAt > localItem.UpdatedAt)
             {
                 if (serverItem.Deleted && !localItem.Deleted)
@@ -576,6 +608,7 @@ namespace
                 }
                 localItem = serverItem;
                 result.Stats.UpdatedFromServer += 1;
+                DebugLogVaultItem(L"merge_by_id_local_after_replace", localItem);
             }
         }
 
@@ -600,7 +633,10 @@ namespace
             }
 
             auto& canonicalItem = dedupedItems[foundIdentity->second];
-            if (item.UpdatedAt > canonicalItem.UpdatedAt)
+            DebugLogVaultItem(L"dedupe_canonical_before", canonicalItem);
+            DebugLogVaultItem(L"dedupe_incoming", item);
+            bool preferIncoming = item.UpdatedAt >= canonicalItem.UpdatedAt;
+            if (preferIncoming)
             {
                 canonicalItem = item;
             }
@@ -611,10 +647,12 @@ namespace
                 canonicalItem.Deleted = canonicalItem.Deleted || item.Deleted;
                 canonicalItem.DeletedAt = MaxUpdatedAt(canonicalItem.DeletedAt, item.DeletedAt);
             }
+            DebugLogVaultItem(L"dedupe_canonical_after", canonicalItem);
             result.Stats.DuplicatesCollapsed += 1;
         }
 
         localDoc.Items = std::move(dedupedItems);
+        DebugLogVaultDocument(L"merge_output", localDoc);
 
         localDoc.Revision = (std::max)(localDoc.Revision, serverDoc.Revision);
         result.Document = std::move(localDoc);
@@ -2292,12 +2330,14 @@ namespace winrt::PasskeyManager::implementation {
             {
                 return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
             }
+            DebugLogVaultDocument(L"manual_resync_local_loaded", localDoc);
         }
         else
         {
             localDoc.SchemaVersion = 1;
             localDoc.VaultId = localRequestId;
             localDoc.Revision = 0;
+            DebugLogVaultDocument(L"manual_resync_local_initialized", localDoc);
         }
 
         std::wstring restoreRequestId = localRequestId + L"-pull";
@@ -2311,6 +2351,7 @@ namespace winrt::PasskeyManager::implementation {
                 tsupasswd::VaultDocumentV1 serverDoc{};
                 if (TryDecryptVaultDocument(restoredCipher, recoveryBytes, serverDoc))
                 {
+                    DebugLogVaultDocument(L"manual_resync_server_loaded", serverDoc);
                     auto mergeResult = MergeVaultDocuments(std::move(localDoc), serverDoc, localRequestId);
                     localDoc = std::move(mergeResult.Document);
                     UpdatePasskeyOperationStatusText(
@@ -2336,6 +2377,8 @@ namespace winrt::PasskeyManager::implementation {
         {
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
+
+        DebugLogVaultDocument(L"manual_resync_before_push", localDoc);
 
         RETURN_IF_FAILED(WriteEncryptedVaultData(mergedCipher));
 

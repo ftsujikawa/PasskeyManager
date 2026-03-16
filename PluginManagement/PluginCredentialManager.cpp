@@ -85,6 +85,37 @@ namespace winrt::PasskeyManager::implementation
             return value;
         }
 
+        void AppendPersistentSyncDiagnosticLog(std::wstring const& message)
+        {
+            std::wstring appDataRoot = GetEnvironmentVariableValue(L"LOCALAPPDATA");
+            if (appDataRoot.empty())
+            {
+                return;
+            }
+
+            std::wstring logDirectory = appDataRoot + L"\\tsupasswd";
+            std::wstring logPath = logDirectory + L"\\sync-diagnostic.log";
+            CreateDirectoryW(logDirectory.c_str(), nullptr);
+
+            HANDLE handle = CreateFileW(
+                logPath.c_str(),
+                FILE_APPEND_DATA,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (handle == INVALID_HANDLE_VALUE)
+            {
+                return;
+            }
+
+            std::string utf8 = winrt::to_string(winrt::hstring{ message });
+            DWORD written = 0;
+            WriteFile(handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+            CloseHandle(handle);
+        }
+
         std::wstring NormalizeVaultMatchKeyPart(std::wstring value)
         {
             auto first = value.find_first_not_of(L" \t\r\n");
@@ -2631,6 +2662,8 @@ namespace winrt::PasskeyManager::implementation
         {
             localRequestId = BuildRequestId(L"save_login_item");
         }
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=save_login_item step=enter request_id=" + localRequestId + L"\n");
         auto trimmedTitle = title;
         auto trimmedUsername = username;
         auto trimmedPassword = password;
@@ -2651,12 +2684,16 @@ namespace winrt::PasskeyManager::implementation
 
         if (trimmedTitle.empty() || trimmedUsername.empty() || trimmedPassword.empty())
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=validation_failed reason=required_field_empty request_id=" + localRequestId + L"\n");
             return E_INVALIDARG;
         }
 
         std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
         if (recoveryCode.empty())
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=recovery_code_missing request_id=" + localRequestId + L"\n");
             return HRESULT_FROM_WIN32(ERROR_NOT_READY);
         }
 
@@ -2667,18 +2704,27 @@ namespace winrt::PasskeyManager::implementation
         }
         if (recoveryBytes.empty())
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=recovery_code_invalid request_id=" + localRequestId + L"\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
         tsupasswd::VaultDocumentV1 vaultDoc{};
         std::vector<uint8_t> existingCipherText;
         HRESULT hrReadVaultData = PluginRegistrationManager::getInstance().ReadEncryptedVaultData(existingCipherText, localRequestId);
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=observed operation=save_login_item step=after_read_encrypted_vault_data hr=" + std::to_wstring(static_cast<int>(hrReadVaultData)) +
+            L" request_id=" + localRequestId + L"\n");
         if (SUCCEEDED(hrReadVaultData))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"INFO: sync state=running operation=save_login_item step=read_existing_vault request_id=" + localRequestId + L"\n");
             tsupasswd::VaultCryptoError cryptoError{};
             std::vector<uint8_t> plainBytes;
             if (!tsupasswd::DecryptVaultV3(existingCipherText, recoveryBytes, plainBytes, cryptoError))
             {
+                AppendPersistentSyncDiagnosticLog(
+                    L"WARNING: sync result=failed operation=save_login_item step=decrypt_existing_vault_failed request_id=" + localRequestId + L"\n");
                 return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
             }
 
@@ -2687,18 +2733,25 @@ namespace winrt::PasskeyManager::implementation
             std::wstring parseError;
             if (!tsupasswd::DeserializeVaultDocumentV1(decryptedJson, vaultDoc, parseError))
             {
+                AppendPersistentSyncDiagnosticLog(
+                    L"WARNING: sync result=failed operation=save_login_item step=parse_existing_vault_failed request_id=" + localRequestId + L"\n");
                 return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
             }
         }
         else if (hrReadVaultData == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
             hrReadVaultData == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"INFO: sync state=running operation=save_login_item step=create_new_vault request_id=" + localRequestId + L"\n");
             vaultDoc.SchemaVersion = 1;
             vaultDoc.VaultId = localRequestId;
             vaultDoc.Revision = 0;
         }
         else
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=read_existing_vault_failed hr=" + std::to_wstring(static_cast<int>(hrReadVaultData)) +
+                L" request_id=" + localRequestId + L"\n");
             return hrReadVaultData;
         }
 
@@ -2753,6 +2806,8 @@ namespace winrt::PasskeyManager::implementation
         std::vector<BYTE> utf8Bytes;
         if (!tsupasswd::SerializeVaultDocumentV1ToUtf8Bytes(vaultDoc, utf8Bytes))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=serialize_vault_failed request_id=" + localRequestId + L"\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
@@ -2761,14 +2816,21 @@ namespace winrt::PasskeyManager::implementation
         std::vector<uint8_t> plainBytes(utf8Bytes.begin(), utf8Bytes.end());
         if (!tsupasswd::EncryptVaultV3(plainBytes, recoveryBytes, cipherBytes, cryptoError))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=save_login_item step=encrypt_vault_failed request_id=" + localRequestId + L"\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         }
 
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=save_login_item step=before_write_encrypted_vault_data cipher_bytes=" + std::to_wstring(cipherBytes.size()) +
+            L" request_id=" + localRequestId + L"\n");
         RETURN_IF_FAILED(PluginRegistrationManager::getInstance().WriteEncryptedVaultData(std::vector<BYTE>(cipherBytes.begin(), cipherBytes.end())));
         if (resync)
         {
             RETURN_IF_FAILED(PluginRegistrationManager::getInstance().ManualResyncSelfHostedVault(localRequestId + L"-sync"));
         }
+        AppendPersistentSyncDiagnosticLog(
+            L"SUCCESS: sync result=success operation=save_login_item step=completed request_id=" + localRequestId + L"\n");
         return S_OK;
     }
     CATCH_RETURN()
@@ -2867,6 +2929,8 @@ namespace winrt::PasskeyManager::implementation
         {
             localRequestId = BuildRequestId(L"update_login_item");
         }
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=update_login_item step=enter request_id=" + localRequestId + L"\n");
 
         std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
         if (recoveryCode.empty())
@@ -2959,6 +3023,8 @@ namespace winrt::PasskeyManager::implementation
         {
             localRequestId = BuildRequestId(L"delete_login_item");
         }
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=delete_login_item step=enter request_id=" + localRequestId + L"\n");
 
         std::wstring recoveryCode = GetEnvironmentVariableValue(kVaultRecoveryCodeEnv);
         if (recoveryCode.empty())

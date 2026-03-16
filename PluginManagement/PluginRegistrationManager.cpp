@@ -308,6 +308,37 @@ namespace
         OutputDebugStringW(message.c_str());
     }
 
+    void AppendPersistentSyncDiagnosticLog(std::wstring const& message)
+    {
+        std::wstring appDataRoot = GetEnvironmentVariableValue(L"LOCALAPPDATA");
+        if (appDataRoot.empty())
+        {
+            return;
+        }
+
+        std::wstring logDirectory = appDataRoot + L"\\tsupasswd";
+        std::wstring logPath = logDirectory + L"\\sync-diagnostic.log";
+        CreateDirectoryW(logDirectory.c_str(), nullptr);
+
+        HANDLE handle = CreateFileW(
+            logPath.c_str(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+
+        std::string utf8 = winrt::to_string(winrt::hstring{ message });
+        DWORD written = 0;
+        WriteFile(handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+        CloseHandle(handle);
+    }
+
     std::wstring GetNowIsoLikeTimestamp()
     {
         SYSTEMTIME st{};
@@ -2154,6 +2185,18 @@ namespace winrt::PasskeyManager::implementation {
 
     HRESULT PluginRegistrationManager::WriteEncryptedVaultData(std::vector<BYTE> cipherText)
     {
+        std::wstring operation = L"write_encrypted_vault_data";
+        std::wstring localRequestId = tsupasswd::BuildRequestId(operation);
+        UpdatePasskeyOperationStatusText(
+            winrt::hstring{
+                L"INFO: sync state=running operation=" + operation +
+                L" step=begin cipher_bytes=" + std::to_wstring(cipherText.size()) +
+                L" request_id=" + localRequestId + L"ℹ" });
+        DebugLogIfVerbose(
+            L"DEBUG: sync state=running operation=" + operation +
+            L" step=begin cipher_bytes=" + std::to_wstring(cipherText.size()) +
+            L" request_id=" + localRequestId + L"\n");
+
         RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), cipherText.empty() || cipherText.size() < kMinVaultCipherBlobBytes);
         RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE), cipherText.size() > kMaxVaultCipherBlobBytes);
 
@@ -2162,8 +2205,59 @@ namespace winrt::PasskeyManager::implementation {
 
         std::lock_guard<std::mutex> lock(m_pluginOperationConfigMutex);
         wil::unique_hkey hKey;
-        RETURN_IF_WIN32_ERROR(RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr));
-        RETURN_IF_WIN32_ERROR(RegSetValueEx(hKey.get(), c_pluginEncryptedVaultData, 0, REG_BINARY, reinterpret_cast<PBYTE>(framedBlob.data()), wil::safe_cast<DWORD>(framedBlob.size())));
+        LONG createResult = RegCreateKeyEx(HKEY_CURRENT_USER, c_pluginRegistryPath, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
+        if (createResult != ERROR_SUCCESS)
+        {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=" + operation +
+                L" step=reg_create_key_failed hr=" + std::to_wstring(static_cast<int>(HRESULT_FROM_WIN32(createResult))) +
+                L" request_id=" + localRequestId + L"\n");
+            UpdatePasskeyOperationStatusText(
+                winrt::hstring{
+                    L"WARNING: sync result=failed operation=" + operation +
+                    L" step=reg_create_key_failed hr=" + std::to_wstring(static_cast<int>(HRESULT_FROM_WIN32(createResult))) +
+                    L" request_id=" + localRequestId + L"⚠" });
+            DebugLogIfVerbose(
+                L"DEBUG: sync result=failed operation=" + operation +
+                L" step=reg_create_key_failed win32=" + std::to_wstring(createResult) +
+                L" request_id=" + localRequestId + L"\n");
+            return HRESULT_FROM_WIN32(createResult);
+        }
+
+        LONG setResult = RegSetValueEx(hKey.get(), c_pluginEncryptedVaultData, 0, REG_BINARY, reinterpret_cast<PBYTE>(framedBlob.data()), wil::safe_cast<DWORD>(framedBlob.size()));
+        if (setResult != ERROR_SUCCESS)
+        {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=" + operation +
+                L" step=reg_set_value_failed hr=" + std::to_wstring(static_cast<int>(HRESULT_FROM_WIN32(setResult))) +
+                L" framed_bytes=" + std::to_wstring(framedBlob.size()) +
+                L" request_id=" + localRequestId + L"\n");
+            UpdatePasskeyOperationStatusText(
+                winrt::hstring{
+                    L"WARNING: sync result=failed operation=" + operation +
+                    L" step=reg_set_value_failed hr=" + std::to_wstring(static_cast<int>(HRESULT_FROM_WIN32(setResult))) +
+                    L" request_id=" + localRequestId + L"⚠" });
+            DebugLogIfVerbose(
+                L"DEBUG: sync result=failed operation=" + operation +
+                L" step=reg_set_value_failed win32=" + std::to_wstring(setResult) +
+                L" framed_bytes=" + std::to_wstring(framedBlob.size()) +
+                L" request_id=" + localRequestId + L"\n");
+            return HRESULT_FROM_WIN32(setResult);
+        }
+
+        AppendPersistentSyncDiagnosticLog(
+            L"SUCCESS: sync result=success operation=" + operation +
+            L" step=completed framed_bytes=" + std::to_wstring(framedBlob.size()) +
+            L" request_id=" + localRequestId + L"\n");
+        UpdatePasskeyOperationStatusText(
+            winrt::hstring{
+                L"SUCCESS: sync result=success operation=" + operation +
+                L" step=completed framed_bytes=" + std::to_wstring(framedBlob.size()) +
+                L" request_id=" + localRequestId + L"✅" });
+        DebugLogIfVerbose(
+            L"DEBUG: sync result=success operation=" + operation +
+            L" step=completed framed_bytes=" + std::to_wstring(framedBlob.size()) +
+            L" request_id=" + localRequestId + L"\n");
         return S_OK;
     }
 
@@ -2181,6 +2275,9 @@ namespace winrt::PasskeyManager::implementation {
         auto opt = wil::reg::try_get_value_binary(HKEY_CURRENT_USER, c_pluginRegistryPath, c_pluginEncryptedVaultData, REG_BINARY);
         if (!opt)
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=" + operation +
+                L" reason=vault_data_missing recovery=restore_snapshot_then_retry request_id=" + localRequestId + L"\n");
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_missing recovery=restore_snapshot_then_retry request_id=" + localRequestId + L"⚠" });
             DebugLogIfVerbose(L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_missing source=registry\n");
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
@@ -2188,6 +2285,9 @@ namespace winrt::PasskeyManager::implementation {
 
         if (opt->empty())
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=" + operation +
+                L" reason=vault_data_empty_or_corrupt request_id=" + localRequestId + L"\n");
             UpdatePasskeyOperationStatusText(winrt::hstring{ L"WARNING: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt recovery=recreate_vault_passkey_then_retry request_id=" + localRequestId + L"⚠" });
             DebugLogIfVerbose(L"DEBUG: sync result=failed operation=" + operation + L" reason=vault_data_empty_or_corrupt\n");
             return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
@@ -2223,6 +2323,10 @@ namespace winrt::PasskeyManager::implementation {
         }
 
         cipherText = std::move(vaultCipher);
+        AppendPersistentSyncDiagnosticLog(
+            L"SUCCESS: sync result=success operation=" + operation +
+            L" cipher_bytes=" + std::to_wstring(cipherText.size()) +
+            L" request_id=" + localRequestId + L"\n");
         return S_OK;
     }
 

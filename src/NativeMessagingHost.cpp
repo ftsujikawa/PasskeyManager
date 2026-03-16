@@ -91,6 +91,37 @@ namespace
         return value;
     }
 
+    void AppendPersistentSyncDiagnosticLog(std::wstring const& message)
+    {
+        std::wstring appDataRoot = GetEnvironmentVariableValue(L"LOCALAPPDATA");
+        if (appDataRoot.empty())
+        {
+            return;
+        }
+
+        std::wstring logDirectory = appDataRoot + L"\\tsupasswd";
+        std::wstring logPath = logDirectory + L"\\sync-diagnostic.log";
+        CreateDirectoryW(logDirectory.c_str(), nullptr);
+
+        HANDLE handle = CreateFileW(
+            logPath.c_str(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+
+        std::string utf8 = winrt::to_string(winrt::hstring{ message });
+        DWORD written = 0;
+        WriteFile(handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+        CloseHandle(handle);
+    }
+
     bool TryGetString(JsonObject const& obj, wchar_t const* key, std::wstring& out)
     {
         if (!obj.HasKey(key))
@@ -321,6 +352,8 @@ namespace
 
     HRESULT HandleSave(JsonObject const& payload, std::wstring const& requestId, JsonObject& outResult)
     {
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=native_host_save step=enter request_id=" + requestId + L"\n");
         std::wstring title;
         std::wstring username;
         std::wstring password;
@@ -334,16 +367,28 @@ namespace
         (void)TryGetString(payload, L"notes", notes);
         (void)TryGetBool(payload, L"resync", resync);
 
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=native_host_save step=before_plugin_save resync=" + std::wstring(resync ? L"true" : L"false") +
+            L" request_id=" + requestId + L"\n");
         HRESULT hr = PluginCredentialManager::getInstance().SaveLoginItemToVaultWithPasskey(nullptr, title, username, password, url, notes, requestId, resync);
         if (FAILED(hr))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=native_host_save step=plugin_save_failed hr=" + std::to_wstring(static_cast<int>(hr)) +
+                L" request_id=" + requestId + L"\n");
             return hr;
         }
+
+        AppendPersistentSyncDiagnosticLog(
+            L"SUCCESS: sync result=success operation=native_host_save step=plugin_save_completed request_id=" + requestId + L"\n");
 
         tsupasswd::VaultDocumentV1 vaultDoc{};
         hr = TryLoadVaultDocument(vaultDoc, requestId + L"-after-save");
         if (FAILED(hr))
         {
+            AppendPersistentSyncDiagnosticLog(
+                L"WARNING: sync result=failed operation=native_host_save step=load_after_save_failed hr=" + std::to_wstring(static_cast<int>(hr)) +
+                L" request_id=" + requestId + L"\n");
             return hr;
         }
 
@@ -365,11 +410,15 @@ namespace
         result.SetNamedValue(L"saved", JsonValue::CreateBooleanValue(true));
         result.SetNamedValue(L"synced", JsonValue::CreateBooleanValue(resync));
         outResult = result;
+        AppendPersistentSyncDiagnosticLog(
+            L"SUCCESS: sync result=success operation=native_host_save step=completed request_id=" + requestId + L"\n");
         return S_OK;
     }
 
     HRESULT HandleUpdate(JsonObject const& payload, std::wstring const& requestId, JsonObject& outResult)
     {
+        AppendPersistentSyncDiagnosticLog(
+            L"INFO: sync state=running operation=native_host_update step=enter request_id=" + requestId + L"\n");
         std::wstring itemId;
         std::wstring title;
         std::wstring username;

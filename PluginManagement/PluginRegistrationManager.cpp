@@ -448,6 +448,51 @@ namespace
         return value;
     }
 
+    std::wstring ExtractRpIdFromUrl(std::wstring const& url)
+    {
+        std::wstring trimmed = url;
+        auto first = trimmed.find_first_not_of(L" \t\r\n");
+        if (first == std::wstring::npos)
+        {
+            return {};
+        }
+        auto last = trimmed.find_last_not_of(L" \t\r\n");
+        trimmed = trimmed.substr(first, last - first + 1);
+
+        try
+        {
+            winrt::Windows::Foundation::Uri uri{ winrt::hstring{ trimmed } };
+            std::wstring host = uri.Host().c_str();
+            return NormalizeVaultIdentityPart(std::move(host));
+        }
+        catch (...)
+        {
+        }
+
+        std::wstring candidate = trimmed;
+        auto scheme = candidate.find(L"://");
+        if (scheme != std::wstring::npos)
+        {
+            candidate = candidate.substr(scheme + 3);
+        }
+        auto slash = candidate.find_first_of(L"/\t\r\n");
+        if (slash != std::wstring::npos)
+        {
+            candidate = candidate.substr(0, slash);
+        }
+        auto at = candidate.rfind(L"@");
+        if (at != std::wstring::npos)
+        {
+            candidate = candidate.substr(at + 1);
+        }
+        auto colon = candidate.rfind(L":");
+        if (colon != std::wstring::npos)
+        {
+            candidate = candidate.substr(0, colon);
+        }
+        return NormalizeVaultIdentityPart(std::move(candidate));
+    }
+
     std::wstring BuildVaultLoginIdentity(tsupasswd::VaultItemV1 const& item)
     {
         if (item.ItemType != tsupasswd::VaultItemType::Login)
@@ -455,9 +500,13 @@ namespace
             return {};
         }
 
-        return NormalizeVaultIdentityPart(item.Title) +
-            L"\n" + NormalizeVaultIdentityPart(item.Login.Username) +
-            L"\n" + NormalizeVaultIdentityPart(item.Login.Url);
+        std::wstring rpId = ExtractRpIdFromUrl(item.Login.Url);
+        if (rpId.empty())
+        {
+            rpId = NormalizeVaultIdentityPart(item.Login.Url);
+        }
+        return rpId +
+            L"\n" + NormalizeVaultIdentityPart(item.Login.Username);
     }
 
     struct VaultMergeStats

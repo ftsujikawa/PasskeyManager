@@ -292,9 +292,13 @@ namespace winrt::PasskeyManager::implementation
             std::time_t raw = system_clock::to_time_t(now);
             std::tm utcTm{};
             gmtime_s(&utcTm, &raw);
-            wchar_t buffer[32]{};
-            wcsftime(buffer, ARRAYSIZE(buffer), L"%Y-%m-%dT%H:%M:%SZ", &utcTm);
-            return buffer;
+            auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+            wchar_t buffer[40]{};
+            wcsftime(buffer, ARRAYSIZE(buffer), L"%Y-%m-%dT%H:%M:%S", &utcTm);
+            return std::wstring(buffer) + L"." +
+                (ms.count() < 100 ? (ms.count() < 10 ? L"00" : L"0") : L"") +
+                std::to_wstring(ms.count()) +
+                L"Z";
         }
 
         std::wstring CreateVaultItemId()

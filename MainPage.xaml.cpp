@@ -530,7 +530,9 @@ namespace {
                 (ch >= L'A' && ch <= L'Z') ||
                 ch == L'-' ||
                 ch == L'_' ||
-                ch == L'.';
+                ch == L'.' ||
+                ch == L'@' ||
+                ch == L'+';
         });
     }
 
@@ -583,7 +585,7 @@ namespace {
 
         if (!IsValidSyncUserId(userId))
         {
-            return { false, L"invalid_user_id", L"use_only_alnum_dash_underscore_dot_for_sync_user_id" };
+            return { false, L"invalid_user_id", L"use_email_or_safe_identifier_for_sync_user_id" };
         }
 
         return { true, L"", L"" };
@@ -657,7 +659,7 @@ namespace {
 
         if (!IsValidSyncUserId(userId))
         {
-            return { false, L"invalid_user_id", L"use_only_alnum_dash_underscore_dot_for_sync_user_id" };
+            return { false, L"invalid_user_id", L"use_email_or_safe_identifier_for_sync_user_id" };
         }
 
         return { true, L"", L"" };

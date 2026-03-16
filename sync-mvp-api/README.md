@@ -49,7 +49,7 @@ PasskeyManager を起動するシェルで設定してください。
 ```powershell
 $env:TSUPASSWD_SYNC_BASE_URL = "http://127.0.0.1:8088/"
 $env:TSUPASSWD_SYNC_BEARER_TOKEN = "dev-token"
-$env:TSUPASSWD_SYNC_USER_ID = "ContosoUserId"
+$env:TSUPASSWD_SYNC_USER_ID = "user@example.com"
 ```
 
 ## 疎通確認

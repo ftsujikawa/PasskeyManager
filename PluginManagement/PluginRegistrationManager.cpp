@@ -238,7 +238,9 @@ namespace
                 (ch >= L'A' && ch <= L'Z') ||
                 ch == L'-' ||
                 ch == L'_' ||
-                ch == L'.';
+                ch == L'.' ||
+                ch == L'@' ||
+                ch == L'+';
         });
     }
 
@@ -275,7 +277,7 @@ namespace
 
         if (!IsValidSyncUserId(syncUserId))
         {
-            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id recovery=use_only_alnum_dash_underscore_dot_for_sync_user_id request_id=" + requestId + L"⚠" });
+            statusSink(winrt::hstring{ L"WARNING: sync result=rejected operation=" + operation + L" reason=invalid_user_id recovery=use_email_or_safe_identifier_for_sync_user_id request_id=" + requestId + L"⚠" });
             return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
         }
 

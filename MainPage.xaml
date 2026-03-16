@@ -563,7 +563,7 @@
                         Grid.Row="3"
                         Margin="0,8,0,0"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="How to (2 devices / profiles): 1) Set Sync Base URL/Token/User ID + Vault Recovery Code on both devices. 2) On device A, Create Vault Passkey then Resync Now. 3) On device B, Clear Local Vault then Resync Now (auto restore_snapshot)."
+                        Text="How to (2 devices / profiles): 1) Set Sync Base URL/Token/User ID (email allowed) + Vault Recovery Code on both devices. 2) On device A, Create Vault Passkey then Resync Now. 3) On device B, Clear Local Vault then Resync Now (auto restore_snapshot)."
                         TextWrapping="WrapWholeWords" />
 
                     <Grid

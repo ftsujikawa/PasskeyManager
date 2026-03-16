@@ -181,7 +181,8 @@ namespace winrt::PasskeyManager::implementation
             std::wstring const& password,
             std::wstring const& url,
             std::wstring const& notes,
-            std::wstring const& requestId = L"");
+            std::wstring const& requestId = L"",
+            bool resync = true);
         HRESULT GetVaultLoginItemById(
             std::wstring const& itemId,
             tsupasswd::VaultItemV1& outItem,
@@ -193,10 +194,12 @@ namespace winrt::PasskeyManager::implementation
             std::wstring const& password,
             std::wstring const& url,
             std::wstring const& notes,
-            std::wstring const& requestId = L"");
+            std::wstring const& requestId = L"",
+            bool resync = true);
         HRESULT DeleteVaultLoginItemById(
             std::wstring const& itemId,
-            std::wstring const& requestId = L"");
+            std::wstring const& requestId = L"",
+            bool resync = true);
     private:
         PluginCredentialManager();
         ~PluginCredentialManager();
